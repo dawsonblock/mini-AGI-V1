@@ -1,0 +1,25 @@
+{
+  "entries": [
+    {
+      "exemplar": "Task: Append a period to the end of the input word.\nInput: plume\nAnswer: plume.",
+      "family": "tr-append-dot",
+      "support": 10
+    },
+    {
+      "exemplar": "Task: Reverse the characters of the input word.\nInput: cobalt\nAnswer: tlaboc",
+      "family": "tr-reverse",
+      "support": 10
+    },
+    {
+      "exemplar": "Task: Convert the input word to uppercase.\nInput: willow\nAnswer: WILLOW",
+      "family": "tr-upper",
+      "support": 10
+    },
+    {
+      "exemplar": "Task: Replace every vowel in the input word with the letter x.\nInput: beacon\nAnswer: bxxcxn",
+      "family": "tr-xvowels",
+      "support": 10
+    }
+  ],
+  "schema": "mini-agi-v16.2-semantic-memory-v1"
+}

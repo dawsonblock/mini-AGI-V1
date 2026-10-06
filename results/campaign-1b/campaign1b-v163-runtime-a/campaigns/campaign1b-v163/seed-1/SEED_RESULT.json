@@ -1,0 +1,21 @@
+{
+  "hidden_exact_match": {
+    "L1": 0.0,
+    "L2": 0.0,
+    "L3": 0.0,
+    "L4": 0.0,
+    "L5": 0.0,
+    "L6": 0.2916666666666667,
+    "NC": 0.0
+  },
+  "receipt_digests": {
+    "L1": "sha256:b7e109b0b4dc0cbd15478483963a2350f6758aa322b12d08e3ee608c697b7bc1",
+    "L2": "sha256:4ab4b9338a7ee51ecdca849e90b6a61f88e6f8a35d2720d16b584a6fdfa39a48",
+    "L3": "sha256:ffe69f4d45042ee57e71a8cf67e6eb5911a431304faa18284c53fc83b1d6c475",
+    "L4": "sha256:71f5d4519020bb1a057e048133d93a8c03b477d8bb14c24d521cab634bdb427f",
+    "L5": "sha256:6db74e78e34ff9c1d9c76507e91842c51364661899094ada6b5224b2a76886a0",
+    "L6": "sha256:ccc19fc08ff2f22ade071dba655101ee5fa7a23f97eb57d9b4fa0c80d6b3e592",
+    "NC": "sha256:fca301ad2429f58e9b3a5e3e52838ba013132059e091c0cc934f18b02bf5f1da"
+  },
+  "seed": 1
+}
