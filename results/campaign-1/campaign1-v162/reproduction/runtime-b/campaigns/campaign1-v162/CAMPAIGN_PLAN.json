@@ -1,0 +1,40 @@
+{
+  "digest": "sha256:b0e8b56886c83b1a2a6840b9177b5e39dc254d250923883a530401e8ab134495",
+  "signature_b64": "WfwMkKhU6v0GUh73Xy2uQJxCD12jRNGPKS6/namk8eEoE11wh6p3WVbZDsgyFcSFDA8LzOve/KzwUqNIi//TAw==",
+  "signed_before_execution": true,
+  "signer_key_id": "campaign1-execution-witness",
+  "value": {
+    "adapter_bitwise_required": false,
+    "arms": [
+      "L1",
+      "L2",
+      "L3",
+      "L4",
+      "L5",
+      "L6",
+      "NC"
+    ],
+    "campaign_id": "campaign1-v162",
+    "dataset_partition_digest": "sha256:d5fab38ed65ecb9bf7f19380975c9921ea6dc8e00357febb6c8ccf8024c32dc7",
+    "metric_tolerance": 0.05,
+    "minimum_neural_incremental_ft": 0.02,
+    "minimum_retention": 0.95,
+    "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+    "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+    "negative_control_arm": "NC",
+    "negative_control_max_ft": 0.02,
+    "reproduction_semantics": "statistical-equivalence",
+    "require_zero_security_regressions": true,
+    "retention_artifact_digest": "sha256:7b3a949d557e1a47734d341abdefb15e89a3806e7a584f7d993040a2658607ef",
+    "schema": "mini-agi-v16.2-colab-campaign-plan-v1",
+    "scorer_artifact_digest": "sha256:fd5ece9d2025acaaf2254eaf63319f0957e88b56c2b28ea19263bddb4101ecec",
+    "security_artifact_digest": "sha256:6cab66c173b20a7e6baa454be9a57f2164c0e3e7070fddff3a6184c6fec5341e",
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  }
+}

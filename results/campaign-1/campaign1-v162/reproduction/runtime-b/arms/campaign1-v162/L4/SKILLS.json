@@ -1,0 +1,69 @@
+{
+  "schema": "mini-agi-v16.2-skill-library-v1",
+  "skills": [
+    {
+      "exemplars": [
+        "Task: Append a period to the end of the input word.\nInput: plume\nAnswer: plume.",
+        "Task: Append a period to the end of the input word.\nInput: sierra\nAnswer: sierra.",
+        "Task: Append a period to the end of the input word.\nInput: walnut\nAnswer: walnut.",
+        "Task: Append a period to the end of the input word.\nInput: thistle\nAnswer: thistle.",
+        "Task: Append a period to the end of the input word.\nInput: fern\nAnswer: fern.",
+        "Task: Append a period to the end of the input word.\nInput: anvil\nAnswer: anvil.",
+        "Task: Append a period to the end of the input word.\nInput: birch\nAnswer: birch.",
+        "Task: Append a period to the end of the input word.\nInput: comet\nAnswer: comet.",
+        "Task: Append a period to the end of the input word.\nInput: delta\nAnswer: delta.",
+        "Task: Append a period to the end of the input word.\nInput: falcon\nAnswer: falcon."
+      ],
+      "family": "tr-append-dot",
+      "skill_id": "skill-tr-append-dot"
+    },
+    {
+      "exemplars": [
+        "Task: Reverse the characters of the input word.\nInput: cobalt\nAnswer: tlaboc",
+        "Task: Reverse the characters of the input word.\nInput: amber\nAnswer: rebma",
+        "Task: Reverse the characters of the input word.\nInput: silver\nAnswer: revlis",
+        "Task: Reverse the characters of the input word.\nInput: violet\nAnswer: teloiv",
+        "Task: Reverse the characters of the input word.\nInput: jade\nAnswer: edaj",
+        "Task: Reverse the characters of the input word.\nInput: coral\nAnswer: laroc",
+        "Task: Reverse the characters of the input word.\nInput: onyx\nAnswer: xyno",
+        "Task: Reverse the characters of the input word.\nInput: quartz\nAnswer: ztrauq",
+        "Task: Reverse the characters of the input word.\nInput: ember\nAnswer: rebme",
+        "Task: Reverse the characters of the input word.\nInput: frost\nAnswer: tsorf"
+      ],
+      "family": "tr-reverse",
+      "skill_id": "skill-tr-reverse"
+    },
+    {
+      "exemplars": [
+        "Task: Convert the input word to uppercase.\nInput: willow\nAnswer: WILLOW",
+        "Task: Convert the input word to uppercase.\nInput: marble\nAnswer: MARBLE",
+        "Task: Convert the input word to uppercase.\nInput: canyon\nAnswer: CANYON",
+        "Task: Convert the input word to uppercase.\nInput: harbor\nAnswer: HARBOR",
+        "Task: Convert the input word to uppercase.\nInput: lantern\nAnswer: LANTERN",
+        "Task: Convert the input word to uppercase.\nInput: meadow\nAnswer: MEADOW",
+        "Task: Convert the input word to uppercase.\nInput: saddle\nAnswer: SADDLE",
+        "Task: Convert the input word to uppercase.\nInput: velvet\nAnswer: VELVET",
+        "Task: Convert the input word to uppercase.\nInput: timber\nAnswer: TIMBER",
+        "Task: Convert the input word to uppercase.\nInput: copper\nAnswer: COPPER"
+      ],
+      "family": "tr-upper",
+      "skill_id": "skill-tr-upper"
+    },
+    {
+      "exemplars": [
+        "Task: Replace every vowel in the input word with the letter x.\nInput: beacon\nAnswer: bxxcxn",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: pollen\nAnswer: pxllxn",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: raven\nAnswer: rxvxn",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: tundra\nAnswer: txndrx",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: orchard\nAnswer: xrchxrd",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: cipher\nAnswer: cxphxr",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: garnet\nAnswer: gxrnxt",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: summit\nAnswer: sxmmxt",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: basalt\nAnswer: bxsxlt",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: nectar\nAnswer: nxctxr"
+      ],
+      "family": "tr-xvowels",
+      "skill_id": "skill-tr-xvowels"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "adapters": {
+    "L6/seed-0": {
+      "sha256_path_digest": "sha256:08bb6a62434eadf0d0412915dbc8a630cbf4595325e567e22b75c0d08b5e9fe0",
+      "size_bytes": 8682917
+    },
+    "L6/seed-1": {
+      "sha256_path_digest": "sha256:eae6c8317cba095c126ae71aa196f1639f3e861a02f04f7846f37227f5020a43",
+      "size_bytes": 8682917
+    },
+    "L6/seed-2": {
+      "sha256_path_digest": "sha256:59cb35f4fd572f147837f48b187ca9f9d55a85bf1d0158e291703658db3e40a3",
+      "size_bytes": 8682917
+    },
+    "L6/seed-3": {
+      "sha256_path_digest": "sha256:548025c8de12597a4d9fce1549c8ddca77158f455c13ed91a9d3a94ffe76c551",
+      "size_bytes": 8682918
+    },
+    "L6/seed-4": {
+      "sha256_path_digest": "sha256:322138b1ca26a24e11448d6e5d6ba2bad115bef348d5081c5020ae37756138a3",
+      "size_bytes": 8682917
+    },
+    "NC/seed-0": {
+      "sha256_path_digest": "sha256:faa285e1f18a5a8c2464a7f5fab1977fdca199bb9b03dd01af81ff0cec09f75d",
+      "size_bytes": 8682916
+    },
+    "NC/seed-1": {
+      "sha256_path_digest": "sha256:6a0fb9aab7e82a6564de62869f6bb2bd583eda3c67529e7c8b55270b3b179f67",
+      "size_bytes": 8682913
+    },
+    "NC/seed-2": {
+      "sha256_path_digest": "sha256:b5b5fa876e027a5ce9e4e6650373a887049deadf4005ab336747bcbe45f27cef",
+      "size_bytes": 8682917
+    },
+    "NC/seed-3": {
+      "sha256_path_digest": "sha256:5e88ed48c0b5d784d6bba41d086dca633d2fcc1d7dcbedd091181762f8f1aa9c",
+      "size_bytes": 8682916
+    },
+    "NC/seed-4": {
+      "sha256_path_digest": "sha256:194128a53dfb8170513e44123ee80423822f84a01b94fdd068c85139dc42cd34",
+      "size_bytes": 8682916
+    }
+  },
+  "schema": "mini-agi-v16.2-adapter-manifest-v1"
+}

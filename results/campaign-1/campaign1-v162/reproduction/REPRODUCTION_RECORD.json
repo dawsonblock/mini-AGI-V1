@@ -1,0 +1,33 @@
+{
+  "campaign_id": "campaign1-v162",
+  "conclusion": "A fresh runtime cloning only public main@ae937a9 re-executed the full 7-arm x 5-seed campaign. Plan digest, every arm metric, delta_ft_neural (+0.20), negative control (0.0), and the REFUSE qualification decision all reproduced exactly \u2014 exceeding the preregistered statistical-equivalence tolerance. Adapter weights differed bitwise as expected and were individually digest-bound.",
+  "note": "Reproduction confirms evidence integrity and metric stability; it does not upgrade the REFUSE qualification or constitute promotion authority.",
+  "outcome": {
+    "adapter_bitwise_match": false,
+    "adapter_note": "L6 seed-0 adapter A=sha256:231702bc\u2026 B=sha256:08bb6a62\u2026 \u2014 expected CUDA nondeterminism; each adapter digest-bound and verified on its own runtime",
+    "delta_ft_neural_within_tolerance": true,
+    "metric_divergences": "none \u2014 all arm metrics identical across runtimes",
+    "negative_control_reproduced": true,
+    "plan_digest_match": true,
+    "qualification_decision_agreement": true
+  },
+  "policy": {
+    "adapter_bitwise_required": false,
+    "metric_tolerance": 0.05,
+    "semantics": "statistical-equivalence"
+  },
+  "runtime_a": {
+    "decision": "BLOCK",
+    "delta_ft_neural": 0.2,
+    "plan_digest": "sha256:b0e8b56886c83b1a2a6840b9177b5e39dc254d250923883a530401e8ab134495"
+  },
+  "runtime_b": {
+    "decision": "BLOCK",
+    "delta_ft_neural": 0.2,
+    "plan_digest": "sha256:b0e8b56886c83b1a2a6840b9177b5e39dc254d250923883a530401e8ab134495",
+    "receipts_verified": 35,
+    "source": "public github clone of main@ae937a9"
+  },
+  "schema": "mini-agi-v16.2-campaign1-reproduction-v1",
+  "status": "REPRODUCED"
+}

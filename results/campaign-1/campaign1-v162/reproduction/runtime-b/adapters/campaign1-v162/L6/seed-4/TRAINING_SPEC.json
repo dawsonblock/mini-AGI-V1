@@ -1,0 +1,16 @@
+{
+  "alpha": 32,
+  "dropout": 0.05,
+  "learning_rate": 0.0001,
+  "max_length": 256,
+  "rank": 16,
+  "schema": "mini-agi-v16.1-lora-train-spec-v1",
+  "seed": 4,
+  "steps": 100,
+  "target_modules": [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj"
+  ]
+}
