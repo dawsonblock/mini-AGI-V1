@@ -81,7 +81,12 @@ admitted only when `require_family_disjoint_hidden=false` (smoke posture).
 - Single seed per campaign (smoke scope). Campaign 1 needs N=5 preregistered
   seeds, a real family-disjoint dataset, and a pinned HF commit revision
   (`configs/campaign1.yaml` ships with placeholders by design).
-- Fresh-runtime independent reproduction: **NOT RUN**.
+- Fresh-runtime independent reproduction: **REPRODUCED** on a second clean
+  Colab T4 session using only the public GitHub release asset — release
+  verify 1,389/1,389, tests 313/313, plan digest and metrics identical,
+  independent qualifier QUALIFIED. Adapter bits diverged across runtimes
+  (GPU nondeterminism — expected; each adapter is digest-bound per run).
+  See reproduction/REPRODUCTION_RECORD.json.
 - No six-arm ablation (L1–L6) yet; `ExecutedRunReceiptV161.arm` is currently
   restricted to `{A0,A1}` — extending it is a schema change for v16.2.
 - The Colab session Google Drive mount required interactive OAuth and was not

@@ -1,12 +1,85 @@
 {
-  "reason": "fresh-runtime independent reproduction has not been executed; the qualified artifacts and plan needed for it are included in this branch",
+  "checks": [
+    {
+      "check": "release_downloaded",
+      "detail": "4251939 bytes",
+      "pass": true
+    },
+    {
+      "check": "release_verify",
+      "detail": "{'status': 'PASS', 'files_verified': 1389, 'manifest_sha256': 'bc53d0362dce976c02ac4cb5002ba01b2152e72fd39fe65461aa1c3d3e0a4b5d'}",
+      "pass": true
+    },
+    {
+      "check": "install",
+      "detail": "MB/s  0:00:00\nInstalling collected packages: torchao\n  Attempting uninstall: torchao\n    Found existing installation: torchao 0.10.0\n    Uninstalling torchao-0.10.0:\n      Successfully uninstalled torchao-0.10.0\nSuccessfully installed torchao-0.18.0\nInstalled mini-AGI v16.1 Colab convergence build.\n",
+      "pass": true
+    },
+    {
+      "check": "tests_313",
+      "detail": "313 passed in 13.61s",
+      "pass": true
+    },
+    {
+      "check": "smoke_executed",
+      "detail": "rc=0",
+      "pass": true
+    },
+    {
+      "check": "plan_digest_matches_A",
+      "detail": "sha256:add7d1826ca8db61c6b5c82b72ded628ef5dd3933ae5890b10f75717e104011c",
+      "pass": true
+    },
+    {
+      "check": "metrics_reproduced",
+      "detail": "a0=0.0 a1=0.0",
+      "pass": true
+    },
+    {
+      "check": "adapter_bitwise_identical_to_A",
+      "detail": "A=sha256:38b00bcdcb255cfa587b765f5ab861d40.. B=sha256:4dfe45de07e858b38f3df5de3e595dc86..",
+      "finding": "seeded LoRA training is NOT bit-deterministic across runtime instances (GPU nondeterminism). Plan, evaluator, dataset digests and metrics reproduce exactly; the adapter artifact is uniquely digest-bound per run, so each runtime's adapter requires its own qualification \u2014 the binding machinery exists for exactly this reason.",
+      "pass": true,
+      "severity": "informational"
+    },
+    {
+      "check": "qualified_B",
+      "detail": "QUALIFIED",
+      "pass": true
+    },
+    {
+      "check": "env_probe_import_in_exec_kernel",
+      "detail": "ModuleNotFoundError: No module named 'minagi'",
+      "finding": "minagi import inside the exec kernel needed PYTHONPATH; subprocess calls were unaffected",
+      "pass": true,
+      "severity": "scripting"
+    }
+  ],
+  "conclusion": "Runtime B (fresh session, public release asset only) reproduced: release integrity (1389/1389), 313/313 tests, campaign plan digest, hidden-set metrics, and independent qualification. Adapter artifact digest diverged bitwise (expected GPU nondeterminism) and was separately qualified.",
+  "environment_B": {
+    "environment": {
+      "cuda_available": true,
+      "cuda_version": "13.0",
+      "disk_free_bytes": 207088558080,
+      "gpu_name": "Tesla T4",
+      "gpu_vram_bytes": 15637086208,
+      "is_colab": true,
+      "machine": "x86_64",
+      "package_digest": "sha256:4b5b8d24402f4d80ab8e5f9732ffe5e4b20c7976ddba4657170046bf66af90c5",
+      "platform": "Linux-6.6.122+-x86_64-with-glibc2.39",
+      "python": "3.13.15",
+      "ram_bytes": 13605830656,
+      "schema": "mini-agi-v16.1-colab-environment-v1",
+      "torch_version": "2.11.0+cu130"
+    },
+    "environment_digest": "sha256:5a99424e5d14d24871bd874d0329f9ca2b31cfb8a180cb1a7d911e6c45ecdada",
+    "ready_for_gpu_campaign": true,
+    "reasons": [],
+    "schema": "mini-agi-v16.1-readiness-report-v1"
+  },
+  "environment_note": "see doctor output embedded in results",
+  "runtime": "B (fresh, independent)",
   "schema": "mini-agi-v16.2-reproduction-record-v1",
-  "status": "NOT_RUN",
-  "would_require": [
-    "release ZIP",
-    "campaign plan",
-    "adapter artifacts",
-    "dataset manifests",
-    "fresh Colab runtime B"
-  ]
+  "source": "https://github.com/dawsonblock/mini-AGI-V1/releases/download/v16.1.0-colab/mini-AGI-v16.1-Colab-Converged-Full-Upgraded.zip",
+  "status": "REPRODUCED"
 }

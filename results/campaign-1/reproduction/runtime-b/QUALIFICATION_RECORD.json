@@ -1,0 +1,35 @@
+{
+  "campaign_dir": "/content/repro_work/campaigns/colab-smoke-v161",
+  "campaign_id": "colab-smoke-v161",
+  "campaign_plan_digest": "sha256:add7d1826ca8db61c6b5c82b72ded628ef5dd3933ae5890b10f75717e104011c",
+  "decision": "QUALIFIED",
+  "failures": [],
+  "forward_transfer_delta_stats": {
+    "best": 0.0,
+    "mean": 0.0,
+    "median": 0.0,
+    "n": 1,
+    "stdev": 0.0,
+    "worst": 0.0
+  },
+  "matrix": {
+    "seed-0": {
+      "A0": "present",
+      "A1": "present"
+    }
+  },
+  "note": "QUALIFIED is experimental qualification only; not production promotion authority.",
+  "per_seed": [
+    {
+      "acquisition_a0": 0.0,
+      "acquisition_a1": 0.0,
+      "forward_transfer_delta": 0.0,
+      "retention": 0.0,
+      "security_regressions": 0,
+      "seed": 0
+    }
+  ],
+  "reasons": [],
+  "runner_decision_agreement": true,
+  "schema": "mini-agi-v16.2-qualification-record-v1"
+}
