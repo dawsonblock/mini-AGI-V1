@@ -26,9 +26,9 @@ auditable A0/A1 evidence about those questions — nothing more.
 | Dataset leakage rejection | **PASS** — sample + task-family leakage rejected |
 | A0/A1 artifact reload | **PASS** — physical digest binding verified at reload |
 | Independent artifact-only qualification | **PASS** — both smoke campaigns QUALIFIED, runner agrees |
-| Campaign 1 (5-seed, family-disjoint) | **NOT RUN** — `configs/campaign1.yaml` ships with placeholders by design |
-| Independent reproduction (fresh runtime B) | **PASS** — second clean T4 reproduced verify/tests/plan digest/metrics/qualification; adapter bits diverge (GPU nondeterminism) and are digest-bound per run |
-| Six-arm ablation (L1–L6) | **NOT RUN** — requires v16.2 arm-schema extension |
+| Campaign 1 — six-arm × 5-seed (v16.2) | **EXECUTED — REFUSE** — ΔFT_neural (L6−L5) = **+0.20** mean (0.125–0.29/seed), negative control clean (0.0), but preregistered retention/security floors not met; see `results/campaign-1/campaign1-v162/` |
+| Campaign 1 fresh-runtime reproduction | **PENDING** |
+| Six-arm ablation (L1–L6 + NC) | **EXECUTED** — see Campaign 1 row |
 
 "PASS (plumbing)" means the execution/evidence path ran end-to-end on real
 hardware — it is *not* a learning claim. Smoke thresholds are 0.0 by design.
@@ -39,7 +39,7 @@ Experimental evidence is kept off `main` on a dedicated branch:
 
 - **Branch:** [`results/v16.1-colab-campaign-1`](../../tree/results/v16.1-colab-campaign-1)
 - **Source commit (Commit A):** `db3f6e5bccc6dd8b76982015b684e54084776542`
-- **Results commits:** `364301035acaaac2557b3369cc577f904663c9c9` (Runtime A evidence), `7ebc488189a01727ec67ac7ba50d7d017ef5a3da` (Runtime B reproduction)
+- **Results commits:** `364301035acaaac2557b3369cc577f904663c9c9` (Runtime A evidence), `7ebc488189a01727ec67ac7ba50d7d017ef5a3da` (Runtime B reproduction), `0ecee0bdd41be9a8aecef3c425c456df5c57b86d` (Campaign 1 six-arm evidence)
 - **Release asset:** [`v16.1.0-colab`](../../releases/tag/v16.1.0-colab) — signed release ZIP + validation pack
 - **Bundle:** `results/campaign-1/` — plans, signed run receipts, adapters
   (digest-sealed), qualification records, adversarial results, campaign report
@@ -79,25 +79,45 @@ Headless alternative: this validation was driven by `google-colab-cli`
 (`colab new --gpu T4`, `colab upload`, `colab exec`); see
 `notebooks/Mini_AGI_v16_2_Validation.ipynb` for the gated interactive version.
 
-## Reproducing Campaign 1
+## Campaign 1 (v16.2)
 
-1. Replace `REPLACE_WITH_IMMUTABLE_HUGGINGFACE_COMMIT` in
-   `configs/campaign1.yaml` with a pinned HF commit and provide a real
-   preregistered dataset (`configs/campaign1_tasks.jsonl` is a placeholder).
-2. Run `run_colab_campaign.py --config configs/campaign1.yaml` on a GPU
-   runtime; then `scripts/validation/qualify_campaign.py` for independent
-   artifact-only qualification.
-3. Reproduction means a *fresh* runtime receiving only the release, plan,
-   CAS artifacts, and dataset manifests — no inherited mutable state.
+`scripts/run_campaign1.py` executes the preregistered six-arm ladder —
+L1 frozen, L2 retrieval, L3 semantic-memory, L4 skills, L5
+grounded-replay, L6 neural-adapter, plus NC negative control
+(label-shuffled LoRA) — across 5 seeds. The plan is Ed25519-signed
+before any hidden evaluation; per-(seed, arm) receipts carry adapter
+and arm-state digests; `scripts/validation/qualify_campaign1.py`
+re-derives the decision from artifacts alone.
+
+The preregistered GPU nondeterminism policy defines reproduction as
+*statistical equivalence* within `metric_tolerance` (0.05): adapter
+bits need not match across runtimes; every adapter carries its own
+digest and qualification lineage.
+
+```bash
+python3 scripts/run_campaign1.py --config configs/campaign1.yaml --storage /content/campaign1
+python3 scripts/validation/qualify_campaign1.py --storage /content/campaign1 --campaign-id campaign1-v162
+```
+
+**Observed result (Runtime A, T4):** ΔFT_neural = **+0.20** mean over 5
+seeds; NC = 0.0 everywhere; campaign **REFUSE** — the retention scorer
+(exact match) cannot grade prose answers from an instruct model, and
+the zero-security-regression floor trips on baseline marker echoing.
+Both are documented calibration artifacts, not adaptation failures;
+see `CAMPAIGN1_REPORT.md` on the results branch.
 
 ## Known limitations
 
-- Single-seed smoke evidence; smoke datasets are toy copy tasks.
-- `ExecutedRunReceiptV161.arm` supports `{A0,A1}` only — the six-arm ladder
-  (L1–L6) is v16.2 schema work.
-- `revision: main` in smoke configs is mutable upstream; formal campaigns
-  must pin immutable commits.
-- No HF token configured during validation runs (anonymous downloads).
+- Retention scorer (strict exact-match) cannot measure forgetting for
+  prose-answer models; needs a normalized scorer before retention
+  claims can be made either way.
+- Security floor (zero literal-marker echo) is uncalibrated for
+  untuned instruct models; L1 itself flags ~1 lure/seed.
+- Six-arm effect size is small in absolute terms (~5 extra correct
+  hidden answers/seed on 24 tasks) — a mechanism demonstration, not a
+  capability claim.
+- Single model (Qwen2.5-0.5B), single GPU class (T4), one corpus.
+- Smoke evidence remains single-seed; smoke datasets are toy copy tasks.
 
 ## License
 
