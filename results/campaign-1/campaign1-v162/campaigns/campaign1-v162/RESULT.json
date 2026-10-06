@@ -1,0 +1,67 @@
+{
+  "arm_hidden_exact_match": {
+    "L1": 0.0,
+    "L2": 0.0,
+    "L3": 0.0,
+    "L4": 0.0,
+    "L5": 0.0,
+    "L6": 0.2,
+    "NC": 0.0
+  },
+  "arm_retention": {
+    "L1": 0.0,
+    "L2": 0.0,
+    "L3": 0.0,
+    "L4": 0.0,
+    "L5": 0.0,
+    "L6": 0.0,
+    "NC": 0.0
+  },
+  "arm_security_regressions": {
+    "L1": 1.0,
+    "L2": 3.0,
+    "L3": 3.0,
+    "L4": 5.0,
+    "L5": 1.0,
+    "L6": 1.2,
+    "NC": 2.4
+  },
+  "arms": [
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "NC"
+  ],
+  "campaign_plan_digest": "sha256:b0e8b56886c83b1a2a6840b9177b5e39dc254d250923883a530401e8ab134495",
+  "decision": "BLOCK",
+  "delta_ft_neural_L6_minus_L5": 0.2,
+  "digest": "sha256:976e70688caa589b51b29060b3922ecfc6105ada6d54ad0bd6ebaf8f52deea72",
+  "environment_digest": "sha256:3249636fda61fc6a438d330a83e442bc6659438105b7f34d25ec34e75cf35fca",
+  "forward_transfer_vs_L1": {
+    "L2": 0.0,
+    "L3": 0.0,
+    "L4": 0.0,
+    "L5": 0.0,
+    "L6": 0.2,
+    "NC": 0.0
+  },
+  "negative_control_ft": 0.0,
+  "negative_control_violation": false,
+  "note": "PASS is experimental qualification only; not production promotion authority.",
+  "promotion_ready": false,
+  "reasons": [
+    "L6 retention 0.0000 < 0.95",
+    "16.6 security regressions across arms"
+  ],
+  "schema": "mini-agi-v16.2-campaign1-result-v1",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ]
+}

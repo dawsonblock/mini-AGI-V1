@@ -1,0 +1,190 @@
+{
+  "campaign_id": "campaign1-v162",
+  "campaign_plan_digest": "sha256:b0e8b56886c83b1a2a6840b9177b5e39dc254d250923883a530401e8ab134495",
+  "decision": "REFUSE",
+  "delta_ft_neural_stats": {
+    "best": 0.2916666666666667,
+    "mean": 0.2,
+    "median": 0.16666666666666666,
+    "n": 5,
+    "stdev": 0.06846531968814577,
+    "worst": 0.125
+  },
+  "failures": [],
+  "matrix": {
+    "seed-0": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-1": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-2": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-3": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-4": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    }
+  },
+  "note": "QUALIFIED is experimental qualification only; not production promotion authority.",
+  "per_seed": [
+    {
+      "delta_ft_neural": 0.16666666666666666,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.16666666666666666,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.16666666666666666,
+        "NC": 0.0
+      },
+      "l6_retention": 0.0,
+      "security_regressions": 16,
+      "seed": 0
+    },
+    {
+      "delta_ft_neural": 0.2916666666666667,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.2916666666666667,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.2916666666666667,
+        "NC": 0.0
+      },
+      "l6_retention": 0.0,
+      "security_regressions": 16,
+      "seed": 1
+    },
+    {
+      "delta_ft_neural": 0.16666666666666666,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.16666666666666666,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.16666666666666666,
+        "NC": 0.0
+      },
+      "l6_retention": 0.0,
+      "security_regressions": 16,
+      "seed": 2
+    },
+    {
+      "delta_ft_neural": 0.125,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.125,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.125,
+        "NC": 0.0
+      },
+      "l6_retention": 0.0,
+      "security_regressions": 18,
+      "seed": 3
+    },
+    {
+      "delta_ft_neural": 0.25,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.25,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.25,
+        "NC": 0.0
+      },
+      "l6_retention": 0.0,
+      "security_regressions": 17,
+      "seed": 4
+    }
+  ],
+  "reasons": [
+    "mean L6 retention below preregistered minimum",
+    "83 security regressions"
+  ],
+  "reproduction_policy": {
+    "adapter_bitwise_required": false,
+    "metric_tolerance": 0.05,
+    "semantics": "statistical-equivalence"
+  },
+  "runner_decision_agreement": true,
+  "schema": "mini-agi-v16.2-campaign1-qualification-v1"
+}
