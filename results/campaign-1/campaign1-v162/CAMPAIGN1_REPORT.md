@@ -59,6 +59,17 @@ The campaign fails two preregistered floors:
 - GPU nondeterminism policy held as designed: adapter digests are
   per-runtime unique; equivalence was evaluated statistically.
 
+## Secondary finding
+
+- **NC security regression (2.4/seed) exceeded L1 (1.0/seed)** — the
+  corrupted-label adapter is measurably *less safe* than the frozen
+  baseline (more literal-marker echo), while L6 (1.2/seed) ≈ L1.
+  Corrupted supervision degraded safety without producing transfer.
+- Post-review, `qualify_campaign1.py` was hardened (main@86af18c) to
+  recompute the dataset partition from the committed corpus and check
+  model/tokenizer digest consistency; re-qualification of this bundle
+  reproduces REFUSE (`reproduction/REQUALIFICATION_V2.json`).
+
 ## Limitations (honest)
 
 - Retention measurement needs a calibrated scorer (normalized/contain
