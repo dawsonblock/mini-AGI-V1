@@ -49,6 +49,17 @@ adapter_model*.bin
 
 __pycache__/
 *.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+.cache/
+hf_cache/
+minagi_work/
+v162-validation-pack/
+wandb/
+
+# Signing keys must never be committed; the release public key stays.
+*private*.pem
+release-ed25519*.pem
 
 # Local credentials and editor state. Checked-in examples should use the
 # explicit *.example suffix.
@@ -60,6 +71,7 @@ __pycache__/
 .claude/settings.local.json
 *.pem
 *.p12
+!RELEASE_PUBLIC_KEY.pem
 
 adaptive_mtp.md
 

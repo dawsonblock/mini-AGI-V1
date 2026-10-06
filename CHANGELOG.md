@@ -1,3 +1,24 @@
+# v16.1.0-post — Colab Empirical Validation (2026-10-06)
+
+- Executed the released build end-to-end on a clean Colab T4 runtime via
+  `google-colab-cli`: release verify 1,381/1,381 PASS, doctor ready, test
+  suite reproduced at 313/313, 36/36 import probes passed.
+- Executed real-neural smoke campaigns: `configs/smoke.yaml` (tiny-gpt2) and
+  `configs/qwen_smoke.yaml` (Qwen2.5-0.5B-Instruct) completed the full
+  A0 → LoRA → serialize → destroy → reload → A1 path with signed receipts.
+- Verified the qualified Qwen adapter genuinely changes inference and that
+  adapter removal restores the frozen A0 outputs exactly.
+- Adversarial boundary suite: 16/16 tamper/substitution attempts rejected.
+- Added `scripts/validation/` harness: import probe, adversarial checks,
+  interruption recovery, adapter-effect check, independent artifact-only
+  qualification, release re-issue tool.
+- Fixed packaging defect: `verify_release.py` now excludes `.git`,
+  `.pytest_cache`, `*.egg-info` (editable install) artifacts.
+- Fixed Colab dependency conflict: `colab_install.sh` upgrades `torchao>=0.16`
+  when torchao is present (peft>=0.14 hard-requirement).
+- Manifest re-issued and re-signed with the repository release key.
+- Evidence is published on branch `results/v16.1-colab-campaign-1`.
+
 # v16.1.0 Colab Converged
 
 - v15.8 execution trunk retained with 304/304 baseline tests.

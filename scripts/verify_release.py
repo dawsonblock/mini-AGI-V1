@@ -21,7 +21,13 @@ def main():
     if doc.get('schema_version')!=1 or doc.get('hash_algorithm')!='sha256' or not isinstance(doc.get('files'),dict):
         raise SystemExit('FAIL: unsupported SOURCE_MANIFEST schema')
     expected=doc['files']; excluded={'SOURCE_MANIFEST.json','RELEASE_SIGNATURE.bin','RELEASE_PUBLIC_KEY.pem','RELEASE_ATTESTATION.json'}
-    actual={p.relative_to(ROOT).as_posix():sha(p) for p in ROOT.rglob('*') if p.is_file() and not p.is_symlink() and p.relative_to(ROOT).as_posix() not in excluded and '__pycache__' not in p.parts and not p.name.endswith('.pyc')}
+    def skip(p):
+        rel=p.relative_to(ROOT).as_posix()
+        parts=p.relative_to(ROOT).parts
+        return (rel in excluded or '__pycache__' in parts or '.git' in parts
+                or '.pytest_cache' in parts or p.name.endswith('.pyc')
+                or any(part.endswith('.egg-info') for part in parts))
+    actual={p.relative_to(ROOT).as_posix():sha(p) for p in ROOT.rglob('*') if p.is_file() and not p.is_symlink() and not skip(p)}
     if expected!=actual:
         missing=sorted(set(expected)-set(actual)); extra=sorted(set(actual)-set(expected)); changed=sorted(k for k in expected.keys()&actual.keys() if expected[k]!=actual[k])
         print(json.dumps({'status':'FAIL','missing':missing[:20],'extra':extra[:20],'changed':changed[:20]},indent=2)); return 2

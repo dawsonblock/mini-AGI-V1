@@ -1,13 +1,29 @@
 {
-  "assembly_signature_only": true,
   "created_utc": "2026-10-06T08:50:02.699595+00:00",
-  "gpu_smoke": "NOT_RUN_CPU_OFFLINE_ASSEMBLY_ENVIRONMENT",
-  "manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
-  "operator_promotion_authority": false,
-  "public_key_sha256": "c55e4d202697ad48c520d538e9300da86de26e3fe97929e2135e9ea7bb9befcf",
-  "python_validation": "313/313 PASS",
+  "reissued_utc": "2026-10-06T10:35:00+00:00",
   "release": "mini-AGI-v16.1-Colab-Converged-Full-Upgraded",
   "schema": "mini-agi-v16.1-release-attestation-v1",
   "signature_algorithm": "Ed25519",
-  "status": "ASSEMBLY_SIGNED_GPU_SMOKE_PENDING"
+  "manifest_sha256": "c537f7f9c21fdb5fd9f90823f4dc35f9574db3f615c209bf0d7ec4245979205d",
+  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
+  "reissue": {
+    "reason": "post-assembly source updates: scripts/validation harness, status documents with actual Colab results, verify_release install-artifact exclusions, colab_install torchao floor",
+    "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
+    "original_assembly_public_key_sha256": "c55e4d202697ad48c520d538e9300da86de26e3fe97929e2135e9ea7bb9befcf",
+    "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)"
+  },
+  "python_validation": "313/313 PASS (reproduced on Colab T4, 2026-10-06)",
+  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
+  "colab_validation": {
+    "runtime": "Google Colab T4",
+    "gpu": "Tesla T4 15637086208 bytes VRAM",
+    "cuda": "13.0",
+    "torch": "2.11.0+cu130",
+    "python": "3.13.15",
+    "date_utc": "2026-10-06",
+    "evidence_branch": "results/v16.1-colab-campaign-1"
+  },
+  "assembly_signature_only": true,
+  "operator_promotion_authority": false,
+  "status": "COLAB_VALIDATED_SMOKE_SCOPE"
 }
