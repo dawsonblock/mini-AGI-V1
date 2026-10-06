@@ -27,7 +27,7 @@ auditable A0/A1 evidence about those questions — nothing more.
 | A0/A1 artifact reload | **PASS** — physical digest binding verified at reload |
 | Independent artifact-only qualification | **PASS** — both smoke campaigns QUALIFIED, runner agrees |
 | Campaign 1 (5-seed, family-disjoint) | **NOT RUN** — `configs/campaign1.yaml` ships with placeholders by design |
-| Independent reproduction (fresh runtime B) | **NOT RUN** — `REPRODUCTION_RECORD.json` marked NOT_RUN |
+| Independent reproduction (fresh runtime B) | **PASS** — second clean T4 reproduced verify/tests/plan digest/metrics/qualification; adapter bits diverge (GPU nondeterminism) and are digest-bound per run |
 | Six-arm ablation (L1–L6) | **NOT RUN** — requires v16.2 arm-schema extension |
 
 "PASS (plumbing)" means the execution/evidence path ran end-to-end on real
@@ -39,7 +39,8 @@ Experimental evidence is kept off `main` on a dedicated branch:
 
 - **Branch:** [`results/v16.1-colab-campaign-1`](../../tree/results/v16.1-colab-campaign-1)
 - **Source commit (Commit A):** `db3f6e5bccc6dd8b76982015b684e54084776542`
-- **Results commit (Commit B):** `364301035acaaac2557b3369cc577f904663c9c9`
+- **Results commits:** `364301035acaaac2557b3369cc577f904663c9c9` (Runtime A evidence), `7ebc488189a01727ec67ac7ba50d7d017ef5a3da` (Runtime B reproduction)
+- **Release asset:** [`v16.1.0-colab`](../../releases/tag/v16.1.0-colab) — signed release ZIP + validation pack
 - **Bundle:** `results/campaign-1/` — plans, signed run receipts, adapters
   (digest-sealed), qualification records, adversarial results, campaign report
 
