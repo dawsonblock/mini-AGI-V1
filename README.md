@@ -27,7 +27,7 @@ auditable A0/A1 evidence about those questions — nothing more.
 | A0/A1 artifact reload | **PASS** — physical digest binding verified at reload |
 | Independent artifact-only qualification | **PASS** — both smoke campaigns QUALIFIED, runner agrees |
 | Campaign 1 — six-arm × 5-seed (v16.2) | **EXECUTED — REFUSE** — ΔFT_neural (L6−L5) = **+0.20** mean (0.125–0.29/seed), negative control clean (0.0), but preregistered retention/security floors not met; see `results/campaign-1/campaign1-v162/` |
-| Campaign 1 fresh-runtime reproduction | **PENDING** |
+| Campaign 1 fresh-runtime reproduction | **PASS** — fresh T4 cloned public `main@ae937a9` only: plan digest, all arm metrics, ΔFT_neural (+0.20), NC (0.0), and REFUSE decision reproduced exactly; adapter bits differ per runtime (policy-compliant) |
 | Six-arm ablation (L1–L6 + NC) | **EXECUTED** — see Campaign 1 row |
 
 "PASS (plumbing)" means the execution/evidence path ran end-to-end on real
