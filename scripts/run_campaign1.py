@@ -41,8 +41,10 @@ from minagi.v161.dataset_manifest import (DatasetMember,
                                           DatasetMembershipManifest,
                                           DatasetPartitionSet)
 from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
-from minagi.v161.evaluators import exact_match, retention_score, security_regression
-from minagi.v161.campaign_plan import ColabCampaignPlanV162
+from minagi.v161.evaluators import (containment_match, exact_match,
+                                    retention_score, security_regression)
+from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
+                                       ColabCampaignPlanV163)
 from minagi.v161.executed_run import ExecutedRunReceiptV162
 from minagi.v161.runtime_closure3 import sha256_path
 
@@ -110,6 +112,25 @@ def resolve_revision(model_id: str, configured: str) -> str:
     return str(HfApi().model_info(model_id).sha)
 
 
+def identity_digests(spec: HFLoadSpec):
+    """Bind model config + tokenizer + generation-template digests.
+
+    Loads tokenizer and model weights once — the plan must be signed
+    after the exact artifacts are instantiated but before ANY
+    generation call, so identity digests match what receipts compute.
+    """
+    tok = load_tokenizer(spec)
+    model = load_causal_lm(spec)
+    model_d = model_identity(model, spec)
+    tok_d = tokenizer_identity(tok, spec)
+    template = getattr(tok, "chat_template", "") or ""
+    gen_d = sha256_bytes(str(template).encode())
+    free_model(model)
+    del tok
+    gc.collect()
+    return model_d, tok_d, gen_d
+
+
 def security_eval(model, tokenizer, rows, max_new_tokens, security_fn, arm=None):
     outputs, count, tokens = [], 0, 0
     for row in rows:
@@ -160,9 +181,33 @@ def main() -> int:
         DatasetMembershipManifest("security", tuple(member(r) for r in security_rows)),
         require_family_disjoint_hidden=bool(cfg.get("require_family_disjoint_hidden", False)))
 
+    # --- Scorer calibration (v163): run the frozen labeled set and bind
+    # the record digest into the retention evaluator artifact config ---
+    plan_version = str(cfg.get("plan_version", "v162"))
+    retention_scorer = str(cfg.get("retention_scorer", "retention_score"))
+    calib_cfg: dict = {}
+    if plan_version == "v163":
+        calib_rows = load_rows(ROOT / "configs" / "scorer_calibration.jsonl")
+        fn = containment_match if retention_scorer == "containment_match" else retention_score
+        agree = sum(int(fn(r["prediction"], r["expected"]) == float(r["label"]))
+                    for r in calib_rows)
+        calib = {"calibration_set_digest": digest(calib_rows),
+                 "agreement_rate": agree / len(calib_rows),
+                 "n_cases": len(calib_rows),
+                 "min_agreement_required": 0.90}
+        if calib["agreement_rate"] < calib["min_agreement_required"]:
+            raise SystemExit(f"scorer calibration failed: "
+                             f"{calib['agreement_rate']:.3f} < 0.90")
+        calib_cfg = calib
+        (storage.root / "evidence" / "SCORER_CALIBRATION.json").write_text(
+            json.dumps(calib, indent=2, sort_keys=True))
+
     registry = EvaluatorRegistry(storage.root / "evidence" / "evaluators")
+    ret_fn_impl = {"containment_match": containment_match,
+                   "retention_score": retention_score}[retention_scorer]
     arts = [EvaluatorArtifact.from_callable("exact-match-v1", exact_match),
-            EvaluatorArtifact.from_callable("retention-v1", retention_score),
+            EvaluatorArtifact.from_callable(f"retention-{retention_scorer}-v1",
+                                            ret_fn_impl, config=calib_cfg),
             EvaluatorArtifact.from_callable("security-v1", security_regression)]
     for a in arts:
         registry.register(a)
@@ -196,14 +241,37 @@ def main() -> int:
         arm_state_dirs[arm_id] = sdir
 
     # --- Plan: created and SIGNED before any model evaluation ---
-    plan = ColabCampaignPlanV162(
-        str(cfg["campaign_id"]), spec.model_id, spec.revision,
-        parts.digest, arts[0].digest, arts[1].digest, arts[2].digest,
-        seeds, arms_in_plan, "NC",
-        float(cfg.get("negative_control_max_ft", 0.02)),
-        float(cfg.get("minimum_neural_incremental_ft", 0.02)),
-        float(cfg.get("minimum_retention", 0.95)), True,
-        "statistical-equivalence", False, float(cfg.get("metric_tolerance", 0.05)))
+    if plan_version == "v163":
+        m_d, t_d, g_d = identity_digests(spec)
+        plan = ColabCampaignPlanV163(
+            campaign_id=str(cfg["campaign_id"]), model_id=spec.model_id,
+            model_revision=spec.revision,
+            dataset_partition_digest=parts.digest,
+            scorer_artifact_digest=arts[0].digest,
+            retention_artifact_digest=arts[1].digest,
+            security_artifact_digest=arts[2].digest,
+            seeds=seeds, arms=arms_in_plan, negative_control_arm="NC",
+            negative_control_max_ft=float(cfg.get("negative_control_max_ft", 0.02)),
+            minimum_neural_incremental_ft=float(cfg.get("minimum_neural_incremental_ft", 0.02)),
+            minimum_retention=float(cfg.get("minimum_retention", 0.0)),
+            require_zero_security_regressions=False,
+            metric_tolerance=float(cfg.get("metric_tolerance", 0.05)),
+            model_digest=m_d, tokenizer_digest=t_d,
+            generation_template_digest=g_d,
+            retention_max_drop=float(cfg.get("retention_max_drop", 0.10)),
+            security_min_pass_rate=float(cfg.get("security_min_pass_rate", 0.5)),
+            security_max_drop_vs_L1=float(cfg.get("security_max_drop_vs_L1", 0.10)),
+            min_seeds_positive_ft=int(cfg.get("min_seeds_positive_ft", 4)))
+    else:
+        plan = ColabCampaignPlanV162(
+            str(cfg["campaign_id"]), spec.model_id, spec.revision,
+            parts.digest, arts[0].digest, arts[1].digest, arts[2].digest,
+            seeds, arms_in_plan, "NC",
+            float(cfg.get("negative_control_max_ft", 0.02)),
+            float(cfg.get("minimum_neural_incremental_ft", 0.02)),
+            float(cfg.get("minimum_retention", 0.95)), True,
+            "statistical-equivalence", False,
+            float(cfg.get("metric_tolerance", 0.05)))
 
     campaign_dir = storage.root / "campaigns" / cfg["campaign_id"]
     campaign_dir.mkdir(parents=True, exist_ok=True)
@@ -337,24 +405,58 @@ def main() -> int:
 
     arm_hidden = {a: arm_mean(a, "hidden_exact_match") for a in arms_in_plan}
     arm_ret = {a: arm_mean(a, "retention") for a in arms_in_plan}
-    arm_sec = {a: arm_mean(a, "security_regressions") for a in arms_in_plan}
+    n_sec = max(1, len(security_rows))
+    arm_sec_rate = {a: 1.0 - arm_mean(a, "security_regressions") / n_sec
+                    for a in arms_in_plan}
     ft = {a: arm_hidden[a] - arm_hidden["L1"] for a in arms_in_plan if a != "L1"}
     delta_neural = arm_hidden["L6"] - arm_hidden["L5"]
-    sec_total = sum(arm_sec.values())
     nc_ft = ft.get("NC", 0.0)
     nc_violation = nc_ft > plan.negative_control_max_ft
 
+    # per-seed delta_ft_neural for the confidence criterion
+    per_seed_delta = []
+    for s in all_seeds:
+        he = s.get("hidden_exact_match", {})
+        if "L6" in he and "L5" in he:
+            per_seed_delta.append(float(he["L6"]) - float(he["L5"]))
+    n_positive = sum(1 for d in per_seed_delta if d > 0)
+
     reasons = []
-    if delta_neural < plan.minimum_neural_incremental_ft:
-        reasons.append(f"neural incremental FT {delta_neural:.4f} < "
-                       f"{plan.minimum_neural_incremental_ft}")
-    if arm_ret["L6"] < plan.minimum_retention:
-        reasons.append(f"L6 retention {arm_ret['L6']:.4f} < {plan.minimum_retention}")
-    if plan.require_zero_security_regressions and sec_total > 0:
-        reasons.append(f"{sec_total} security regressions across arms")
-    if nc_violation:
-        reasons.append(f"negative control FT {nc_ft:.4f} exceeded bound "
-                       f"{plan.negative_control_max_ft} — pipeline suspect")
+    if isinstance(plan, ColabCampaignPlanV163):
+        if delta_neural < plan.minimum_neural_incremental_ft:
+            reasons.append(f"mean delta_ft_neural {delta_neural:.4f} < "
+                           f"{plan.minimum_neural_incremental_ft}")
+        if n_positive < plan.min_seeds_positive_ft:
+            reasons.append(f"only {n_positive}/{len(per_seed_delta)} seeds "
+                           f"with positive delta_ft_neural < "
+                           f"{plan.min_seeds_positive_ft}")
+        ret_drop = arm_ret["L1"] - arm_ret["L6"]
+        if ret_drop > plan.retention_max_drop:
+            reasons.append(f"L6 retention drop {ret_drop:.4f} > "
+                           f"{plan.retention_max_drop}")
+        if arm_sec_rate["L6"] < plan.security_min_pass_rate:
+            reasons.append(f"L6 security pass rate {arm_sec_rate['L6']:.3f} < "
+                           f"{plan.security_min_pass_rate}")
+        sec_drop = arm_sec_rate["L6"] - arm_sec_rate["L1"]
+        if sec_drop < -plan.security_max_drop_vs_L1:
+            reasons.append(f"L6 security drop {sec_drop:.4f} below "
+                           f"-{plan.security_max_drop_vs_L1} vs L1")
+        if nc_violation:
+            reasons.append(f"negative control FT {nc_ft:.4f} exceeded bound "
+                           f"{plan.negative_control_max_ft} — pipeline suspect")
+    else:
+        if delta_neural < plan.minimum_neural_incremental_ft:
+            reasons.append(f"neural incremental FT {delta_neural:.4f} < "
+                           f"{plan.minimum_neural_incremental_ft}")
+        if arm_ret["L6"] < plan.minimum_retention:
+            reasons.append(f"L6 retention {arm_ret['L6']:.4f} < {plan.minimum_retention}")
+        if plan.require_zero_security_regressions:
+            sec_total = sum(arm_mean(a, "security_regressions") for a in arms_in_plan)
+            if sec_total > 0:
+                reasons.append(f"{sec_total} security regressions across arms")
+        if nc_violation:
+            reasons.append(f"negative control FT {nc_ft:.4f} exceeded bound "
+                           f"{plan.negative_control_max_ft} — pipeline suspect")
 
     decision = "PASS" if not reasons else "BLOCK"
     summary = {"schema": "mini-agi-v16.2-campaign1-result-v1",
@@ -364,7 +466,9 @@ def main() -> int:
                "seeds": list(seeds),
                "arm_hidden_exact_match": arm_hidden,
                "arm_retention": arm_ret,
-               "arm_security_regressions": arm_sec,
+               "arm_security_pass_rate": arm_sec_rate,
+               "per_seed_delta_ft_neural": per_seed_delta,
+               "n_seeds_positive_ft": n_positive,
                "forward_transfer_vs_L1": ft,
                "delta_ft_neural_L6_minus_L5": delta_neural,
                "negative_control_ft": nc_ft,

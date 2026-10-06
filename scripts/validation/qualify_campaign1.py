@@ -43,7 +43,8 @@ def main() -> int:
     root = ensure_path(Path(args.root).resolve() if args.root else detect_root())
 
     from egai.common.crypto import Ed25519Verifier, SignedEnvelope
-    from minagi.v161.campaign_plan import ColabCampaignPlanV162
+    from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
+                                           ColabCampaignPlanV163)
     from minagi.v161.executed_run import ExecutedRunReceiptV162
     from minagi.v161.runtime_closure3 import sha256_path
 
@@ -58,7 +59,10 @@ def main() -> int:
 
     # --- Plan: digest AND signature ---
     plan_doc = json.loads((campaign_dir / "CAMPAIGN_PLAN.json").read_text())
-    plan = ColabCampaignPlanV162(**plan_doc["value"])
+    plan_cls = (ColabCampaignPlanV163
+                if plan_doc["value"].get("schema") == "mini-agi-v16.3-colab-campaign-plan-v1"
+                else ColabCampaignPlanV162)
+    plan = plan_cls(**plan_doc["value"])
     if plan.digest != plan_doc["digest"]:
         fail("plan", "CAMPAIGN_PLAN.json digest field does not match recomputed plan digest")
 
@@ -178,6 +182,13 @@ def main() -> int:
     toks = {r.tokenizer_digest for r in receipts.values()}
     if len(toks) != 1:
         fail("tokenizer", f"receipts span {len(toks)} tokenizer digests")
+    if isinstance(plan, ColabCampaignPlanV163):
+        # symmetric binding: every arm's receipts must carry the exact
+        # preregistered identities
+        if models and models != {plan.model_digest}:
+            fail("model", "receipt model_digest != plan model_digest")
+        if toks and toks != {plan.tokenizer_digest}:
+            fail("tokenizer", "receipt tokenizer_digest != plan tokenizer_digest")
 
     # --- Reconstruct outcomes ---
     per_seed = []
@@ -186,12 +197,17 @@ def main() -> int:
         if any(v is None for v in cell.values()):
             continue
         h = {a: float(cell[a].metrics.get("hidden_exact_match", 0.0)) for a in plan.arms}
+        n_sec = len(parts.security.members) if parts.security is not None else 1
+        sec_rate = {a: 1.0 - float(cell[a].metrics.get("security_regressions", 0)) / max(1, n_sec)
+                    for a in plan.arms}
         per_seed.append({
             "seed": seed,
             "hidden_exact_match": h,
             "ft_vs_L1": {a: h[a] - h["L1"] for a in plan.arms if a != "L1"},
             "delta_ft_neural": h["L6"] - h["L5"],
             "l6_retention": float(cell["L6"].metrics.get("retention", 0.0)),
+            "l1_retention": float(cell["L1"].metrics.get("retention", 0.0)),
+            "security_pass_rate": sec_rate,
             "security_regressions": int(sum(cell[a].metrics.get("security_regressions", 0)
                                           for a in plan.arms)),
         })
@@ -207,14 +223,33 @@ def main() -> int:
                  "worst": min(deltas), "best": max(deltas)}
         nc_fts = [x["ft_vs_L1"].get("NC", 0.0) for x in per_seed]
         nc_mean = statistics.fmean(nc_fts)
-        ret_mean = statistics.fmean([x["l6_retention"] for x in per_seed])
-        sec_total = sum(x["security_regressions"] for x in per_seed)
         if statistics.fmean(deltas) < plan.minimum_neural_incremental_ft:
             reasons.append("mean neural incremental FT (L6-L5) below preregistered minimum")
-        if ret_mean < plan.minimum_retention:
-            reasons.append("mean L6 retention below preregistered minimum")
-        if plan.require_zero_security_regressions and sec_total > 0:
-            reasons.append(f"{sec_total} security regressions")
+        if isinstance(plan, ColabCampaignPlanV163):
+            n_pos = sum(1 for x in per_seed if x["delta_ft_neural"] > 0)
+            if n_pos < plan.min_seeds_positive_ft:
+                reasons.append(f"only {n_pos}/{len(per_seed)} seeds positive "
+                               f"< {plan.min_seeds_positive_ft}")
+            l1_ret = statistics.fmean([x["l1_retention"] for x in per_seed])
+            l6_ret = statistics.fmean([x["l6_retention"] for x in per_seed])
+            if l1_ret - l6_ret > plan.retention_max_drop:
+                reasons.append(f"L6 retention drop {l1_ret - l6_ret:.4f} > "
+                               f"{plan.retention_max_drop}")
+            l1_sec = statistics.fmean([x["security_pass_rate"]["L1"] for x in per_seed])
+            l6_sec = statistics.fmean([x["security_pass_rate"]["L6"] for x in per_seed])
+            if l6_sec < plan.security_min_pass_rate:
+                reasons.append(f"L6 security pass rate {l6_sec:.3f} < "
+                               f"{plan.security_min_pass_rate}")
+            if l6_sec - l1_sec < -plan.security_max_drop_vs_L1:
+                reasons.append(f"L6 security drop {l6_sec - l1_sec:.4f} below "
+                               f"-{plan.security_max_drop_vs_L1} vs L1")
+        else:
+            ret_mean = statistics.fmean([x["l6_retention"] for x in per_seed])
+            sec_total = sum(x["security_regressions"] for x in per_seed)
+            if ret_mean < plan.minimum_retention:
+                reasons.append("mean L6 retention below preregistered minimum")
+            if plan.require_zero_security_regressions and sec_total > 0:
+                reasons.append(f"{sec_total} security regressions")
         if nc_mean > plan.negative_control_max_ft:
             reasons.append(f"negative control FT {nc_mean:.4f} exceeded bound "
                            f"{plan.negative_control_max_ft} — pipeline suspect")

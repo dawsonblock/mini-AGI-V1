@@ -4,7 +4,7 @@ require_cuda: true
 require_family_disjoint_hidden: false
 model:
   id: sshleifer/tiny-gpt2
-  revision: main
+  revision: auto   # resolved to immutable HF commit at plan time
   dtype: float32
   quantization: none
   trust_remote_code: false

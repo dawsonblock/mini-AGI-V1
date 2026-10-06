@@ -109,3 +109,47 @@ class ColabCampaignPlanV162:
     @property
     def digest(self) -> str:
         return digest(self)
+
+
+@dataclass(frozen=True)
+class ColabCampaignPlanV163(ColabCampaignPlanV162):
+    """Campaign 1b plan — symmetric binding + explicit constraint rules.
+
+    Beyond V162:
+      * model_digest / tokenizer_digest / generation_template_digest are
+        bound at plan-signing time (computed from the loaded tokenizer +
+        model config BEFORE any generation — signing still precedes any
+        evaluation), making A/B arms evidence-symmetric at the identity
+        layer.
+      * Security is an explicit dual rule: absolute floor
+        security_min_pass_rate AND relative regression bound
+        security_max_drop_vs_L1 (Security(L6) - Security(L1) >= -eps).
+      * Retention is a regression bound vs L1 (retention_max_drop),
+        replacing the miscalibrated absolute floor.
+      * Confidence criterion: min_seeds_positive_ft seeds must show
+        strictly positive delta_ft_neural, plus the mean bound.
+    """
+    model_digest: str = ""
+    tokenizer_digest: str = ""
+    generation_template_digest: str = ""
+    retention_max_drop: float = 0.10
+    security_min_pass_rate: float = 0.5
+    security_max_drop_vs_L1: float = 0.10
+    min_seeds_positive_ft: int = 4
+    schema: str = "mini-agi-v16.3-colab-campaign-plan-v1"
+
+    def __post_init__(self):
+        super().__post_init__()
+        for x in (self.model_digest, self.tokenizer_digest,
+                  self.generation_template_digest):
+            validate_digest(x)
+        if not 0 <= self.security_min_pass_rate <= 1:
+            raise ValueError("security_min_pass_rate must be in [0,1]")
+        if self.security_max_drop_vs_L1 < 0 or self.retention_max_drop < 0:
+            raise ValueError("regression bounds must be non-negative")
+        if not 0 < self.min_seeds_positive_ft <= len(self.seeds):
+            raise ValueError("min_seeds_positive_ft must be in (0, n_seeds]")
+
+    @property
+    def digest(self) -> str:
+        return digest(self)

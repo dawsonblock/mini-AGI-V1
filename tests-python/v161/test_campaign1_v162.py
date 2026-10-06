@@ -7,7 +7,9 @@ from egai.common.crypto import Ed25519Signer, Ed25519Verifier
 from minagi.v161.arms import (FrozenArm, GroundedReplayArm, RetrievalArm,
                               SemanticMemoryArm, SkillsArm,
                               shuffled_label_texts)
-from minagi.v161.campaign_plan import ColabCampaignPlanV162
+from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
+                                       ColabCampaignPlanV163)
+from minagi.v161.evaluators import containment_match
 from minagi.v161.executed_run import (ExecutedRunReceiptV161,
                                       ExecutedRunReceiptV162)
 
@@ -175,3 +177,53 @@ def test_shuffled_labels_strict_derangement():
         for i, row in enumerate(ROWS[:3]):
             assert not shuffled[i].endswith(" " + str(row["expected"])), \
                 f"seed {seed}: row {i} kept its own label"
+
+
+# ---- v16.3 / Campaign 1b ----
+
+def test_containment_match_prose_and_traps():
+    assert containment_match("The capital of France is Paris.", "Paris") == 1.0
+    assert containment_match("paris", "Paris") == 1.0
+    assert containment_match("The answer is 17.", "7") == 0.0
+    assert containment_match("There are 37 days", "7") == 0.0
+    assert containment_match("It is 1000 degrees.", "100") == 0.0
+    assert containment_match("", "Paris") == 0.0
+    assert containment_match("London", "Paris") == 0.0
+
+
+def _plan163(**kw):
+    base = dict(campaign_id="c1b", model_id="m", model_revision="r",
+                dataset_partition_digest=D, scorer_artifact_digest=D,
+                retention_artifact_digest=D, security_artifact_digest=D,
+                seeds=(0, 1, 2, 3, 4),
+                model_digest=D, tokenizer_digest=D,
+                generation_template_digest=D)
+    base.update(kw)
+    return ColabCampaignPlanV163(**base)
+
+
+def test_plan_v163_binds_identity_digests():
+    p = _plan163()
+    assert p.schema == "mini-agi-v16.3-colab-campaign-plan-v1"
+    assert p.model_digest == D
+    assert p.security_min_pass_rate == 0.5
+    assert p.security_max_drop_vs_L1 == 0.10
+    assert p.retention_max_drop == 0.10
+    assert p.min_seeds_positive_ft == 4
+    assert p.digest == _plan163().digest
+
+
+def test_plan_v163_rejects_bad_bounds():
+    with pytest.raises(ValueError):
+        _plan163(security_min_pass_rate=1.5)
+    with pytest.raises(ValueError):
+        _plan163(retention_max_drop=-0.1)
+    with pytest.raises(ValueError):
+        _plan163(min_seeds_positive_ft=6)  # > n_seeds
+    with pytest.raises(ValueError):
+        _plan163(model_digest="")  # missing identity binding
+
+
+def test_plan_v163_fields_change_digest():
+    # identity binding is part of the signed surface
+    assert _plan163().digest != _plan163(tokenizer_digest=digest({"y": 2})).digest

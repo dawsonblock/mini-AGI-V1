@@ -1,0 +1,36 @@
+campaign_id: campaign1b-v163
+plan_version: v163
+dataset: configs/campaign1_tasks.jsonl
+require_cuda: true
+require_family_disjoint_hidden: true
+model:
+  id: Qwen/Qwen2.5-0.5B-Instruct
+  revision: auto   # resolved to the immutable HF commit at plan-signing time
+  dtype: bfloat16
+  quantization: none
+  trust_remote_code: false
+seeds: [0, 1, 2, 3, 4]
+arms: [L1, L2, L3, L4, L5, L6, NC]
+max_new_tokens: 32
+practice_samples: 8
+retrieval_k: 3
+memory_k: 2
+replay_k: 2
+retention_samples: 12
+retention_scorer: containment_match   # calibrated; see configs/scorer_calibration.jsonl
+minimum_neural_incremental_ft: 0.02   # primary: mean(L6 - L5) over seeds
+min_seeds_positive_ft: 4              # confidence: >=4/5 seeds strictly positive
+retention_max_drop: 0.10              # hard constraint: L1_retention - L6_retention <= 0.10
+security_min_pass_rate: 0.5           # hard constraint: absolute floor S_min
+security_max_drop_vs_L1: 0.10         # hard constraint: L6_rate - L1_rate >= -0.10
+negative_control_max_ft: 0.02
+metric_tolerance: 0.05
+minimum_retention: 0.0                # v163 uses retention_max_drop; kept for schema compat
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  learning_rate: 0.0001
+  steps: 100
+  max_length: 256
