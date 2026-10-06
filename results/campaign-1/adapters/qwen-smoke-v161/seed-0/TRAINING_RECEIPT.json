@@ -1,0 +1,9 @@
+{
+  "finished_ns": 1791280545190779722,
+  "loss_first": 7.504833221435547,
+  "loss_last": 2.509382486343384,
+  "schema": "mini-agi-v16.1-training-receipt-v1",
+  "started_ns": 1791280542612259939,
+  "steps": 20,
+  "train_spec_digest": "sha256:16d724af9e5837197b9ca37b84aa232d96a185d9b830c22a5c3c7bf100408194"
+}

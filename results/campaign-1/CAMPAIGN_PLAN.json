@@ -1,0 +1,19 @@
+{
+  "digest": "sha256:9f30314d5ce8d0275216571eaa5e51c4ac4f0de1fd60c4597d1e39339aa0b7cc",
+  "value": {
+    "campaign_id": "qwen-smoke-v161",
+    "dataset_partition_digest": "sha256:a20605f1e841c07f84f0e5010b3752a1bf35278bf09163ec0f7f95fea180fdfc",
+    "minimum_forward_transfer": 0.0,
+    "minimum_retention": 0.0,
+    "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+    "model_revision": "main",
+    "require_zero_security_regressions": true,
+    "retention_artifact_digest": "sha256:7b3a949d557e1a47734d341abdefb15e89a3806e7a584f7d993040a2658607ef",
+    "schema": "mini-agi-v16.1-colab-campaign-plan-v1",
+    "scorer_artifact_digest": "sha256:fd5ece9d2025acaaf2254eaf63319f0957e88b56c2b28ea19263bddb4101ecec",
+    "security_artifact_digest": "sha256:6cab66c173b20a7e6baa454be9a57f2164c0e3e7070fddff3a6184c6fec5341e",
+    "seeds": [
+      0
+    ]
+  }
+}

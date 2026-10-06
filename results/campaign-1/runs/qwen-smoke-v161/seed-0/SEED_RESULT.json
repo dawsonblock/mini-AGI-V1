@@ -1,0 +1,11 @@
+{
+  "a0": 0.0,
+  "a0_receipt": "sha256:a92c3b75667c56e93f8ca721cce7b67dfbb92dc45338d780c41853cc7545f33e",
+  "a1": 0.0,
+  "a1_receipt": "sha256:4211ce2ae4de010982e165ed6308d487d37458ba12756a34c36264ac00c1eab7",
+  "adapter_digest": "sha256:c25379edc02031d59facfaeffa21d02f8d6c826361f0ad295f087ae0621109f7",
+  "delta": 0.0,
+  "retention": 0.0,
+  "security_regressions": 0,
+  "seed": 0
+}

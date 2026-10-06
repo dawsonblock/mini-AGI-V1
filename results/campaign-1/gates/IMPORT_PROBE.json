@@ -1,0 +1,191 @@
+{
+  "failed": [],
+  "passed": 36,
+  "python": "3.13.15",
+  "results": [
+    {
+      "group": "minagi",
+      "module": "minagi",
+      "status": "OK"
+    },
+    {
+      "group": "minagi.v161",
+      "module": "minagi.v161",
+      "status": "OK"
+    },
+    {
+      "group": "minagi.v161",
+      "module": "minagi.v161.campaign_plan",
+      "status": "OK"
+    },
+    {
+      "group": "minagi.v161",
+      "module": "minagi.v161.converged_evidence",
+      "status": "OK"
+    },
+    {
+      "group": "minagi.v161",
+      "module": "minagi.v161.dataset_manifest",
+      "status": "OK"
+    },
+    {
+      "group": "minagi.v161",
+      "module": "minagi.v161.evaluator_registry",
+      "status": "OK"
+    },
+    {
+      "group": "minagi.v161",
+      "module": "minagi.v161.evaluators",
+      "status": "OK"
+    },
+    {
+      "group": "minagi.v161",
+      "module": "minagi.v161.executed_run",
+      "status": "OK"
+    },
+    {
+      "group": "minagi.v161",
+      "module": "minagi.v161.runtime_closure3",
+      "status": "OK"
+    },
+    {
+      "group": "rc14.7_evidence",
+      "module": "minagi.rc14.authority_artifacts",
+      "status": "OK"
+    },
+    {
+      "group": "rc14.7_evidence",
+      "module": "minagi.rc14.executed_runs",
+      "status": "OK"
+    },
+    {
+      "group": "rc14.7_evidence",
+      "module": "minagi.rc14.experiment_protocol",
+      "status": "OK"
+    },
+    {
+      "group": "rc14.7_evidence",
+      "module": "minagi.rc14.falsification",
+      "status": "OK"
+    },
+    {
+      "group": "rc14.7_evidence",
+      "module": "minagi.rc14.independent_reproduction",
+      "status": "OK"
+    },
+    {
+      "group": "rc14.7_evidence",
+      "module": "minagi.rc14.qualification",
+      "status": "OK"
+    },
+    {
+      "group": "grounded_replay",
+      "module": "minagi.rc14.replay_policy",
+      "status": "OK"
+    },
+    {
+      "group": "grounded_replay",
+      "module": "minagi.egai.replay",
+      "status": "OK"
+    },
+    {
+      "group": "grounded_replay",
+      "module": "egai.replay.policy",
+      "status": "OK"
+    },
+    {
+      "group": "grounded_replay",
+      "module": "egai.replay.vault",
+      "status": "OK"
+    },
+    {
+      "group": "grounded_replay",
+      "module": "egai.replay.world",
+      "status": "OK"
+    },
+    {
+      "group": "grounded_replay",
+      "module": "egai.authority.replay_policy",
+      "status": "OK"
+    },
+    {
+      "group": "dream_rsi",
+      "module": "dream_rsi_governed",
+      "status": "OK"
+    },
+    {
+      "group": "dream_rsi",
+      "module": "dream_rsi_governed.experiment",
+      "status": "OK"
+    },
+    {
+      "group": "dream_rsi",
+      "module": "dream_rsi_governed.ledger",
+      "status": "OK"
+    },
+    {
+      "group": "dream_rsi",
+      "module": "dream_rsi_governed.promotion",
+      "status": "OK"
+    },
+    {
+      "group": "dream_rsi",
+      "module": "dream_rsi_governed.qualification",
+      "status": "OK"
+    },
+    {
+      "group": "dream_rsi",
+      "module": "dream_rsi_governed.replay",
+      "status": "OK"
+    },
+    {
+      "group": "dream_rsi",
+      "module": "dream_rsi_governed.canary",
+      "status": "OK"
+    },
+    {
+      "group": "plasticity_controller",
+      "module": "minagi.v16.control_plane",
+      "status": "OK"
+    },
+    {
+      "group": "plasticity_controller",
+      "module": "minagi.v16.plasticity_execution",
+      "status": "OK"
+    },
+    {
+      "group": "colab_runtime",
+      "module": "minagi.platforms.colab.doctor",
+      "status": "OK"
+    },
+    {
+      "group": "colab_runtime",
+      "module": "minagi.platforms.colab.environment",
+      "status": "OK"
+    },
+    {
+      "group": "colab_runtime",
+      "module": "minagi.platforms.colab.storage",
+      "status": "OK"
+    },
+    {
+      "group": "cuda_backend",
+      "module": "minagi.platforms.cuda.evaluate",
+      "status": "OK"
+    },
+    {
+      "group": "cuda_backend",
+      "module": "minagi.platforms.cuda.hf_runtime",
+      "status": "OK"
+    },
+    {
+      "group": "peft_trainer",
+      "module": "minagi.platforms.cuda.peft_trainer",
+      "status": "OK"
+    }
+  ],
+  "root": "/content/mini-AGI-v16.1-Colab-Converged-Full-Upgraded",
+  "schema": "mini-agi-v16.2-import-probe-v1",
+  "status": "PASS",
+  "total": 36
+}

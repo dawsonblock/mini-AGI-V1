@@ -1,0 +1,10 @@
+{
+  "hidden_digest": "sha256:f4c8f17046131c4e718ff73f8c191858efe3707a2da09742e5b9aa21456623fd",
+  "hidden_exact_overlap": 0,
+  "hidden_family_overlap": null,
+  "partition_set_digest": "sha256:a20605f1e841c07f84f0e5010b3752a1bf35278bf09163ec0f7f95fea180fdfc",
+  "schema": "mini-agi-v16.1-disjointness-proof-v1",
+  "train_digest": "sha256:2151ea552a1238bed2a2a9112ebf8b7b35b2d9d5eb7720cd5fad93fe3e0f15e7",
+  "validation_digest": "sha256:a385be30ea464bc1b072e38de14dc2070f76580e7f2b657711ee1d236d7a48f7",
+  "verified": true
+}

@@ -1,0 +1,12 @@
+{
+  "reason": "fresh-runtime independent reproduction has not been executed; the qualified artifacts and plan needed for it are included in this branch",
+  "schema": "mini-agi-v16.2-reproduction-record-v1",
+  "status": "NOT_RUN",
+  "would_require": [
+    "release ZIP",
+    "campaign plan",
+    "adapter artifacts",
+    "dataset manifests",
+    "fresh Colab runtime B"
+  ]
+}

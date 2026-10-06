@@ -1,0 +1,55 @@
+{
+  "campaign_dir": "/content/minagi_work/campaigns/colab-smoke-v161",
+  "checks": [
+    {
+      "check": "completed_run_recognized",
+      "detail": "{'completed': [0], 'incomplete': [1, 2], 'missing': [3]}",
+      "pass": true
+    },
+    {
+      "check": "completed_run_kept_as_evidence",
+      "detail": "evidence_seeds=[0]",
+      "pass": true
+    },
+    {
+      "check": "result_without_complete_not_evidence",
+      "detail": "seed-1 has SEED_RESULT.json but no COMPLETE marker",
+      "pass": true
+    },
+    {
+      "check": "complete_marker_without_result_not_evidence",
+      "detail": "seed-2 has COMPLETE but no SEED_RESULT.json",
+      "pass": true
+    },
+    {
+      "check": "missing_run_detected",
+      "detail": "{'completed': [0], 'incomplete': [1, 2], 'missing': [3]}",
+      "pass": true
+    },
+    {
+      "check": "incomplete_runs_rescheduled",
+      "detail": "only seed-0 must be skipped on resume",
+      "pass": true
+    },
+    {
+      "check": "audit_ran",
+      "detail": "{\"completed\": [0], \"incomplete\": [], \"missing\": []}",
+      "pass": true
+    },
+    {
+      "check": "no_phantom_evidence",
+      "detail": "evidence=[0] completed=[0]",
+      "pass": true
+    }
+  ],
+  "classification": {
+    "completed": [
+      0
+    ],
+    "incomplete": [],
+    "missing": []
+  },
+  "root": "/content/mini-AGI-v16.1-Colab-Converged-Full-Upgraded",
+  "schema": "mini-agi-v16.2-interruption-recovery-v1",
+  "status": "PASS"
+}

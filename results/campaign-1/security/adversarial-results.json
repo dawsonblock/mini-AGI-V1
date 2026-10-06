@@ -1,0 +1,138 @@
+{
+  "checks": [
+    {
+      "check": "adapter_safetensors_byte_flip",
+      "detail": "PermissionError: physical runtime artifact mismatch: adapter",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase4"
+    },
+    {
+      "check": "adapter_config_tamper",
+      "detail": "PermissionError: physical runtime artifact mismatch: adapter",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase4"
+    },
+    {
+      "check": "adapter_missing",
+      "detail": "FileNotFoundError: /tmp/v162-adv-pecjad7p/nonexistent-adapter",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase4"
+    },
+    {
+      "check": "model_revision_substitution",
+      "detail": "AssertionError: model revision substitution did NOT change identity digest",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase4"
+    },
+    {
+      "check": "tokenizer_identity_substitution",
+      "detail": "AssertionError: tokenizer substitution did NOT change identity digest",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase4"
+    },
+    {
+      "check": "retrieval_policy_tamper",
+      "detail": "PermissionError: physical runtime artifact mismatch: retrieval_policy",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase4"
+    },
+    {
+      "check": "evaluator_artifact_record_tamper",
+      "detail": "ValueError: config_digest does not match evaluator config",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase4"
+    },
+    {
+      "check": "campaign_plan_tamper_detectable",
+      "detail": "PermissionError: tampered campaign plan digest differs from sealed digest",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase4"
+    },
+    {
+      "check": "substitute_scorer_digest_mismatch",
+      "detail": "PermissionError: evaluator substitution rejected: plan binds sha256:fd5ece9d2025acaaf..., attempted sha256:7b3a949d557e1a477...",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase5"
+    },
+    {
+      "check": "unregistered_evaluator_digest",
+      "detail": "KeyError: 'sha256:fd5ece9d2025acaaf2254eaf63319f0957e88b56c2b28ea19263bddb4101ecec'",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase5"
+    },
+    {
+      "check": "forged_registry_entry",
+      "detail": "RuntimeError: stored evaluator artifact digest mismatch",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase5"
+    },
+    {
+      "check": "tampered_evaluator_source",
+      "detail": "ValueError: evaluator must resolve to a source-backed Python callable",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase5"
+    },
+    {
+      "check": "hidden_exact_sample_leakage",
+      "detail": "PermissionError: hidden sample leakage from train: ['train-1']",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase6"
+    },
+    {
+      "check": "hidden_family_leakage_when_required",
+      "detail": "PermissionError: hidden task-family leakage from train: ['fam-copy']",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase6"
+    },
+    {
+      "check": "family_overlap_admitted_when_not_required",
+      "detail": "require_family_disjoint_hidden=false permits family overlap (smoke posture)",
+      "expected": "ACCEPT",
+      "observed": "ACCEPT",
+      "pass": true,
+      "phase": "phase6"
+    },
+    {
+      "check": "train_validation_overlap",
+      "detail": "PermissionError: train/validation sample overlap",
+      "expected": "REJECT",
+      "observed": "REJECT",
+      "pass": true,
+      "phase": "phase6"
+    }
+  ],
+  "failures": [],
+  "required_rejections": 15,
+  "root": "/content/mini-AGI-v16.1-Colab-Converged-Full-Upgraded",
+  "schema": "mini-agi-v16.2-adversarial-checks-v1",
+  "status": "PASS",
+  "total_checks": 16
+}

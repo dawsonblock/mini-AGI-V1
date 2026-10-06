@@ -1,0 +1,17 @@
+{
+  "digest": "sha256:a385be30ea464bc1b072e38de14dc2070f76580e7f2b657711ee1d236d7a48f7",
+  "value": {
+    "members": [
+      {
+        "content_digest": "sha256:eb032b3bc8c9527fd71af4e6c9b2c9519cab10c066f120b60828871bb2dfd35d",
+        "generator_id": "manual",
+        "sample_id": "val-1",
+        "schema": "mini-agi-v16.1-dataset-member-v1",
+        "source_id": "local",
+        "task_family_id": "copy-val-1"
+      }
+    ],
+    "name": "validation",
+    "schema": "mini-agi-v16.1-dataset-membership-v1"
+  }
+}

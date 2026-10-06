@@ -1,0 +1,26 @@
+{
+  "digest": "sha256:53b44822404e8f523c589a7cd4109855c4566c202d14abfe78e38ed0c6f88a72",
+  "note": "retention probe = first 2 train rows per configs (retention_samples)",
+  "value": {
+    "members": [
+      {
+        "content_digest": "sha256:c8c3e49ab06e85eb853f08febd29e1a5c1d01573e5537f60acd9604c2660eaff",
+        "generator_id": "manual",
+        "sample_id": "train-1",
+        "schema": "mini-agi-v16.1-dataset-member-v1",
+        "source_id": "local",
+        "task_family_id": "copy-train-1"
+      },
+      {
+        "content_digest": "sha256:c4d3d5caf8aaaaaaaca8735a79c6e77e77d0ee4369cacf028411f0f8ba84d7ec",
+        "generator_id": "manual",
+        "sample_id": "train-2",
+        "schema": "mini-agi-v16.1-dataset-member-v1",
+        "source_id": "local",
+        "task_family_id": "copy-train-2"
+      }
+    ],
+    "name": "retention",
+    "schema": "mini-agi-v16.1-dataset-membership-v1"
+  }
+}

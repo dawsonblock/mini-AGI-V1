@@ -1,0 +1,35 @@
+{
+  "campaign_dir": "/content/minagi_work/campaigns/qwen-smoke-v161",
+  "campaign_id": "qwen-smoke-v161",
+  "campaign_plan_digest": "sha256:9f30314d5ce8d0275216571eaa5e51c4ac4f0de1fd60c4597d1e39339aa0b7cc",
+  "decision": "QUALIFIED",
+  "failures": [],
+  "forward_transfer_delta_stats": {
+    "best": 0.0,
+    "mean": 0.0,
+    "median": 0.0,
+    "n": 1,
+    "stdev": 0.0,
+    "worst": 0.0
+  },
+  "matrix": {
+    "seed-0": {
+      "A0": "present",
+      "A1": "present"
+    }
+  },
+  "note": "QUALIFIED is experimental qualification only; not production promotion authority.",
+  "per_seed": [
+    {
+      "acquisition_a0": 0.0,
+      "acquisition_a1": 0.0,
+      "forward_transfer_delta": 0.0,
+      "retention": 0.0,
+      "security_regressions": 0,
+      "seed": 0
+    }
+  ],
+  "reasons": [],
+  "runner_decision_agreement": true,
+  "schema": "mini-agi-v16.2-qualification-record-v1"
+}

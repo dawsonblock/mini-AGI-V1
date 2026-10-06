@@ -1,0 +1,25 @@
+{
+  "digest": "sha256:f4c8f17046131c4e718ff73f8c191858efe3707a2da09742e5b9aa21456623fd",
+  "value": {
+    "members": [
+      {
+        "content_digest": "sha256:b8762db3bd84d37622dd086309b8cb74d2a527e92319ad1a7bd2aba13cd8467b",
+        "generator_id": "manual",
+        "sample_id": "hidden-1",
+        "schema": "mini-agi-v16.1-dataset-member-v1",
+        "source_id": "local",
+        "task_family_id": "copy-hidden-1"
+      },
+      {
+        "content_digest": "sha256:04a602fa3fa27872634d164885d70bebf972abf20e3be74b6747a5c1f694ad86",
+        "generator_id": "manual",
+        "sample_id": "hidden-2",
+        "schema": "mini-agi-v16.1-dataset-member-v1",
+        "source_id": "local",
+        "task_family_id": "copy-hidden-2"
+      }
+    ],
+    "name": "hidden",
+    "schema": "mini-agi-v16.1-dataset-membership-v1"
+  }
+}

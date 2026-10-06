@@ -1,0 +1,28 @@
+{
+  "campaign_rc": 0,
+  "result": {
+    "campaign_plan_digest": "sha256:9f30314d5ce8d0275216571eaa5e51c4ac4f0de1fd60c4597d1e39339aa0b7cc",
+    "decision": "PASS",
+    "digest": "sha256:6d1c0210f53fc57af285ed3602403fab694de7ff2c4a91c2651611d09c7ebace",
+    "environment_digest": "sha256:7cc26fc372a8321e9d37078d3943635c9a7c994161cb1e41eb6bf33ec40a1fde",
+    "mean_forward_transfer_delta": 0.0,
+    "mean_retention": 0.0,
+    "note": "PASS is experimental qualification only; it is not production promotion authority.",
+    "promotion_ready": true,
+    "results": [
+      {
+        "a0": 0.0,
+        "a0_receipt": "sha256:a92c3b75667c56e93f8ca721cce7b67dfbb92dc45338d780c41853cc7545f33e",
+        "a1": 0.0,
+        "a1_receipt": "sha256:4211ce2ae4de010982e165ed6308d487d37458ba12756a34c36264ac00c1eab7",
+        "adapter_digest": "sha256:c25379edc02031d59facfaeffa21d02f8d6c826361f0ad295f087ae0621109f7",
+        "delta": 0.0,
+        "retention": 0.0,
+        "security_regressions": 0,
+        "seed": 0
+      }
+    ],
+    "schema": "mini-agi-v16.1-colab-campaign-result-v1"
+  },
+  "schema": "mini-agi-v16.2-phase8-gate-v1"
+}

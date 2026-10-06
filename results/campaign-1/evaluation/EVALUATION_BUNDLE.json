@@ -1,0 +1,35 @@
+{
+  "campaigns": {
+    "colab-smoke-v161": {
+      "per_seed": [
+        {
+          "acquisition_a0": 0.0,
+          "acquisition_a1": 0.0,
+          "forward_transfer_delta": 0.0,
+          "retention": 0.0,
+          "security_regressions": 0,
+          "seed": 0
+        }
+      ],
+      "qualification": "QUALIFIED",
+      "result_digest": "sha256:e0cc65c33cfd10e68491646e711c8c720e9666ecaf80f0e5207766ddf9c43033",
+      "runner_decision_agreement": true
+    },
+    "qwen-smoke-v161": {
+      "per_seed": [
+        {
+          "acquisition_a0": 0.0,
+          "acquisition_a1": 0.0,
+          "forward_transfer_delta": 0.0,
+          "retention": 0.0,
+          "security_regressions": 0,
+          "seed": 0
+        }
+      ],
+      "qualification": "QUALIFIED",
+      "result_digest": "sha256:6d1c0210f53fc57af285ed3602403fab694de7ff2c4a91c2651611d09c7ebace",
+      "runner_decision_agreement": true
+    }
+  },
+  "schema": "mini-agi-v16.2-evaluation-bundle-v1"
+}

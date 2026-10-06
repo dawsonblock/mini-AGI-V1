@@ -1,0 +1,44 @@
+{
+  "outputs": [
+    {
+      "expected": "silver",
+      "id": "hidden-1",
+      "prediction": "stairs stairs stairs stairs stairs stairs",
+      "score": 0.0
+    },
+    {
+      "expected": "violet",
+      "id": "hidden-2",
+      "prediction": "factors factors factors factors factors factors",
+      "score": 0.0
+    }
+  ],
+  "receipt": {
+    "adapter_digest": "sha256:38b00bcdcb255cfa587b765f5ab861d40ceb85174f1219f3427d8ed77b776e2e",
+    "arm": "A1",
+    "campaign_digest": "sha256:add7d1826ca8db61c6b5c82b72ded628ef5dd3933ae5890b10f75717e104011c",
+    "dataset_digest": "sha256:f4c8f17046131c4e718ff73f8c191858efe3707a2da09742e5b9aa21456623fd",
+    "environment_digest": "sha256:4a9e01b29a4ee0b58ff49c819b47d810f5f546fd74b713b6d8596f803ece97c6",
+    "evaluator_digest": "sha256:fd5ece9d2025acaaf2254eaf63319f0957e88b56c2b28ea19263bddb4101ecec",
+    "metrics": {
+      "hidden_exact_match": 0.0,
+      "retention": 0.0,
+      "security_regressions": 0
+    },
+    "model_digest": "sha256:1c87532eca14811cd8abd951dc0068fdec2bfe68bf2caf7d6b30dc6ab558ef99",
+    "schema": "mini-agi-v16.1-executed-run-receipt-v1",
+    "seed": 0,
+    "signature_b64": "fKSlVRPW+LfQyUKFcZgWzh2vps/ia0Wh8nJ8LaNHr5RKLfF7Fkzu6EzpACjA7b0YTrTHM4BMTWr8DbSK08agCA==",
+    "signer_key_id": "colab-execution-witness",
+    "tokenizer_digest": "sha256:d2034f9a5f00cb1857097ec1a6d8574798e79ae45340f4174079bda9151c0a7c"
+  },
+  "training": {
+    "finished_ns": 1791280438702299791,
+    "loss_first": 10.84305191040039,
+    "loss_last": 10.827896118164062,
+    "schema": "mini-agi-v16.1-training-receipt-v1",
+    "started_ns": 1791280437880020033,
+    "steps": 8,
+    "train_spec_digest": "sha256:239c086cd1cc6eab025fbbe5ffbacbee1a6da5ec017b73ec9f4ea80ef817fd26"
+  }
+}

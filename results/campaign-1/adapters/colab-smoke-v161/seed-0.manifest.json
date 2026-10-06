@@ -1,0 +1,20 @@
+{
+  "adapter_dir_digest": "sha256:38b00bcdcb255cfa587b765f5ab861d40ceb85174f1219f3427d8ed77b776e2e",
+  "files": {
+    "README.md": {
+      "size_bytes": 5192
+    },
+    "TRAINING_RECEIPT.json": {
+      "size_bytes": 309
+    },
+    "TRAINING_SPEC.json": {
+      "size_bytes": 209
+    },
+    "adapter_config.json": {
+      "size_bytes": 1080
+    },
+    "adapter_model.safetensors": {
+      "size_bytes": 760
+    }
+  }
+}

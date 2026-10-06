@@ -1,0 +1,63 @@
+{
+  "a0_fresh": {
+    "hidden-1": ", 10, 20, 30",
+    "hidden-2": ", blue, and green are three colors of the rainbow."
+  },
+  "a0_recorded": {
+    "hidden-1": ", 10, 20, 30",
+    "hidden-2": ", blue, and green are three colors of the rainbow."
+  },
+  "a0_restored": {
+    "hidden-1": ", 10, 20, 30",
+    "hidden-2": ", blue, and green are three colors of the rainbow."
+  },
+  "a1_fresh": {
+    "hidden-1": "- silver\nTo complete the phrase \"silver - silver,\"",
+    "hidden-2": "violet violet violet violet violet violet violet violet violet violet violet violet"
+  },
+  "a1_recorded": {
+    "hidden-1": "- silver\nTo complete the phrase \"silver - silver,\"",
+    "hidden-2": "violet violet violet violet violet violet violet violet violet violet violet violet"
+  },
+  "adapter_dir": "/content/minagi_work/adapters/qwen-smoke-v161/seed-0",
+  "campaign_id": "qwen-smoke-v161",
+  "checks": [
+    {
+      "check": "receipt_signatures_verify",
+      "detail": "",
+      "pass": true
+    },
+    {
+      "check": "loaded_adapter_digest_matches_receipt",
+      "detail": "disk=sha256:c25379edc02031d59facfaeffa21d02f8d6c826361f0ad295f087ae0621109f7 receipt=sha256:c25379edc02031d59facfaeffa21d02f8d6c826361f0ad295f087ae0621109f7",
+      "pass": true
+    },
+    {
+      "check": "frozen_reload_reproduces_A0",
+      "detail": "2/2 exact; mismatched=[]",
+      "pass": true
+    },
+    {
+      "check": "adapter_changes_output",
+      "detail": "2/2 prompts differ from frozen A0",
+      "pass": true
+    },
+    {
+      "check": "adapter_reload_reproduces_A1",
+      "detail": "2/2 exact; mismatched=[]",
+      "pass": true
+    },
+    {
+      "check": "adapter_removal_restores_A0",
+      "detail": "2/2 exact; mismatched=[]",
+      "pass": true
+    }
+  ],
+  "prompts": [
+    "hidden-1",
+    "hidden-2"
+  ],
+  "schema": "mini-agi-v16.2-adapter-effect-v1",
+  "seed": 0,
+  "status": "PASS"
+}

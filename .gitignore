@@ -27,7 +27,6 @@ benchmark/claude_deepswe_ab/*
 !benchmark/claude_deepswe_ab/tasks_requestplan_10_no_happy.json
 !benchmark/claude_deepswe_ab/durable_batch_supervisor.py
 
-results/
 *.log
 
 *.o
@@ -40,6 +39,7 @@ models/
 *.gguf
 *.ggml
 *.safetensors
+!results/**/*.safetensors
 *.ckpt
 *.pt
 *.pth

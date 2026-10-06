@@ -1,0 +1,44 @@
+{
+  "campaigns": {
+    "colab-smoke-v161": {
+      "campaign_plan_digest": "sha256:add7d1826ca8db61c6b5c82b72ded628ef5dd3933ae5890b10f75717e104011c",
+      "decision": "QUALIFIED",
+      "matrix": {
+        "seed-0": {
+          "A0": "present",
+          "A1": "present"
+        }
+      },
+      "runs": {
+        "seed-0": {
+          "A0": true,
+          "A1": true,
+          "a0_receipt_digest": "sha256:576f23ad441b50e3d59d4afe8e54596fc4790daa9d8ef894199b5de4b957e094",
+          "a1_receipt_digest": "sha256:915afd98a34766c417c7d99066cd285f541da601f33492e8634736286d3a45bc",
+          "adapter_digest": "sha256:38b00bcdcb255cfa587b765f5ab861d40ceb85174f1219f3427d8ed77b776e2e"
+        }
+      }
+    },
+    "qwen-smoke-v161": {
+      "campaign_plan_digest": "sha256:9f30314d5ce8d0275216571eaa5e51c4ac4f0de1fd60c4597d1e39339aa0b7cc",
+      "decision": "QUALIFIED",
+      "matrix": {
+        "seed-0": {
+          "A0": "present",
+          "A1": "present"
+        }
+      },
+      "runs": {
+        "seed-0": {
+          "A0": true,
+          "A1": true,
+          "a0_receipt_digest": "sha256:a92c3b75667c56e93f8ca721cce7b67dfbb92dc45338d780c41853cc7545f33e",
+          "a1_receipt_digest": "sha256:4211ce2ae4de010982e165ed6308d487d37458ba12756a34c36264ac00c1eab7",
+          "adapter_digest": "sha256:c25379edc02031d59facfaeffa21d02f8d6c826361f0ad295f087ae0621109f7"
+        }
+      }
+    }
+  },
+  "schema": "mini-agi-v16.2-execution-matrix-certificate-v1",
+  "source_commit": "db3f6e5bccc6dd8b76982015b684e54084776542"
+}

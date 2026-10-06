@@ -1,0 +1,43 @@
+{
+  "adapter_effect_qwen": {
+    "adapter_changes_output": true,
+    "adapter_reload_reproduces_A1": true,
+    "adapter_removal_restores_A0": true,
+    "frozen_reload_reproduces_A0": true,
+    "loaded_adapter_digest_matches_receipt": true,
+    "receipt_signatures_verify": true
+  },
+  "campaigns": {
+    "colab-smoke-v161": {
+      "acquisition_a0_mean": 0.0,
+      "acquisition_a1_mean": 0.0,
+      "forward_transfer_delta": {
+        "best": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 1,
+        "stdev": 0.0,
+        "worst": 0.0
+      },
+      "n_seeds": 1,
+      "retention_mean": 0.0,
+      "security_regressions": 0
+    },
+    "qwen-smoke-v161": {
+      "acquisition_a0_mean": 0.0,
+      "acquisition_a1_mean": 0.0,
+      "forward_transfer_delta": {
+        "best": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 1,
+        "stdev": 0.0,
+        "worst": 0.0
+      },
+      "n_seeds": 1,
+      "retention_mean": 0.0,
+      "security_regressions": 0
+    }
+  },
+  "schema": "mini-agi-v16.2-metrics-v1"
+}
