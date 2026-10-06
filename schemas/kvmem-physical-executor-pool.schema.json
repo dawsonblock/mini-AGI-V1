@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KVMem Persistent Physical Executor Pool Status",
+  "type": "object",
+  "required": [
+    "object",
+    "scope",
+    "runtime_abi",
+    "configured_slots",
+    "certified_slots",
+    "installed_runtimes",
+    "runtimes"
+  ],
+  "properties": {
+    "object": {"const": "kvmem.executor_pool"},
+    "scope": {"const": "persistent-session-runtime"},
+    "runtime_abi": {"type": "string", "minLength": 1},
+    "configured_slots": {"type": "integer", "minimum": 1},
+    "certified_slots": {"type": "integer", "minimum": 0},
+    "installed_runtimes": {"type": "integer", "minimum": 0},
+    "runtimes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["slot", "runtime_id", "installed", "busy", "dirty", "active_lease_id"],
+        "properties": {
+          "slot": {"type": "integer", "minimum": 0},
+          "runtime_id": {"type": "string"},
+          "installed": {"type": "boolean"},
+          "busy": {"type": "boolean"},
+          "dirty": {"type": "boolean"},
+          "active_lease_id": {"type": "integer", "minimum": 0},
+          "lease_sequence": {"type": "integer", "minimum": 0},
+          "linked_scheduler_lease_id": {"type": "integer", "minimum": 0}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

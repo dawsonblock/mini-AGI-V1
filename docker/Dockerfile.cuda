@@ -1,0 +1,25 @@
+# Build template for the supported Linux/NVIDIA deployment family.
+# Pin the base image by digest in a real production release.
+ARG CUDA_IMAGE=nvidia/cuda:12.8.1-devel-ubuntu24.04
+FROM ${CUDA_IMAGE} AS build
+ARG QW3_CUDA_ARCH=80
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates cmake g++ make ninja-build python3 curl \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY . .
+RUN cmake -S . -B build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DQW3_ENABLE_CUDA=ON \
+      -DQW3_BUILD_TESTS=ON \
+      -DCMAKE_CUDA_ARCHITECTURES="${QW3_CUDA_ARCH}" \
+    && cmake --build build -j2
+
+FROM ${CUDA_IMAGE} AS runtime
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates libstdc++6 curl \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /src/build/qw3 /usr/local/bin/qw3
+COPY --from=build /src/build/qw3-inspect /usr/local/bin/qw3-inspect
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/qw3"]

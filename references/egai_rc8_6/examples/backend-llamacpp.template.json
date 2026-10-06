@@ -1,0 +1,10 @@
+{
+  "backend": "llama_cpp_cli",
+  "executable": "/path/to/llama-cli",
+  "model_path": "/path/to/model.gguf",
+  "args": [],
+  "seed": 0,
+  "temperature": 0,
+  "max_tokens": 2048,
+  "timeout": 180
+}

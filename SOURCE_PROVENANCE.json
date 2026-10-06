@@ -1,0 +1,6 @@
+{
+  "donor_archives": "provenance/DONOR_ARCHIVES.json",
+  "merge_provenance": "provenance/MERGE_PROVENANCE.json",
+  "schema": "mini-agi-v16.1-source-provenance-v1",
+  "validation": "provenance/VALIDATION_RESULTS.json"
+}

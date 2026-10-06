@@ -1,0 +1,53 @@
+{
+  "results": [
+    {
+      "failed": 0,
+      "passed": 304,
+      "status": "PASS",
+      "suite": "v15.8 baseline"
+    },
+    {
+      "failed": 0,
+      "passed": 313,
+      "status": "PASS",
+      "suite": "merged v16.1 Python"
+    },
+    {
+      "failed": 0,
+      "passed": 255,
+      "status": "PASS",
+      "suite": "RC14.7 donor"
+    },
+    {
+      "failed": 0,
+      "passed": 293,
+      "status": "PASS",
+      "suite": "v16.0.1 donor"
+    },
+    {
+      "failed": 0,
+      "passed": 7,
+      "status": "PASS",
+      "suite": "RC12.5 grounded replay"
+    },
+    {
+      "status": "PASS",
+      "suite": "Dream-RSI donor"
+    },
+    {
+      "status": "PASS",
+      "suite": "compileall"
+    },
+    {
+      "status": "PASS",
+      "suite": "editable install --no-build-isolation --no-deps"
+    },
+    {
+      "reason": "assembly environment is CPU-only and offline",
+      "status": "NOT_RUN",
+      "suite": "real Colab CUDA neural smoke"
+    }
+  ],
+  "schema": "mini-agi-v16.1-validation-results-v1",
+  "timestamp_utc": "2026-10-06T08:49:21.396659+00:00"
+}

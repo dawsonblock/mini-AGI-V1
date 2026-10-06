@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CMD="${1:-help}"
+shift || true
+case "$CMD" in
+  install) exec "$ROOT/macos/install.sh" "$@" ;;
+  bootstrap) exec "$ROOT/macos/bootstrap.sh" "$@" ;;
+  verify) exec "$ROOT/macos/verify_install.sh" "$@" ;;
+  test) exec "$ROOT/macos/run_all_tests.sh" "$@" ;;
+  benchmark) exec "$ROOT/macos/benchmark.sh" "$@" ;;
+  doctor) exec "$ROOT/macos/doctor.sh" "$@" ;;
+  build-host) exec "$ROOT/macos/build_host.sh" "$@" ;;
+  backend-llama) exec "$ROOT/macos/run_llama_cpp.sh" "$@" ;;
+  backend-mlx) exec "$ROOT/macos/run_mlx.sh" "$@" ;;
+  gateway) exec "$ROOT/macos/run_gateway.sh" "$@" ;;
+  train-lora) exec "$ROOT/macos/train_lora.sh" "$@" ;;
+  learning-cycle) exec "$ROOT/macos/learning_cycle.sh" "$@" ;;
+  gdn-check) exec "$ROOT/macos/gdn_reference_check.py" "$@" ;;
+  rc11-validate) exec "$ROOT/scripts/rc11/validate_release.sh" "$@" ;;
+  *)
+    cat <<EOF
+Usage: macos/qw3-mac <command>
+  install         Install Mac dependencies and Python environment
+  bootstrap       Install + doctor + initialize local data directories
+  verify          Verify the installed Python/control-plane environment
+  test            Run Python and native host test suites
+  benchmark       Run a small end-to-end gateway latency smoke benchmark
+  doctor          Verify Apple Silicon, tools, RAM, and backend status
+  build-host      Build/test native host utilities (no generation)
+  backend-llama   Start llama.cpp Metal backend (QW3_MODEL or QW3_HF_MODEL)
+  backend-mlx     Start MLX backend (QW3_MLX_MODEL)
+  gateway         Start continual-memory OpenAI-compatible gateway on :8088
+  train-lora      Train a candidate MLX LoRA from data/training/train.jsonl
+  learning-cycle  Export verified episodes, train MLX LoRA, register immutable candidate
+  gdn-check       Validate the model-specific CPU Gated-DeltaNet (T,Z) reference
+  rc11-validate   Run RC11 regression suites plus release-tree integrity verification
+EOF
+    ;;
+esac

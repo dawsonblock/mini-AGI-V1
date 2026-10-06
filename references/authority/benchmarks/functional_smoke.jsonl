@@ -1,0 +1,16 @@
+{"id":"arith_add","prompt":"Answer with only the number: 4917 + 388 = ?","scorer":"numeric","expected":5305}
+{"id":"arith_speed","prompt":"Answer with only the number in km/h: A train travels 60 km in 45 minutes. What is its speed?","scorer":"numeric","expected":80}
+{"id":"arith_percent","prompt":"Answer with only the number: What is 15% of 240?","scorer":"numeric","expected":36}
+{"id":"arith_fraction","prompt":"Answer with only the number: 7/8 + 3/8 = ?","scorer":"numeric","expected":1.25}
+{"id":"arith_mul","prompt":"Answer with only the number: 37 * 24 = ?","scorer":"numeric","expected":888}
+{"id":"arith_div","prompt":"Answer with only the number: 144 / 12 = ?","scorer":"numeric","expected":12}
+{"id":"arith_ratio","prompt":"Answer with only the number: If 5 items cost 45 dollars, what do 8 items cost at the same rate?","scorer":"numeric","expected":72}
+{"id":"arith_average","prompt":"Answer with only the number: What is the arithmetic mean of 12, 18, 21, and 29?","scorer":"numeric","expected":20}
+{"id":"code_max","prompt":"Write a Python function named largest_number(xs) that returns the largest number in a non-empty list.","scorer":"python_tests","expected":{"entrypoint":"largest_number","cases":[{"args":[[1,5,3]],"expected":5},{"args":[[-4,-1,-8]],"expected":-1},{"args":[[2.3,2.1]],"expected":2.3}]}}
+{"id":"code_merge","prompt":"Write valid Python for def merge_sorted(a, b): that merges two already sorted lists.","scorer":"python_tests","expected":{"entrypoint":"merge_sorted","cases":[{"args":[[1,3,7],[2,4,6]],"expected":[1,2,3,4,6,7]},{"args":[[],[1,1]],"expected":[1,1]},{"args":[[0,2],[]],"expected":[0,2]}]}}
+{"id":"code_reverse","prompt":"Write valid Python for def reverse_string(s): that returns the reversed string.","scorer":"python_tests","expected":{"entrypoint":"reverse_string","cases":[{"args":["hello"],"expected":"olleh"},{"args":[""],"expected":""},{"args":["åβ"],"expected":"βå"}]}}
+{"id":"code_unique","prompt":"Write Python function unique_preserve(xs) returning unique values in first-seen order.","scorer":"python_tests","expected":{"entrypoint":"unique_preserve","cases":[{"args":[[3,1,3,2,1]],"expected":[3,1,2]},{"args":[[]],"expected":[]}]}}
+{"id":"fact_water","prompt":"In one short sentence, state the chemical formula for water.","scorer":"contains","expected":["H2O"]}
+{"id":"fact_planet","prompt":"Answer with only the planet name: Which planet is closest to the Sun?","scorer":"exact","expected":"Mercury"}
+{"id":"instruction_exact","prompt":"Reply with exactly: blue square","scorer":"exact","expected":"blue square"}
+{"id":"reason_sequence","prompt":"Answer with only the number: 2, 6, 12, 20, 30, ?","scorer":"numeric","expected":42}

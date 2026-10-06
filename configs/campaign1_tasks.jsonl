@@ -1,0 +1,3 @@
+{"id":"placeholder-train-1","family":"replace-train-family-1","split":"train","prompt":"REPLACE WITH CAMPAIGN TASK","expected":"REPLACE","train_text":"REPLACE WITH TRAINING TEXT"}
+{"id":"placeholder-val-1","family":"replace-val-family-1","split":"validation","prompt":"REPLACE WITH VALIDATION TASK","expected":"REPLACE"}
+{"id":"placeholder-hidden-1","family":"replace-hidden-family-1","split":"hidden","prompt":"REPLACE WITH SEALED HIDDEN TASK","expected":"REPLACE"}

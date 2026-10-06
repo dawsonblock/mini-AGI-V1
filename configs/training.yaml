@@ -1,0 +1,16 @@
+training:
+  adapter_type: lora
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: all-linear
+  learning_rate: 0.00002
+  new_fraction: 0.67
+  replay_fraction: 0.33
+  min_new_examples: 50
+  max_new_examples: 500
+
+promotion:
+  min_target_gain: 0.03
+  max_general_regression: 0.01
+  require_critical_non_regression: true

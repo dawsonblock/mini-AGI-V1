@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:qw3:kvmem-memory-receipt:v1",
+  "title": "QW3 KVMem Memory Receipt",
+  "type": "object",
+  "required": [
+    "profile",
+    "state_coherence",
+    "logical_prompt_tokens",
+    "selection_budget_tokens",
+    "generation_budget_tokens",
+    "requested_retrieval_method",
+    "semantic_expansion",
+    "query_conditioned",
+    "query_replay",
+    "strict_retrieval",
+    "retrieval_fallback_permitted",
+    "hybrid_state_exact_for_request"
+  ],
+  "properties": {
+    "profile": {
+      "type": "string"
+    },
+    "state_coherence": {
+      "enum": [
+        "attention-kv",
+        "query-replay",
+        "selected-replay"
+      ]
+    },
+    "logical_prompt_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "selection_budget_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "generation_budget_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "requested_retrieval_method": {
+      "type": "string"
+    },
+    "strict_retrieval": {
+      "type": "boolean"
+    },
+    "retrieval_fallback_permitted": {
+      "type": "boolean"
+    },
+    "hybrid_state_exact_for_request": {
+      "type": "boolean"
+    },
+    "semantic_expansion": {
+      "type": "string"
+    },
+    "query_conditioned": {
+      "type": "boolean"
+    },
+    "query_replay": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true
+}

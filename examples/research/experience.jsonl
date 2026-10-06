@@ -1,0 +1,2 @@
+{"case_id":"e1","split":"experience","input":"abc","expected":"cba","task_kind":"reverse","procedure_hint":"Reverse the input characters.","tags":["reverse"],"metadata":{"feedback_verified":true,"verifier_id":"example-oracle"}}
+{"case_id":"e2","split":"experience","input":"cat","expected":"tac","task_kind":"reverse","procedure_hint":"Reverse the input characters.","tags":["reverse"],"metadata":{"feedback_verified":true,"verifier_id":"example-oracle"}}

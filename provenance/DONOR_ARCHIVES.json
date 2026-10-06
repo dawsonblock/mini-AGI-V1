@@ -1,0 +1,53 @@
+{
+  "donors": [
+    {
+      "bytes": 1509579,
+      "filename": "Dream-RSI-Governed-RSI-v1.0.0-Full-Upgraded.zip",
+      "role": "proposal-side Dream-RSI optimizer",
+      "sha256": "9d142cb36fd5d6cfaf1db62a2437ae40097cb1e41e91b0eb8ac4604216131141"
+    },
+    {
+      "bytes": 8596383,
+      "filename": "EGAI_RC12_5_GroundedReplay_PolicyImprovement_Full_Upgraded.zip",
+      "role": "grounded replay and live canary",
+      "sha256": "f748e148e939386ba18c7bc49f421e1583a357733af64db7327fe4a9d64a7219"
+    },
+    {
+      "bytes": 3783413,
+      "filename": "EGAI_RC14_3_Witnessed_Runtime_Closure_Full_Upgraded.zip",
+      "role": "witnessed runtime closure lineage reference",
+      "sha256": "41157203c2c8a165012df5ea1a39ea3b74eef27c04c8a3e19cfd11ccb70b8153"
+    },
+    {
+      "bytes": 3825335,
+      "filename": "EGAI_RC14_5_Preregistered_Empirical_Learning_Full_Upgraded.zip",
+      "role": "preregistered ablation lineage reference",
+      "sha256": "275039980fc9006b3a1ea79614430cb04f80c6e10e8cb1cc72acce5ca8583203"
+    },
+    {
+      "bytes": 3853674,
+      "filename": "EGAI_RC14_7_Externally_Executed_Evidence_Closure_Full_Upgraded.zip",
+      "role": "executed evidence and independent reproduction",
+      "sha256": "579b933dc4eb3d940e499290a7c4bf72cc8d60c00f760f0692ba69a75e111eba"
+    },
+    {
+      "bytes": 4039602,
+      "filename": "mini-AGI-v15.5.0-ArtifactClosure1-Physically-Bound-Governed-Serving-Full-Upgraded.zip",
+      "role": "physical artifact closure lineage reference",
+      "sha256": "ff180f638c22d99f3bcf93488ffd91d74d76d876e08578559458441783dfcdf7"
+    },
+    {
+      "bytes": 4041032,
+      "filename": "mini-AGI-v15.8.0-Campaign1-Preregistered-Neural-Experiment-Full-Upgraded.zip",
+      "role": "primary execution trunk",
+      "sha256": "90fbbfa2c39c9f9b6e2309d5305eb434c5fad17065f5b0ff57501101a8a777c2"
+    },
+    {
+      "bytes": 4204660,
+      "filename": "mini-AGI-v16.0.1-Converged-Governed-RSI-Full-Upgraded.zip",
+      "role": "selected plasticity/statistics/isolated-solver donor only",
+      "sha256": "1ac3e0f32100f296fd7aebff97fab99b2fef6ecbf96c9dab5f5724cc5bc51267"
+    }
+  ],
+  "schema": "mini-agi-v16.1-donor-archives-v1"
+}

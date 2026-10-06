@@ -1,0 +1,32 @@
+[
+  {
+    "donor": "runtime",
+    "manifest_entries": 894,
+    "mismatches": []
+  },
+  {
+    "donor": "v12",
+    "manifest_entries": 3134,
+    "mismatches": []
+  },
+  {
+    "donor": "egai",
+    "manifest_entries": 108,
+    "mismatches": []
+  },
+  {
+    "donor": "rc25",
+    "manifest_entries": 686,
+    "mismatches": []
+  },
+  {
+    "donor": "rc11",
+    "manifest_entries": 93,
+    "mismatches": []
+  },
+  {
+    "donor": "rc9",
+    "manifest_entries": 655,
+    "mismatches": []
+  }
+]

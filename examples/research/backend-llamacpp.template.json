@@ -1,0 +1,7 @@
+{
+  "backend": "llama_cpp_cli",
+  "executable": "/path/to/llama-cli",
+  "model_path": "/path/to/model.gguf",
+  "args": ["-n", "1024", "--temp", "0"],
+  "timeout": 180
+}

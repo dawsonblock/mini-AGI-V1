@@ -1,0 +1,20 @@
+persistent_memory:
+  sqlite_path: data/memory.sqlite3
+  vector_backend: optional-faiss
+  max_retrieval: 12
+
+write_policy:
+  thresholds:
+    episodic: 0.25
+    semantic: 0.50
+    learning_candidate: 0.75
+  weights:
+    novelty: 0.25
+    future_utility: 0.30
+    confidence: 0.15
+    recurrence: 0.15
+    importance: 0.15
+    redundancy: -0.30
+
+experience:
+  sqlite_path: data/experience.sqlite3

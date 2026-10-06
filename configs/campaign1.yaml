@@ -1,0 +1,23 @@
+campaign_id: campaign1-v161
+dataset: configs/campaign1_tasks.jsonl
+require_cuda: true
+require_family_disjoint_hidden: true
+model:
+  id: Qwen/Qwen2.5-0.5B-Instruct
+  revision: REPLACE_WITH_IMMUTABLE_HUGGINGFACE_COMMIT
+  dtype: bfloat16
+  quantization: none
+  trust_remote_code: false
+seeds: [0, 1, 2, 3, 4]
+max_new_tokens: 32
+minimum_forward_transfer: 0.02
+minimum_retention: 0.95
+retention_samples: 8
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  learning_rate: 0.0001
+  steps: 100
+  max_length: 256

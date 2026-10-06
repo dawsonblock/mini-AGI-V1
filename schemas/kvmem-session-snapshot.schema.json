@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:qw3:kvmem-session-snapshot:v1",
+  "title": "QW3 KVMem Canonical Session Snapshot",
+  "description": "Derived restart cache metadata. Never authority or durable trajectory truth.",
+  "type": "object",
+  "required": [
+    "id",
+    "workspace_id",
+    "version",
+    "token_count",
+    "host_bytes",
+    "runtime_fingerprint",
+    "created_at",
+    "saved_at"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "workspace_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "token_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "host_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "runtime_fingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "saved_at": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": true
+}

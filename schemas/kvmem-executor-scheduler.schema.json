@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:qw3:kvmem-executor-scheduler:v1",
+  "title": "QW3 KVMem Executor Scheduler Status",
+  "type": "object",
+  "required": [
+    "object",
+    "policy",
+    "slot_count",
+    "busy_slots",
+    "mounted_sessions",
+    "lease_sequence",
+    "warm_hits",
+    "cold_mounts",
+    "backpressure_rejections",
+    "faulted_releases",
+    "forced_cold_resets",
+    "slots"
+  ],
+  "properties": {
+    "object": {
+      "const": "kvmem.scheduler"
+    },
+    "policy": {
+      "const": "lru-affinity-fail-fast"
+    },
+    "slot_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "busy_slots": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "mounted_sessions": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lease_sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "warm_hits": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cold_mounts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "backpressure_rejections": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "faulted_releases": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "forced_cold_resets": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "slots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "index",
+          "session_id",
+          "busy",
+          "dirty",
+          "generation",
+          "last_used_at",
+          "mounts",
+          "cold_mounts",
+          "fault_count",
+          "reset_count",
+          "active_lease_id"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "busy": {
+            "type": "boolean"
+          },
+          "dirty": {
+            "type": "boolean"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_used_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mounts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cold_mounts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "fault_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reset_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "active_lease_id": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

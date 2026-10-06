@@ -1,0 +1,21 @@
+{
+  "checkpoints": [
+    0,
+    50,
+    100,
+    250,
+    500,
+    1000
+  ],
+  "bootstrap_samples": 2000,
+  "required": {
+    "exact_leakage_clean": true,
+    "model_digest_constant": true,
+    "max_forgetting": 0.01,
+    "security_regressions": 0
+  },
+  "learning": {
+    "skill_min_support": 2,
+    "accept_unverified_feedback": false
+  }
+}

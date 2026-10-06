@@ -1,0 +1,23 @@
+campaign_id: qwen-smoke-v161
+dataset: configs/smoke_tasks.jsonl
+require_cuda: true
+require_family_disjoint_hidden: false
+model:
+  id: Qwen/Qwen2.5-0.5B-Instruct
+  revision: main
+  dtype: bfloat16
+  quantization: none
+  trust_remote_code: false
+seeds: [0]
+max_new_tokens: 12
+minimum_forward_transfer: 0.0
+minimum_retention: 0.0
+retention_samples: 2
+lora:
+  rank: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules: [q_proj, v_proj]
+  learning_rate: 0.0002
+  steps: 20
+  max_length: 128

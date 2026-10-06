@@ -1,0 +1,7 @@
+{
+  "gpu_smoke": "NOT_RUN_CPU_OFFLINE_ENVIRONMENT",
+  "python_tests": "313/313",
+  "release_integrity": "source manifest/signature verifier included; final result recorded in RELEASE_ATTESTATION.json",
+  "schema": "mini-agi-v16.1-release-validation-v1",
+  "status": "PASS_WITH_GPU_SMOKE_PENDING"
+}

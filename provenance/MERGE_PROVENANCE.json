@@ -1,0 +1,42 @@
+{
+  "integrations": [
+    {
+      "policy": "ported full RC14.7 scientific-authority namespace",
+      "source": "EGAI_RC14_7_Externally_Executed_Evidence_Closure_Full_Upgraded.zip",
+      "target": "src-python/minagi/rc14/"
+    },
+    {
+      "policy": "ported grounded replay authority",
+      "source": "EGAI_RC12_5_GroundedReplay_PolicyImprovement_Full_Upgraded.zip",
+      "target": "src-python/egai/authority/replay_policy.py"
+    },
+    {
+      "policy": "ported live canary authority",
+      "source": "EGAI_RC12_5_GroundedReplay_PolicyImprovement_Full_Upgraded.zip",
+      "target": "src-python/egai/authority/replay_canary.py"
+    },
+    {
+      "policy": "ported as proposal-side optimizer",
+      "source": "Dream-RSI-Governed-RSI-v1.0.0-Full-Upgraded.zip",
+      "target": "src-python/dream_rsi_governed/"
+    },
+    {
+      "policy": "selected control_plane, plasticity_execution, dream_stats, isolated_solver only; RuntimeClosure2 intentionally excluded",
+      "source": "mini-AGI-v16.0.1-Converged-Governed-RSI-Full-Upgraded.zip",
+      "target": "src-python/minagi/v16/"
+    },
+    {
+      "policy": "hardened evaluator identity, dataset proof, signed runs, converged evidence, physical closure",
+      "source": "new convergence layer",
+      "target": "src-python/minagi/v161/"
+    },
+    {
+      "policy": "PyTorch/Hugging Face/PEFT backend with persistent CAS storage",
+      "source": "new Colab/CUDA layer",
+      "target": "src-python/minagi/platforms/"
+    }
+  ],
+  "non_regression_floor": "v15.8 full Python suite 304/304 passed before merge",
+  "primary_trunk": "mini-AGI-v15.8.0-Campaign1-Preregistered-Neural-Experiment-Full-Upgraded.zip",
+  "schema": "mini-agi-v16.1-merge-provenance-v1"
+}

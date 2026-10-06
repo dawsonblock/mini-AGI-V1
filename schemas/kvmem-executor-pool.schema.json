@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qw3.local/schemas/kvmem-executor-pool.schema.json",
+  "title": "QW3 KVMem physical executor pool status",
+  "type": "object",
+  "required": [
+    "object",
+    "scope",
+    "runtime_abi",
+    "configured_slots",
+    "certified_slots",
+    "installed_runtimes",
+    "runtimes"
+  ],
+  "properties": {
+    "object": {
+      "const": "kvmem.executor_pool"
+    },
+    "runtime_abi": {
+      "const": "executor-slot-runtime-v2"
+    },
+    "configured_slots": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "certified_slots": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "installed_runtimes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "runtimes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "slot",
+          "runtime_id",
+          "installed",
+          "busy",
+          "dirty",
+          "mounted_session_id",
+          "runtime_generation",
+          "leases",
+          "successful_releases",
+          "faulted_releases",
+          "cold_resets",
+          "last_used_at",
+          "active_lease_id",
+          "lease_sequence",
+          "linked_scheduler_lease_id"
+        ],
+        "properties": {
+          "slot": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runtime_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "busy": {
+            "type": "boolean"
+          },
+          "dirty": {
+            "type": "boolean"
+          },
+          "mounted_session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runtime_generation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "leases": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "successful_releases": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "faulted_releases": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cold_resets": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_used_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "active_lease_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lease_sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "linked_scheduler_lease_id": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "scope": {
+      "const": "persistent-session-runtime"
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,467 @@
+[
+  {
+    "path": "src/kernels_cuda_stub.cpp",
+    "status": "identical",
+    "sha256": "adbc07928958faf9e4842dc330434f0217846b27f8bbdc265d532caf88d39602"
+  },
+  {
+    "path": "src/tool_call_stream.cpp",
+    "status": "identical",
+    "sha256": "00c4e1387dbb8212456ad927acc4135ff9672322816391234238067c8890f822"
+  },
+  {
+    "path": "src/vision_gpu_frontend.cpp",
+    "status": "identical",
+    "sha256": "2a19dc277b85b526ddbff750ec625c55543e7ea26cb0e639d45d1e555dd05f58"
+  },
+  {
+    "path": "src/harness_semantics.cpp",
+    "status": "identical",
+    "sha256": "abce231f1c452759a5ed75d8348a420221505f1d0410b9d7ed9c8e3af190517c"
+  },
+  {
+    "path": "src/kvmem_executor_scheduler.hpp",
+    "status": "identical",
+    "sha256": "97f5884db43de9a9ef811798af8e279371c44b75019586460a88bef1affef56b"
+  },
+  {
+    "path": "src/qw3_server.cpp",
+    "status": "identical",
+    "sha256": "f942be6fe9a28f32b623b8cd2bdf34594aea8065a4210222fa81def7d7fd2d6a"
+  },
+  {
+    "path": "src/fp8_scaled_mm_adapter.hpp",
+    "status": "identical",
+    "sha256": "3dafb38ead2d1ba4ccb1b997b6a4941f1b95f1525ff8f76414262dba6d4679eb"
+  },
+  {
+    "path": "src/gdn_metal_stub.cpp",
+    "status": "identical",
+    "sha256": "02c6c1237919d2843ec1e4c5bc00dc220ad23eeaa1f3786f8ac6c3b16a0f3ba1"
+  },
+  {
+    "path": "src/mmvq_q8.cu",
+    "status": "identical",
+    "sha256": "e19c1b9dc7863cf773867ad54aae54c506717e69c0b0f0fed3cfd0a85874c448"
+  },
+  {
+    "path": "src/gdn_sm120_aot_adapter.cpp",
+    "status": "identical",
+    "sha256": "a2c757f32fc6f1a263a7bd51b8b8989b870b1637b18fbee77fd62c46caa41763"
+  },
+  {
+    "path": "src/rms_fp4_sm120_aot_adapter.cpp",
+    "status": "identical",
+    "sha256": "2ff2bacc99f559774aabd75bb1e9189d309702445f73d18419fa583a716aa5f9"
+  },
+  {
+    "path": "src/kvmem_executor_slot_runtime.hpp",
+    "status": "identical",
+    "sha256": "aadca7e73317c1681274e0c29c77c91bdf95a4d8f0fa33469d448cf251463330"
+  },
+  {
+    "path": "src/tokenizer_internal.hpp",
+    "status": "identical",
+    "sha256": "554a86e983432ae32e151a19f121994c1163c6d6156a5e9cbc3918382718a557"
+  },
+  {
+    "path": "src/anthropic_adapter.hpp",
+    "status": "identical",
+    "sha256": "59acaf3b10572912b75b92607b2fbaa8a22810c66939fb2761b69830b0c80331"
+  },
+  {
+    "path": "src/fattn_vec_decode.cu",
+    "status": "identical",
+    "sha256": "e0776279266295a9b38a486286ef41042d8559103bf7c0af3b19ac21fcdaadbe"
+  },
+  {
+    "path": "src/server.hpp",
+    "status": "identical",
+    "sha256": "a9f9e835319305ea696fb7b2bb9333b5090edd0160f5d81ca614821ef90e5bc0"
+  },
+  {
+    "path": "src/kernel_legacy.cu",
+    "status": "identical",
+    "sha256": "2637c247c361ae60f3248f7c37d3a811d962864cac69a77316a752aaf7b9dccc"
+  },
+  {
+    "path": "src/qwen_weights.cpp",
+    "status": "identical",
+    "sha256": "143e10f2c56ef3c0f50501dd137c58183979b6140ee70dfe345f9e4e5109ce1e"
+  },
+  {
+    "path": "src/qwen_executor.cpp",
+    "status": "identical",
+    "sha256": "2b92d5108f16134983c5d02607924cf37118f5b8a33b71b6b9f931a203be6dce"
+  },
+  {
+    "path": "src/kvmem_store.cpp",
+    "status": "identical",
+    "sha256": "bcd7f7b2ee22aa9d479b6ebf9812a1a593432066cd7bcc7e8fae2cd6f329a1ea"
+  },
+  {
+    "path": "src/flashinfer_prefill_adapter.cu",
+    "status": "identical",
+    "sha256": "309b1a4c78bbae9b6aa8d7558c48f4621c46d568302804a68b57374f94e0d88e"
+  },
+  {
+    "path": "src/kvmem_archive_cli.hpp",
+    "status": "identical",
+    "sha256": "dfc5b2f94a7c165ff7e89c2d23e405f922d9e2e52c1da2c53f925c1ec94274b5"
+  },
+  {
+    "path": "src/vision_cpu_frontend.cpp",
+    "status": "identical",
+    "sha256": "2f9f579520bc0ce6828aef01aeb4188233fe8c0eb35c6074ef57747e0f954da6"
+  },
+  {
+    "path": "src/nvfp4_linear_adapter.cu",
+    "status": "identical",
+    "sha256": "3cfc255e8aef055cae28be273f001ea5c08de39e5e5fb861a10c49f3e363479b"
+  },
+  {
+    "path": "src/fp8_scaled_mm_adapter.cu",
+    "status": "identical",
+    "sha256": "f4e19ef4e2fbec2eefb87fe4845319de908fad6d452e52c6590db358edeb8525"
+  },
+  {
+    "path": "src/flashinfer_vision_adapter.cu",
+    "status": "identical",
+    "sha256": "f877abc2509533d4693eded8a77aaac93bdcf972297c288356adcc9f223c2886"
+  },
+  {
+    "path": "src/vision_embedding_storage.hpp",
+    "status": "identical",
+    "sha256": "b4ae4eb456b197059238325e5484d1aad48267ede029a90b8d5245b685204d9b"
+  },
+  {
+    "path": "src/kvmem_archive.cpp",
+    "status": "identical",
+    "sha256": "aa9f4137b3143c7f11adb67252bb6202e08de5fbe4e87f795d37015678f0d5c5"
+  },
+  {
+    "path": "src/qwen_native.hpp",
+    "status": "identical",
+    "sha256": "f761ee9bca19a82e514c7ecd6f517ae5337d3bc2403ef131c9946ee6077b1085"
+  },
+  {
+    "path": "src/flashinfer_decode_adapter.hpp",
+    "status": "identical",
+    "sha256": "7da1a40d4478318379f1d4f85230608ee37867bbeafd7573f83d2a69d5cbddf1"
+  },
+  {
+    "path": "src/mmq_q8.cu",
+    "status": "identical",
+    "sha256": "96a4d478bc620f8b8f20d8005c88543d7e3251bb1d06c1ea1472b1951ba1a610"
+  },
+  {
+    "path": "src/qw3_inspect.cpp",
+    "status": "identical",
+    "sha256": "6743dc0a4c7f93953f8137dd888ed089e7f075854af1615fd878e3f555ad9972"
+  },
+  {
+    "path": "src/tokenizer.cpp",
+    "status": "identical",
+    "sha256": "4724174e7ae8404536d4c17e9bbae26128a256f9152caaf0e3217a42e3b8b5e2"
+  },
+  {
+    "path": "src/kvmem_request_plan.hpp",
+    "status": "identical",
+    "sha256": "051869a349a780378ec2666ac871db78958494f62bd6e1c45061e1a19b0dc0a3"
+  },
+  {
+    "path": "src/gdn_reference.cpp",
+    "status": "identical",
+    "sha256": "93b7ba0b57d6eaae8cbd25c58e090f347ceb5e891b5c035ab2d460f88d7a1a7c"
+  },
+  {
+    "path": "src/kernels_cuda.cu",
+    "status": "identical",
+    "sha256": "76de0ec07680b0d1d5c4d01ce0a143b51d206007e06eca06219500c2a54f6f34"
+  },
+  {
+    "path": "src/flashinfer_vision_adapter.hpp",
+    "status": "identical",
+    "sha256": "a4530ea1c25385115566b30d52dd911699184c1cad4a0b62e4aeea1ce18952c8"
+  },
+  {
+    "path": "src/qwen_weights.hpp",
+    "status": "identical",
+    "sha256": "e7201479bf618b904935edbbc0d5f18fc02a49def37612b611adf1a2c0f27e9a"
+  },
+  {
+    "path": "src/qwen_executor.hpp",
+    "status": "identical",
+    "sha256": "f9c1748a984cd965c2bd634f86a08c80b67dbd773dcd517839d23696096273a2"
+  },
+  {
+    "path": "src/qwen_config.cpp",
+    "status": "identical",
+    "sha256": "f74678e0fdea5cbcc823927e2f704623877404bf41d8ed1e98ebeb3fbc6c037f"
+  },
+  {
+    "path": "src/model_source.cpp",
+    "status": "identical",
+    "sha256": "b64117ab9eaee08d7b6d90334b69cb22a53962f70912492b25f680ce779592be"
+  },
+  {
+    "path": "src/vision_cpu_frontend.hpp",
+    "status": "identical",
+    "sha256": "464283136d6e05eb715dbb453ed6e9049d31b5d3308b19b41dca8769d709d14f"
+  },
+  {
+    "path": "src/gated_delta_net.cu",
+    "status": "identical",
+    "sha256": "0bf8b2707316eb9ffa4ec2f00d43e0f40bf1ef9ef52914902a1dfe6feee5e243"
+  },
+  {
+    "path": "src/qwen_native.cpp",
+    "status": "identical",
+    "sha256": "c790bce4def163d1cfdff3855c3b7c56a432527e431930fa0f5cba93f2b0c14e"
+  },
+  {
+    "path": "src/kvmem_runtime_profile.hpp",
+    "status": "identical",
+    "sha256": "258d7f3dd4ddcd0e0d6bd96c3e16c211ebdcb4845f4156d23e963b9f98c4a5f8"
+  },
+  {
+    "path": "src/kvmem_session_manager.hpp",
+    "status": "identical",
+    "sha256": "951295c9400d0eb5603aabd9f4c232796228976ad820d46a339c2c52b50de795"
+  },
+  {
+    "path": "src/kvmem_coherent_state.cpp",
+    "status": "identical",
+    "sha256": "3586673c1593e2c399e9d267363e5232df1ed33f88b3f5ef949d593080157ad0"
+  },
+  {
+    "path": "src/env_flags.hpp",
+    "status": "identical",
+    "sha256": "f7a51402ebd788f0eddf7efa07d5cd569ae57ad6139582a8e8b047e8931896e2"
+  },
+  {
+    "path": "src/kvmem_session.hpp",
+    "status": "identical",
+    "sha256": "d306ea11b68fbc12c86e275437f12b15cad44f9f5c2e02e0b175e80b63436116"
+  },
+  {
+    "path": "src/tool_call_stream.hpp",
+    "status": "identical",
+    "sha256": "fddf81fd537003e8a5dc4f83cc1629caddb8b3d19ee163168fd5d7ce47059dc3"
+  },
+  {
+    "path": "src/vision_gpu_frontend.hpp",
+    "status": "identical",
+    "sha256": "8b56c8c68a33e5f536c7cfbe6a1f833f850a787d0c5f16bb4e8c5855f600ad65"
+  },
+  {
+    "path": "src/engine.cpp",
+    "status": "identical",
+    "sha256": "ab335574cd984db1dfdaf258874ce2960b69ac3748711a38fcd97a3b165a11ce"
+  },
+  {
+    "path": "src/kvmem_session_state.hpp",
+    "status": "identical",
+    "sha256": "c711835da4653e1157c73f273f4ae999f896c59c4f49beb343b1abaf5c430c20"
+  },
+  {
+    "path": "src/gdn_runtime_cli.cpp",
+    "status": "identical",
+    "sha256": "dd66c27ef92b2eb0977a40e0e19c1059c7108d6cef3200b27d0b3f9679f2841e"
+  },
+  {
+    "path": "src/backend.hpp",
+    "status": "identical",
+    "sha256": "d5eb64ffe0535afcdb940c60b0056b1f64ae8f40b185d6161371ee9707133605"
+  },
+  {
+    "path": "src/kvmem_resource_admission.hpp",
+    "status": "identical",
+    "sha256": "6401b8250ad54ecee60076efb3f27164c38bafaebe56689e87ba31fc5c841d76"
+  },
+  {
+    "path": "src/harness_semantics.hpp",
+    "status": "identical",
+    "sha256": "d5ae01587f83c0fc4f8fe833b52d66401805f31ee7942b25e4b1053eac1bf349"
+  },
+  {
+    "path": "src/flashinfer_prefill_adapter.hpp",
+    "status": "identical",
+    "sha256": "022f9299e2b4f9326b3c2a86e210925f0d15fa639f74e8abf2cd0063d123095e"
+  },
+  {
+    "path": "src/qw3_cli.cpp",
+    "status": "identical",
+    "sha256": "f2b4abb25d073ee64c090dd61b20472b82be30da4c908da2059ff3646b295220"
+  },
+  {
+    "path": "src/gdn_runtime_bundle.cpp",
+    "status": "identical",
+    "sha256": "c4ea0a6a3c202617a47137191fe360159c20354fb71145d4c765501fb90feade"
+  },
+  {
+    "path": "src/gdn_segment_io.cpp",
+    "status": "identical",
+    "sha256": "7dd2338da1dc0075ec4187981a1d696df55bb4dbf504d62f55422be6feb0bc49"
+  },
+  {
+    "path": "src/gguf.cpp",
+    "status": "identical",
+    "sha256": "636c6d62cb3fe8dc64deb17536a589175581c60ede32e7dee8a6ef2cd1e98b85"
+  },
+  {
+    "path": "src/cuda_helpers.cuh",
+    "status": "identical",
+    "sha256": "f19c85514ddb1a9f406ae6666f2a34a51302538831209460de3273af6bd8ee1a"
+  },
+  {
+    "path": "src/kvmem_refresh_policy.hpp",
+    "status": "identical",
+    "sha256": "71163c2dc7c8e886c82abb0415ce8ba9a9eea10cd33b529aa4e5291a1c54cc90"
+  },
+  {
+    "path": "src/nvfp4_linear_adapter.hpp",
+    "status": "identical",
+    "sha256": "d0f4b2d112dd7b1526fde31647f8ec5b09b751a260cbb453ddc9e4b7e2f56e8c"
+  },
+  {
+    "path": "src/qwen_native_backend.cpp",
+    "status": "identical",
+    "sha256": "d139a8a695cb206bc23358f3a4ed4c0664fdeb43d7fcd766e33b4a7f2817f09d"
+  },
+  {
+    "path": "src/kvmem_physical_executor_pool.hpp",
+    "status": "identical",
+    "sha256": "afeb21f23bd8f1fd4d6bc7a881e377a9c2d408aaa798857e02b644c03e6e59a3"
+  },
+  {
+    "path": "src/gdn_metal.mm",
+    "status": "identical",
+    "sha256": "27340b913b520c010d3130c898ff74ea3420c3624e55c30652e2e1c4c2229675"
+  },
+  {
+    "path": "src/rms_fp4_sm120_aot_adapter.hpp",
+    "status": "identical",
+    "sha256": "901f9e9dc266bd6e024e77e772a3efb5f80302b145f55bf657760b324fc5748b"
+  },
+  {
+    "path": "src/flashinfer_decode_adapter.cu",
+    "status": "identical",
+    "sha256": "578a32abb88e9f504f8f82a501c09daf14b84f243fd5a8e8a25e4c1391d144f1"
+  },
+  {
+    "path": "src/gdn_sm120_aot_adapter.hpp",
+    "status": "identical",
+    "sha256": "3344a52b11a027a34397d42bd1be811578b0df44e3d0072abdfd85da021e4cde"
+  },
+  {
+    "path": "src/anthropic_adapter.cpp",
+    "status": "identical",
+    "sha256": "2d31ed59b36722d819f9fc4ee1d9f68508c0c0b4f02f2e0f33b9780057861426"
+  },
+  {
+    "path": "src/gdn_summary_cli.cpp",
+    "status": "identical",
+    "sha256": "757a5fc05765d6999d17873fddbb92cad947a8555782cf1302360622621975d9"
+  },
+  {
+    "path": "src/kvmem_prefix_reuse_policy.hpp",
+    "status": "identical",
+    "sha256": "f49ade88a88ee453910693c2b10139f127a87ff1bd514005b818251fd4a5e730"
+  },
+  {
+    "path": "src/kvmem_session_snapshot.hpp",
+    "status": "identical",
+    "sha256": "7d3d1f6b18130ada79dec873a088a480d3bf56d8e388748d0d93dfc29f94df46"
+  },
+  {
+    "path": "src/gdn_summary_runtime.cpp",
+    "status": "identical",
+    "sha256": "14730c29daacbec981cfb809d1eeee04afa316f41a53796fdb2939df7f65d1af"
+  },
+  {
+    "path": "include/qw3/gdn_segment_io.hpp",
+    "status": "identical",
+    "sha256": "98f24304b7b29ce97c88ac2ee5c882f6546ad521f8e73704d99e7224b4840f16"
+  },
+  {
+    "path": "include/qw3/gdn_runtime_bundle.hpp",
+    "status": "identical",
+    "sha256": "6cfc089efd34be16e9aa7fa5a2f29818ea8e732b6c9096b3ec20bfe53e0f3d4e"
+  },
+  {
+    "path": "include/qw3/gguf.hpp",
+    "status": "identical",
+    "sha256": "09ca65a935c36af0bcc7edb160dd8c4cac9d487e68bdf166fe2a36056121fb40"
+  },
+  {
+    "path": "include/qw3/gdn_summary_runtime.hpp",
+    "status": "identical",
+    "sha256": "f92957ec0ec1c27a62c15daccadf843d9f4c711a8494b41bc768686ea287b498"
+  },
+  {
+    "path": "include/qw3/pinned_kv_tier.hpp",
+    "status": "identical",
+    "sha256": "77ca4f975af2d3316cc8eb2144e120097ca6e9a726ed36c9580473a4aa79be68"
+  },
+  {
+    "path": "include/qw3/qwen_config.hpp",
+    "status": "identical",
+    "sha256": "6d325418043e4d2c9292c22887fd6c44a5dd193555547a24686ccbc923f96679"
+  },
+  {
+    "path": "include/qw3/model_source.hpp",
+    "status": "identical",
+    "sha256": "f7e43d12b1be7d6a45af04ce0962ea5ef668511ed0c8b824cf8c7135fdd703ce"
+  },
+  {
+    "path": "include/qw3/kvmem_coherent_state.hpp",
+    "status": "identical",
+    "sha256": "1a53466bad8926bb66b764364150f2d70cf65c941dab6b0f61127e39703a7c65"
+  },
+  {
+    "path": "include/qw3/device_backend.hpp",
+    "status": "identical",
+    "sha256": "5b4859d98a6259e8bfba722eb50e8b9d5ab6109414b970567d2bb318e108cc3c"
+  },
+  {
+    "path": "include/qw3/kvmem_store.hpp",
+    "status": "identical",
+    "sha256": "fea6fdf59733ae41bfaca4abf941d755c54a50c8b68139680b5d77e0385eeca5"
+  },
+  {
+    "path": "include/qw3/kvmem_archive.hpp",
+    "status": "identical",
+    "sha256": "f066dee6ce34f67bbf5ce1cc98aa45d68454cd36d03877f64c7d3517a999d305"
+  },
+  {
+    "path": "include/qw3/tokenizer.hpp",
+    "status": "identical",
+    "sha256": "5e7a62f98b773bd69b4c8c465cb56cf40fa29a10dcf37f06e5afa0086a25d368"
+  },
+  {
+    "path": "include/qw3/gdn_reference.hpp",
+    "status": "identical",
+    "sha256": "f53f8cd13a4be917d2ec0c61706676e17bf82b1926e2bc9c5c5c6a8932c3a24e"
+  },
+  {
+    "path": "include/qw3/qw3.hpp",
+    "status": "identical",
+    "sha256": "cd081e2e096b2c8667ff1ed2b1d9dfdfc194dbd079f7177b9cc28f24fdda20f3"
+  },
+  {
+    "path": "include/qw3/nvme_kv_tier.hpp",
+    "status": "identical",
+    "sha256": "898b85f870524c1947dfd78f893e40c8656ec07247d060c8f1c2429c13e7940e"
+  },
+  {
+    "path": "include/qw3/gdn_metal.hpp",
+    "status": "identical",
+    "sha256": "93143365fb64598aede594ce2f6e441b20b12671789fe3cc309158e57dabaa97"
+  },
+  {
+    "path": "metal/gdn_reference.metal",
+    "status": "identical",
+    "sha256": "2ca1bcfa838616a7670bc6a6276ac547d06f5b64b607ed71873f5872bbf67e20"
+  }
+]

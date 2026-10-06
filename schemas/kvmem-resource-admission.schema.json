@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:qw3:kvmem-resource-admission:v1",
+  "title": "QW3 KVMem Resource Admission Status",
+  "type": "object",
+  "required": [
+    "object", "policy",
+    "slot_vram_bytes", "slot_host_bytes", "slot_nvme_bytes",
+    "capacity_vram_bytes", "capacity_host_bytes", "capacity_nvme_bytes",
+    "used_vram_bytes", "used_host_bytes", "used_nvme_bytes",
+    "high_water_vram_bytes", "high_water_host_bytes", "high_water_nvme_bytes",
+    "max_inflight", "inflight", "high_water_inflight", "admissions", "rejections"
+  ],
+  "properties": {
+    "object": { "const": "kvmem.resources" },
+    "policy": { "const": "fail-fast-byte-envelope" },
+    "slot_vram_bytes": { "type": "integer", "minimum": 0 },
+    "slot_host_bytes": { "type": "integer", "minimum": 0 },
+    "slot_nvme_bytes": { "type": "integer", "minimum": 0 },
+    "capacity_vram_bytes": { "type": "integer", "minimum": 0 },
+    "capacity_host_bytes": { "type": "integer", "minimum": 0 },
+    "capacity_nvme_bytes": { "type": "integer", "minimum": 0 },
+    "used_vram_bytes": { "type": "integer", "minimum": 0 },
+    "used_host_bytes": { "type": "integer", "minimum": 0 },
+    "used_nvme_bytes": { "type": "integer", "minimum": 0 },
+    "high_water_vram_bytes": { "type": "integer", "minimum": 0 },
+    "high_water_host_bytes": { "type": "integer", "minimum": 0 },
+    "high_water_nvme_bytes": { "type": "integer", "minimum": 0 },
+    "max_inflight": { "type": "integer", "minimum": 1 },
+    "inflight": { "type": "integer", "minimum": 0 },
+    "high_water_inflight": { "type": "integer", "minimum": 0 },
+    "admissions": { "type": "integer", "minimum": 0 },
+    "rejections": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,7248 @@
+#include "server.hpp"
+
+#include "anthropic_adapter.hpp"
+#include "env_flags.hpp"
+#include "harness_semantics.hpp"
+#include "kvmem_request_plan.hpp"
+#include "kvmem_refresh_policy.hpp"
+#include "kvmem_runtime_profile.hpp"
+#include "tool_call_stream.hpp"
+#include "vision_cpu_frontend.hpp"
+#include "qw3/qw3.hpp"
+#include "qw3/gguf.hpp"
+#include "qw3/kvmem_archive.hpp"
+#include "qw3/kvmem_store.hpp"
+#include "qw3/runtime_closure.hpp"
+#include "qw3/tokenizer.hpp"
+
+// Vendored single-header deps (included as SYSTEM headers via CMake so their
+// warnings don't trip -Wall -Wextra -Wpedantic).
+#include "httplib.h"
+#include "json.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cctype>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <cstdint>
+#include <filesystem>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <random>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <thread>
+
+namespace qw3 {
+
+namespace {
+
+using json = nlohmann::json;
+
+using ServerClock = std::chrono::steady_clock;
+using ServerTimePoint = ServerClock::time_point;
+
+double server_elapsed_seconds(ServerTimePoint begin, ServerTimePoint end) {
+    return std::chrono::duration<double>(end - begin).count();
+}
+
+bool visible_stream_delta(const json &delta) {
+    for (const char *key : {"content", "reasoning_content"}) {
+        if (delta.contains(key) && delta[key].is_string() &&
+            !delta[key].get_ref<const std::string &>().empty()) {
+            return true;
+        }
+    }
+    return delta.contains("tool_calls") && delta["tool_calls"].is_array() &&
+           !delta["tool_calls"].empty();
+}
+
+// Server-side TTFT uses the request-arrival boundary, so JSON parsing,
+// rendering/tokenization, queueing, prefix restoration, KVMem reselection,
+// query replay, and the first decode step are all represented.  Keep both the
+// first non-empty model piece and the first visible streamed payload: tool and
+// reasoning framing may delay the latter even after the model has produced a
+// token.
+struct ServerTtftTracker {
+    explicit ServerTtftTracker(ServerTimePoint request_start_in)
+        : request_start(request_start_in) {}
+
+    void start_engine(ServerTimePoint when) {
+        engine_start = when;
+        engine_started = true;
+    }
+
+    void observe_model_piece(const std::string &piece) {
+        if (!first_model_seen && !piece.empty()) {
+            first_model_seen = true;
+            first_model_at = ServerClock::now();
+        }
+    }
+
+    void observe_visible_output() {
+        if (!first_output_seen) {
+            first_output_seen = true;
+            first_output_at = ServerClock::now();
+        }
+    }
+
+    json timing_json(ServerTimePoint request_end) const {
+        return json{
+            {"server_ttft_sec", first_model_seen
+                 ? json(server_elapsed_seconds(request_start, first_model_at))
+                 : json(nullptr)},
+            {"engine_ttft_sec", first_model_seen && engine_started
+                 ? json(server_elapsed_seconds(engine_start, first_model_at))
+                 : json(nullptr)},
+            {"response_ttft_sec", first_output_seen
+                 ? json(server_elapsed_seconds(request_start, first_output_at))
+                 : json(nullptr)},
+            {"request_total_sec",
+             server_elapsed_seconds(request_start, request_end)}};
+    }
+
+    void log(uint64_t rid, const std::string &route, bool streaming,
+             ServerTimePoint request_end) const {
+        const double server_ttft_ms = first_model_seen
+            ? server_elapsed_seconds(request_start, first_model_at) * 1000.0
+            : -1.0;
+        const double engine_ttft_ms = first_model_seen && engine_started
+            ? server_elapsed_seconds(engine_start, first_model_at) * 1000.0
+            : -1.0;
+        const double response_ttft_ms = first_output_seen
+            ? server_elapsed_seconds(request_start, first_output_at) * 1000.0
+            : -1.0;
+        std::cerr << std::fixed << std::setprecision(6)
+                  << "[qw3-server-ttft]"
+                  << " rid=" << rid
+                  << " route=" << route
+                  << " stream=" << (streaming ? 1 : 0)
+                  << " model_token_seen=" << (first_model_seen ? 1 : 0)
+                  << " server_ttft_ms=" << server_ttft_ms
+                  << " engine_ttft_ms=" << engine_ttft_ms
+                  << " visible_output_seen=" << (first_output_seen ? 1 : 0)
+                  << " response_ttft_ms=" << response_ttft_ms
+                  << " request_total_ms="
+                  << server_elapsed_seconds(request_start, request_end) * 1000.0
+                  << "\n";
+    }
+
+    ServerTimePoint request_start{};
+    ServerTimePoint engine_start{};
+    ServerTimePoint first_model_at{};
+    ServerTimePoint first_output_at{};
+    bool engine_started = false;
+    bool first_model_seen = false;
+    bool first_output_seen = false;
+};
+
+bool serve_continuous_batching_enabled() {
+    return env_flag_enabled("QW3_CONTINUOUS_BATCHING");
+}
+
+void setenv_value(const char *key, const std::string &value) {
+    setenv(key, value.c_str(), 1);
+}
+
+void setenv_value(const char *key, const char *value) {
+    setenv(key, value, 1);
+}
+
+void setenv_value(const char *key, int value) {
+    setenv_value(key, std::to_string(value));
+}
+
+void setenv_value(const char *key, uint64_t value) {
+    setenv_value(key, std::to_string(value));
+}
+
+void setenv_bool(const char *key, bool value) {
+    setenv_value(key, value ? "1" : "0");
+}
+
+const char *yesno(bool v) {
+    return v ? "1" : "0";
+}
+
+std::string bytes_gib_label(uint64_t bytes) {
+    char buf[64];
+    const double gib = static_cast<double>(bytes) /
+        (1024.0 * 1024.0 * 1024.0);
+    std::snprintf(buf, sizeof(buf), "%.3f GiB", gib);
+    return std::string(buf);
+}
+
+bool serve_continuous_batch_request_supported(const GenerationOptions &g) {
+    // Request-local budgets mutate the single executor's selection policy for
+    // the duration of a request. Keep them on the serialized plain/frozen path
+    // until continuous batching has a per-row budget field.
+    return g.max_tokens >= 0 && g.kvmem_replay_query_spans.empty() &&
+           g.input_embedding_overrides.empty() &&
+           g.kvmem_pinned_token_spans.empty() &&
+           g.kvmem_semantic_budget == 0 &&
+           g.kvmem_query_attention_probe_tokens == 0 &&
+           g.kvmem_query_attention_score_tokens == 0 &&
+           g.kvmem_query_guided_thinking_max_tokens == 0 &&
+           g.kvmem_query_guided_query_max_tokens == 0 &&
+           !g.kvmem_query_guided_direct &&
+           g.kvmem_middecode_trigger_tokens == 0 &&
+           g.kvmem_middecode_steady_trigger_tokens == 0 &&
+           g.kvmem_middecode_max_refreshes == 0 &&
+           g.kvmem_middecode_query_max_tokens == 0;
+}
+
+json usage_json(size_t prompt_tokens, size_t completion_tokens) {
+    return json{{"prompt_tokens", prompt_tokens},
+                {"completion_tokens", completion_tokens},
+                {"total_tokens", prompt_tokens + completion_tokens}};
+}
+
+bool valid_kvmem_cache_id(const std::string &id) {
+    if (id.empty() || id.size() > 128) return false;
+    return std::all_of(id.begin(), id.end(), [](unsigned char c) {
+        return std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == ':';
+    });
+}
+
+bool parse_bounded_json_u64(const json &value, uint64_t min_value,
+                            uint64_t max_value, uint64_t &out) {
+    if (value.is_number_unsigned()) {
+        const uint64_t parsed = value.get<uint64_t>();
+        if (parsed < min_value || parsed > max_value) return false;
+        out = parsed;
+        return true;
+    }
+    if (value.is_number_integer()) {
+        const int64_t parsed = value.get<int64_t>();
+        if (parsed < 0) return false;
+        const uint64_t converted = static_cast<uint64_t>(parsed);
+        if (converted < min_value || converted > max_value) return false;
+        out = converted;
+        return true;
+    }
+    return false;
+}
+
+json kvmem_cache_info_json(const KvMemLocalCacheInfo &info) {
+    json out = {
+        {"id", info.id},
+        {"version", info.version},
+        {"status", info.status},
+        {"position", info.position},
+        {"fingerprint", info.fingerprint},
+        {"scope", info.scope},
+        {"created_at", info.created_at},
+        {"last_access_at", info.last_access_at},
+        {"expires_at", info.expires_at == 0 ? json(nullptr)
+                                             : json(info.expires_at)},
+        {"selected_blocks", info.selected_blocks},
+        {"total_blocks", info.total_blocks},
+        {"residency", json{{"gpu_bytes", info.gpu_bytes},
+                            {"cpu_bytes", info.cpu_bytes},
+                            {"nvme_bytes", info.nvme_bytes}}}
+    };
+    return out;
+}
+
+json kvmem_session_info_json(const KvMemSessionInfo &info) {
+    return json{
+        {"id", info.id},
+        {"workspace_id", info.workspace_id.empty() ? json(nullptr) : json(info.workspace_id)},
+        {"status", info.status},
+        {"version", info.version},
+        {"token_count", info.token_count},
+        {"created_at", info.created_at},
+        {"last_access_at", info.last_access_at},
+        {"cold_rehydrates", info.cold_rehydrates},
+        {"host_bytes", info.host_bytes},
+        {"hot", info.hot},
+        {"executor_slot", info.executor_slot < 0 ? json(nullptr) : json(info.executor_slot)}
+    };
+}
+
+json kvmem_session_snapshot_info_json(const KvMemSessionSnapshotInfo &info) {
+    return json{
+        {"id", info.id},
+        {"workspace_id", info.workspace_id.empty() ? json(nullptr) : json(info.workspace_id)},
+        {"version", info.version},
+        {"token_count", info.token_count},
+        {"host_bytes", info.host_bytes},
+        {"runtime_fingerprint", info.runtime_fingerprint},
+        {"created_at", info.created_at},
+        {"saved_at", info.saved_at}
+    };
+}
+
+json kvmem_scheduler_info_json(const KvMemExecutorSchedulerInfo &info) {
+    json slots = json::array();
+    for (const auto &slot : info.slots) {
+        slots.push_back(json{
+            {"index", slot.index},
+            {"session_id", slot.session_id.empty() ? json(nullptr) : json(slot.session_id)},
+            {"busy", slot.busy},
+            {"dirty", slot.dirty},
+            {"generation", slot.generation},
+            {"last_used_at", slot.last_used_at},
+            {"mounts", slot.mounts},
+            {"cold_mounts", slot.cold_mounts},
+            {"fault_count", slot.fault_count},
+            {"reset_count", slot.reset_count},
+            {"active_lease_id", slot.active_lease_id}
+        });
+    }
+    return json{
+        {"object", "kvmem.scheduler"},
+        {"policy", "lru-affinity-fail-fast"},
+        {"slot_count", info.slot_count},
+        {"busy_slots", info.busy_slots},
+        {"mounted_sessions", info.mounted_sessions},
+        {"lease_sequence", info.lease_sequence},
+        {"warm_hits", info.warm_hits},
+        {"cold_mounts", info.cold_mounts},
+        {"backpressure_rejections", info.backpressure_rejections},
+        {"faulted_releases", info.faulted_releases},
+        {"forced_cold_resets", info.forced_cold_resets},
+        {"slots", std::move(slots)}
+    };
+}
+
+json kvmem_physical_executor_pool_info_json(const KvMemPhysicalExecutorPoolInfo &info) {
+    json runtimes = json::array();
+    for (const auto &runtime : info.runtimes) {
+        runtimes.push_back(json{
+            {"slot", runtime.slot},
+            {"runtime_id", runtime.runtime_id},
+            {"installed", runtime.installed},
+            {"busy", runtime.busy},
+            {"dirty", runtime.dirty},
+            {"mounted_session_id", runtime.mounted_session_id.empty()
+                ? json(nullptr) : json(runtime.mounted_session_id)},
+            {"runtime_generation", runtime.runtime_generation},
+            {"leases", runtime.leases},
+            {"successful_releases", runtime.successful_releases},
+            {"faulted_releases", runtime.faulted_releases},
+            {"cold_resets", runtime.cold_resets},
+            {"last_used_at", runtime.last_used_at},
+            {"active_lease_id", runtime.active_lease_id},
+            {"lease_sequence", runtime.lease_sequence},
+            {"linked_scheduler_lease_id", runtime.linked_scheduler_lease_id}
+        });
+    }
+    return json{
+        {"object", "kvmem.executor_pool"},
+        {"scope", info.scope},
+        {"runtime_abi", info.runtime_abi},
+        {"configured_slots", info.configured_slots},
+        {"certified_slots", info.certified_slots},
+        {"installed_runtimes", info.installed_runtimes},
+        {"runtimes", std::move(runtimes)}
+    };
+}
+
+json kvmem_resource_info_json(const KvMemResourceAdmissionInfo &info) {
+    return json{
+        {"object", "kvmem.resources"},
+        {"policy", "fail-fast-byte-envelope"},
+        {"slot_vram_bytes", info.slot_vram_bytes},
+        {"slot_host_bytes", info.slot_host_bytes},
+        {"slot_nvme_bytes", info.slot_nvme_bytes},
+        {"capacity_vram_bytes", info.capacity_vram_bytes},
+        {"capacity_host_bytes", info.capacity_host_bytes},
+        {"capacity_nvme_bytes", info.capacity_nvme_bytes},
+        {"used_vram_bytes", info.used_vram_bytes},
+        {"used_host_bytes", info.used_host_bytes},
+        {"used_nvme_bytes", info.used_nvme_bytes},
+        {"high_water_vram_bytes", info.high_water_vram_bytes},
+        {"high_water_host_bytes", info.high_water_host_bytes},
+        {"high_water_nvme_bytes", info.high_water_nvme_bytes},
+        {"max_inflight", info.max_inflight},
+        {"inflight", info.inflight},
+        {"high_water_inflight", info.high_water_inflight},
+        {"admissions", info.admissions},
+        {"rejections", info.rejections}
+    };
+}
+
+bool parse_explicit_max_tokens(const json &req, bool &present, int &value,
+                               std::string &error) {
+    const char *key = nullptr;
+    if (req.contains("max_tokens")) {
+        key = "max_tokens";
+    } else if (req.contains("max_completion_tokens")) {
+        key = "max_completion_tokens";
+    }
+    present = key != nullptr;
+    if (!present) return true;
+    const json &field = req[key];
+    if (!field.is_number_integer()) {
+        error = std::string(key) + " must be an integer";
+        return false;
+    }
+    const int64_t raw = field.get<int64_t>();
+    if (raw < 0) {
+        error = std::string(key) + " must be >= 0";
+        return false;
+    }
+    if (raw > std::numeric_limits<int>::max()) {
+        error = std::string(key) + " is too large";
+        return false;
+    }
+    value = static_cast<int>(raw);
+    return true;
+}
+
+std::string basename_of(const std::string &path) {
+    const size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+int64_t unix_now() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
+// Random-ish id for the OpenAI `id` field. Not security-sensitive.
+std::string gen_id(const char *prefix) {
+    static std::mt19937_64 rng(std::random_device{}());
+    static const char *hex = "0123456789abcdef";
+    std::string s = prefix;
+    for (int i = 0; i < 24; ++i) s += hex[rng() & 0xF];
+    return s;
+}
+
+std::string dump_json(const json &value) {
+    return value.dump(-1, ' ', false, json::error_handler_t::replace);
+}
+
+void set_error_response(httplib::Response &res,
+                        int status,
+                        const std::string &message) {
+    res.status = status;
+    res.set_content(dump_json(json{{"error", message}}), "application/json");
+}
+
+int status_for_exception(const std::exception &e) {
+    const std::string msg = e.what();
+    if (dynamic_cast<const std::invalid_argument *>(&e)) return 400;
+    if (msg.find("KVMem local cache not found") != std::string::npos) return 404;
+    if (msg.find("KVMem local cache expired") != std::string::npos ||
+        msg.find("KVMem local cache evicted") != std::string::npos) return 410;
+    if (msg.find("KVMem local cache version conflict") != std::string::npos)
+        return 409;
+    if (msg.find("KVMem logical session not found") != std::string::npos) return 404;
+    if (msg.find("KVMem session workspace binding mismatch") != std::string::npos) return 409;
+    if (msg.find("cold KVMem session cannot resume") != std::string::npos) return 409;
+    if (msg.find("KVMem logical session limit exceeded") != std::string::npos ||
+        msg.find("KVMem logical-session host token limit exceeded") != std::string::npos)
+        return 429;
+    if (msg.find("admission rejected") != std::string::npos) return 429;
+    if (msg.find("global KV page pool exhausted") != std::string::npos) return 429;
+    if (msg.find("prompt exceeds KV context") != std::string::npos) return 413;
+    return 500;
+}
+
+std::string replacement_char() {
+    return "\xEF\xBF\xBD";
+}
+
+size_t utf8_expected_len(unsigned char c) {
+    if (c < 0x80) return 1;
+    if ((c & 0xE0) == 0xC0) return 2;
+    if ((c & 0xF0) == 0xE0) return 3;
+    if ((c & 0xF8) == 0xF0) return 4;
+    return 0;
+}
+
+bool utf8_cont(unsigned char c) {
+    return (c & 0xC0) == 0x80;
+}
+
+std::string take_complete_utf8(std::string &pending,
+                               const std::string &piece,
+                               size_t holdback = 0) {
+    pending += piece;
+    std::string out;
+    size_t i = 0;
+    const size_t limit = pending.size() > holdback ? pending.size() - holdback : 0;
+    while (i < pending.size()) {
+        if (i >= limit) break;
+        const unsigned char c0 = static_cast<unsigned char>(pending[i]);
+        const size_t len = utf8_expected_len(c0);
+        if (len == 0) {
+            out += replacement_char();
+            ++i;
+            continue;
+        }
+        if (i + len > pending.size() || i + len > limit) break;
+        bool ok = true;
+        for (size_t j = 1; j < len; ++j) {
+            if (!utf8_cont(static_cast<unsigned char>(pending[i + j]))) {
+                ok = false;
+                break;
+            }
+        }
+        if (!ok) {
+            out += replacement_char();
+            ++i;
+            continue;
+        }
+        out.append(pending, i, len);
+        i += len;
+    }
+    pending.erase(0, i);
+    return out;
+}
+
+std::string flush_utf8_pending(std::string &pending, bool replace_incomplete = true) {
+    if (pending.empty()) return {};
+    std::string out = take_complete_utf8(pending, {}, 0);
+    if (!pending.empty()) {
+        pending.clear();
+        if (replace_incomplete) out += replacement_char();
+    }
+    return out;
+}
+
+size_t utf8_safe_prefix_len(const std::string &text, size_t desired) {
+    size_t cut = std::min(desired, text.size());
+    while (cut > 0 && cut < text.size() &&
+           utf8_cont(static_cast<unsigned char>(text[cut]))) {
+        --cut;
+    }
+    return cut;
+}
+
+struct ReasoningSplit {
+    std::string reasoning;
+    std::string content;
+};
+
+std::string render_content(const json &content);
+std::string trim_ascii_ws(std::string s);
+
+ReasoningSplit split_reasoning(const std::string &text) {
+    const std::string open = "<think>";
+    const std::string close = "</think>";
+    const size_t start = text.find(open);
+    if (start == std::string::npos) return ReasoningSplit{{}, text};
+    const size_t reasoning_start = start + open.size();
+    const size_t end = text.find(close, reasoning_start);
+    if (end == std::string::npos) {
+        std::string reasoning = text.substr(reasoning_start);
+        if (!reasoning.empty() && reasoning.front() == '\n') reasoning.erase(reasoning.begin());
+        return ReasoningSplit{reasoning, {}};
+    }
+    std::string reasoning = text.substr(reasoning_start, end - reasoning_start);
+    std::string content = text.substr(end + close.size());
+    if (!reasoning.empty() && reasoning.front() == '\n') reasoning.erase(reasoning.begin());
+    if (!reasoning.empty() && reasoning.back() == '\n') reasoning.pop_back();
+    while (!content.empty() && (content.front() == '\n' || content.front() == '\r')) {
+        content.erase(content.begin());
+    }
+    return ReasoningSplit{reasoning, content};
+}
+
+bool is_tool_response_content(const std::string &content) {
+    const std::string trimmed = trim_ascii_ws(content);
+    const std::string open = "<tool_response>";
+    const std::string close = "</tool_response>";
+    return trimmed.rfind(open, 0) == 0 &&
+           trimmed.size() >= close.size() &&
+           trimmed.compare(trimmed.size() - close.size(), close.size(), close) == 0;
+}
+
+size_t last_query_index_for_template(
+        const json &messages,
+        detail::HarnessKind harness_kind = detail::HarnessKind::None) {
+    if (!messages.is_array() || messages.empty()) return 0;
+    bool multi_step_tool = true;
+    size_t last_query = messages.size() - 1;
+    for (size_t rev = 0; rev < messages.size(); ++rev) {
+        const size_t i = messages.size() - 1 - rev;
+        const auto &m = messages[i];
+        if (!m.is_object()) continue;
+        if (multi_step_tool && m.value("role", "") == "user") {
+            const std::string content =
+                trim_ascii_ws(m.contains("content") ? render_content(m["content"]) : "");
+            if (!is_tool_response_content(content) &&
+                !detail::harness_message_is_meta_only(
+                    harness_kind, content)) {
+                multi_step_tool = false;
+                last_query = i;
+            }
+        }
+    }
+    return last_query;
+}
+
+enum class StreamPart {
+    Reasoning,
+    Content,
+};
+
+class ReasoningStreamSplitter {
+public:
+    explicit ReasoningStreamSplitter(bool enabled)
+        : enabled_(enabled), part_(enabled ? StreamPart::Reasoning : StreamPart::Content) {}
+
+    std::vector<std::pair<StreamPart, std::string>> push(const std::string &text) {
+        if (!enabled_) return {{StreamPart::Content, text}};
+        pending_ += text;
+        std::vector<std::pair<StreamPart, std::string>> out;
+        while (!pending_.empty()) {
+            if (part_ == StreamPart::Reasoning) {
+                const size_t close = pending_.find("</think>");
+                if (close == std::string::npos) {
+                    const size_t keep = std::min<size_t>(pending_.size(), 7);
+                    const size_t emit_len =
+                        utf8_safe_prefix_len(pending_, pending_.size() - keep);
+                    if (emit_len > 0) {
+                        out.push_back({StreamPart::Reasoning, pending_.substr(0, emit_len)});
+                        pending_.erase(0, emit_len);
+                    }
+                    break;
+                }
+                if (close > 0) out.push_back({StreamPart::Reasoning, pending_.substr(0, close)});
+                pending_.erase(0, close + std::string("</think>").size());
+                while (!pending_.empty() && (pending_.front() == '\n' || pending_.front() == '\r')) {
+                    pending_.erase(pending_.begin());
+                }
+                part_ = StreamPart::Content;
+            } else {
+                out.push_back({StreamPart::Content, pending_});
+                pending_.clear();
+            }
+        }
+        return out;
+    }
+
+    std::vector<std::pair<StreamPart, std::string>> finish() {
+        if (pending_.empty()) return {};
+        std::vector<std::pair<StreamPart, std::string>> out{{part_, pending_}};
+        pending_.clear();
+        return out;
+    }
+
+private:
+    bool enabled_ = false;
+    StreamPart part_ = StreamPart::Content;
+    std::string pending_;
+};
+
+std::string render_content(const json &content) {
+    if (content.is_string()) return content.get<std::string>();
+    if (content.is_null()) return {};
+    if (content.is_array()) {
+        std::string out;
+        for (const auto &item : content) {
+            if (item.is_string()) {
+                out += item.get<std::string>();
+            } else if (item.is_object() && item.contains("text") && item["text"].is_string()) {
+                out += item["text"].get<std::string>();
+            }
+        }
+        return out;
+    }
+    return content.dump();
+}
+
+struct PreparedVisionRequest {
+    detail::CpuVisionEncoding encoded;
+    std::vector<std::pair<uint32_t, uint32_t>> token_spans;
+    uint64_t fingerprint = 0;
+
+    bool active() const { return !encoded.grids.empty(); }
+};
+
+using VisionEncoder = std::function<
+    VisionEncoding(const std::vector<VisionImage> &)>;
+
+bool parse_data_image_url(const std::string &url,
+                          detail::CpuVisionImage &image,
+                          std::string &error) {
+    if (url.rfind("data:", 0) != 0) {
+        error = "CPU vision V1 accepts base64 data: image URLs only";
+        return false;
+    }
+    const size_t comma = url.find(',');
+    const size_t base64 = url.find(";base64");
+    if (comma == std::string::npos || base64 == std::string::npos ||
+        base64 > comma) {
+        error = "image URL must be a base64 data URI";
+        return false;
+    }
+    image.media_type = url.substr(5, base64 - 5);
+    image.base64_data = url.substr(comma + 1);
+    if (image.media_type.rfind("image/", 0) != 0 ||
+        image.base64_data.empty()) {
+        error = "invalid base64 image data URI";
+        return false;
+    }
+    return true;
+}
+
+bool openai_image_block(const json &block,
+                        detail::CpuVisionImage &image,
+                        std::string &error) {
+    if (!block.is_object() || block.value("type", "") != "image_url") {
+        return false;
+    }
+    if (!block.contains("image_url")) {
+        error = "image_url block requires image_url";
+        return false;
+    }
+    std::string url;
+    if (block["image_url"].is_string()) {
+        url = block["image_url"].get<std::string>();
+    } else if (block["image_url"].is_object() &&
+               block["image_url"].contains("url") &&
+               block["image_url"]["url"].is_string()) {
+        url = block["image_url"]["url"].get<std::string>();
+    } else {
+        error = "image_url must be a string or an object with string url";
+        return false;
+    }
+    return parse_data_image_url(url, image, error);
+}
+
+bool prepare_vision_messages(json &messages,
+                             const VisionEncoder &encoder,
+                             PreparedVisionRequest &prepared,
+                             std::string &error) {
+    std::vector<detail::CpuVisionImage> images;
+    for (const json &message : messages) {
+        if (!message.is_object() || !message.contains("content") ||
+            !message["content"].is_array()) {
+            continue;
+        }
+        for (const json &block : message["content"]) {
+            if (!block.is_object() || block.value("type", "") != "image_url") {
+                continue;
+            }
+            detail::CpuVisionImage image;
+            if (!openai_image_block(block, image, error)) return false;
+            images.push_back(std::move(image));
+        }
+    }
+    if (images.empty()) return true;
+    if (!encoder) {
+        error = "image input requires --vision-model DIR";
+        return false;
+    }
+    try {
+        prepared.encoded = encoder(images);
+    } catch (const std::exception &e) {
+        error = e.what();
+        return false;
+    }
+
+    // Hash the ordered source payloads rather than the projected embeddings:
+    // this is deterministic across worker/kernel implementations and avoids a
+    // second pass over the much larger projected tensor. It is cache identity,
+    // not an authentication primitive.
+    uint64_t fingerprint = 1469598103934665603ULL;
+    auto mix = [&](std::string_view value) {
+        for (unsigned char byte : value) {
+            fingerprint ^= static_cast<uint64_t>(byte);
+            fingerprint *= 1099511628211ULL;
+        }
+        fingerprint ^= 0xffu;
+        fingerprint *= 1099511628211ULL;
+    };
+    for (const auto &image : images) {
+        mix(image.media_type);
+        mix(image.base64_data);
+    }
+    prepared.fingerprint = fingerprint != 0 ? fingerprint : 1;
+
+    size_t image_index = 0;
+    for (json &message : messages) {
+        if (!message.is_object() || !message.contains("content") ||
+            !message["content"].is_array()) {
+            continue;
+        }
+        for (json &block : message["content"]) {
+            if (!block.is_object() || block.value("type", "") != "image_url") {
+                continue;
+            }
+            if (image_index >= prepared.encoded.grids.size()) {
+                error = "vision worker image count does not match the request";
+                return false;
+            }
+            const uint32_t rows = prepared.encoded.grids[image_index].rows;
+            std::string placeholder = "<|vision_start|>";
+            placeholder.reserve(placeholder.size() +
+                                static_cast<size_t>(rows) * 13 + 16);
+            for (uint32_t row = 0; row < rows; ++row) {
+                placeholder += "<|image_pad|>";
+            }
+            placeholder += "<|vision_end|>";
+            block = json{{"type", "text"}, {"text", std::move(placeholder)}};
+            ++image_index;
+        }
+    }
+    if (image_index != prepared.encoded.grids.size()) {
+        error = "vision request mutation lost an image";
+        return false;
+    }
+    return true;
+}
+
+bool finalize_vision_tokens(
+        std::vector<int32_t> &tokens,
+        const QwenTokenizer &tokenizer,
+        PreparedVisionRequest &prepared,
+        GenerationOptions &generation,
+        std::string &error) {
+    if (!prepared.active()) return true;
+    const int32_t image_pad = tokenizer.token_id("<|image_pad|>");
+    const int32_t vision_start = tokenizer.token_id("<|vision_start|>");
+    const int32_t vision_end = tokenizer.token_id("<|vision_end|>");
+    if (image_pad < 0 || vision_start < 0 || vision_end < 0) {
+        error = "model tokenizer is missing Qwen vision special tokens";
+        return false;
+    }
+    if (prepared.encoded.embedding_dim == 0 ||
+        prepared.encoded.embedding_dim > std::numeric_limits<uint32_t>::max()) {
+        error = "vision worker returned an invalid embedding width";
+        return false;
+    }
+
+    std::vector<uint8_t> modality(tokens.size(), 0);
+    size_t embedding_row = 0;
+    size_t search = 0;
+    generation.input_embedding_overrides.clear();
+    generation.input_embedding_fingerprint = prepared.fingerprint;
+    generation.input_mrope_positions.assign(tokens.size(), {0, 0, 0});
+    prepared.token_spans.clear();
+
+    for (const auto &grid : prepared.encoded.grids) {
+        while (search + 1 < tokens.size() &&
+               !(tokens[search] == vision_start &&
+                 tokens[search + 1] == image_pad)) {
+            ++search;
+        }
+        if (search + 1 >= tokens.size()) {
+            error = "rendered prompt has fewer vision spans than encoded images";
+            return false;
+        }
+        const size_t span_begin = search;
+        const size_t begin = ++search;
+        while (search < tokens.size() && tokens[search] == image_pad) {
+            ++search;
+        }
+        const size_t end = search;
+        if (end - begin != grid.rows) {
+            error = "rendered image token run does not match the processed image grid";
+            return false;
+        }
+        if (end >= tokens.size() || tokens[end] != vision_end) {
+            error = "rendered image token run is missing vision_end";
+            return false;
+        }
+        prepared.token_spans.emplace_back(
+            static_cast<uint32_t>(span_begin),
+            static_cast<uint32_t>(end + 1));
+        for (size_t pos = begin; pos < end; ++pos) {
+            modality[pos] = 1;
+            if (embedding_row >= 0x7fffffffu) {
+                error = "too many visual embedding rows";
+                return false;
+            }
+            const uint32_t virtual_id =
+                0x80000000u | static_cast<uint32_t>(embedding_row + 1);
+            GenerationOptions::InputEmbeddingOverride override;
+            override.token_id = virtual_id;
+            override.source_token_id = static_cast<uint32_t>(image_pad);
+            if (prepared.encoded.storage) {
+                override.storage = prepared.encoded.storage;
+                override.embedding_row = static_cast<uint32_t>(embedding_row);
+            } else {
+                const size_t offset =
+                    embedding_row * prepared.encoded.embedding_dim;
+                override.embedding.assign(
+                    prepared.encoded.embeddings.begin() +
+                        static_cast<std::ptrdiff_t>(offset),
+                    prepared.encoded.embeddings.begin() +
+                        static_cast<std::ptrdiff_t>(offset +
+                                                    prepared.encoded.embedding_dim));
+            }
+            generation.input_embedding_overrides.push_back(std::move(override));
+            tokens[pos] = static_cast<int32_t>(virtual_id);
+            ++embedding_row;
+        }
+    }
+    if (prepared.encoded.storage) {
+        if (prepared.encoded.storage->rows() != embedding_row ||
+            prepared.encoded.storage->dim() != prepared.encoded.embedding_dim) {
+            error = "device visual embeddings do not match prompt mapping";
+            return false;
+        }
+    } else {
+        if (embedding_row * prepared.encoded.embedding_dim !=
+            prepared.encoded.embeddings.size()) {
+            error = "unused visual embeddings remain after prompt mapping";
+            return false;
+        }
+    }
+
+    uint32_t current = 0;
+    size_t image_index = 0;
+    for (size_t pos = 0; pos < tokens.size();) {
+        if (modality[pos] == 0) {
+            generation.input_mrope_positions[pos] = {current, current, current};
+            ++current;
+            ++pos;
+            continue;
+        }
+        if (image_index >= prepared.encoded.grids.size()) {
+            error = "image modality run count exceeds image grids";
+            return false;
+        }
+        const auto &grid = prepared.encoded.grids[image_index++];
+        if (grid.height % 2 != 0 || grid.width % 2 != 0) {
+            error = "Qwen vision grid is not divisible by spatial merge size 2";
+            return false;
+        }
+        const uint32_t llm_h = grid.height / 2;
+        const uint32_t llm_w = grid.width / 2;
+        const uint32_t plane = llm_h * llm_w;
+        for (uint32_t row = 0; row < grid.rows; ++row, ++pos) {
+            const uint32_t t = plane > 0 ? row / plane : 0;
+            const uint32_t rem = plane > 0 ? row % plane : 0;
+            const uint32_t h = llm_w > 0 ? rem / llm_w : 0;
+            const uint32_t w = llm_w > 0 ? rem % llm_w : 0;
+            const std::array<uint32_t, 3> mrope = {
+                current + t, current + h, current + w};
+            generation.input_mrope_positions[pos] = mrope;
+            generation.input_embedding_overrides[
+                static_cast<size_t>(tokens[pos] & 0x7fffffffu) - 1].position =
+                    mrope;
+        }
+        current += std::max({grid.temporal, llm_h, llm_w});
+    }
+    return true;
+}
+
+std::string trim_ascii_ws(std::string s) {
+    size_t b = 0;
+    while (b < s.size() &&
+           (s[b] == ' ' || s[b] == '\n' || s[b] == '\r' || s[b] == '\t')) {
+        ++b;
+    }
+    size_t e = s.size();
+    while (e > b &&
+           (s[e - 1] == ' ' || s[e - 1] == '\n' ||
+            s[e - 1] == '\r' || s[e - 1] == '\t')) {
+        --e;
+    }
+    return s.substr(b, e - b);
+}
+
+std::string render_tool_call(const json &call) {
+    const json *fn = &call;
+    if (call.is_object() && call.contains("function") && call["function"].is_object()) {
+        fn = &call["function"];
+    }
+    if (!fn->is_object()) return {};
+    const std::string name = fn->value("name", "");
+    if (name.empty()) return {};
+
+    json args = json::object();
+    if (fn->contains("arguments")) {
+        const json &raw = (*fn)["arguments"];
+        if (raw.is_object()) {
+            args = raw;
+        } else if (raw.is_string()) {
+            try {
+                args = json::parse(raw.get<std::string>());
+            } catch (...) {
+                args = json{{"arguments", raw.get<std::string>()}};
+            }
+        }
+    }
+
+    std::string out = "<tool_call>\n<function=" + name + ">\n";
+    if (args.is_object()) {
+        for (auto it = args.begin(); it != args.end(); ++it) {
+            out += "<parameter=" + it.key() + ">\n";
+            if (it.value().is_string()) {
+                out += it.value().get<std::string>();
+            } else {
+                out += dump_json(it.value());
+            }
+            out += "\n</parameter>\n";
+        }
+    }
+    out += "</function>\n</tool_call>";
+    return out;
+}
+
+json make_tool_call_json(const std::string &name, const json &args) {
+    if (name.empty()) return json();
+    json normalized_args = args.is_object() ? args : json::object();
+    return json{
+        {"id", gen_id("call_")},
+        {"type", "function"},
+        {"function", json{{"name", name},
+                          {"arguments", dump_json(normalized_args)}}}
+    };
+}
+
+bool parse_json_tool_call_value(const json &value, std::vector<json> &calls) {
+    if (value.is_array()) {
+        bool any = false;
+        for (const auto &item : value) {
+            any = parse_json_tool_call_value(item, calls) || any;
+        }
+        return any;
+    }
+    if (!value.is_object()) return false;
+
+    const json *fn = &value;
+    if (value.contains("function") && value["function"].is_object()) {
+        fn = &value["function"];
+    }
+    if (!fn->is_object()) return false;
+
+    std::string name;
+    if (fn->contains("name") && (*fn)["name"].is_string()) {
+        name = (*fn)["name"].get<std::string>();
+    } else if (fn->contains("tool") && (*fn)["tool"].is_string()) {
+        name = (*fn)["tool"].get<std::string>();
+    }
+    if (name.empty()) return false;
+
+    json args = json::object();
+    if (fn->contains("arguments")) {
+        const json &raw = (*fn)["arguments"];
+        if (raw.is_object()) {
+            args = raw;
+        } else if (raw.is_string()) {
+            try {
+                json parsed = json::parse(raw.get<std::string>());
+                if (parsed.is_object()) args = parsed;
+            } catch (...) {
+                args = json{{"arguments", raw.get<std::string>()}};
+            }
+        }
+    } else if (fn->contains("parameters") && (*fn)["parameters"].is_object()) {
+        args = (*fn)["parameters"];
+    }
+    calls.push_back(make_tool_call_json(name, args));
+    return true;
+}
+
+bool parse_json_tool_call_text(const std::string &text, std::vector<json> &calls) {
+    const std::string trimmed = trim_ascii_ws(text);
+    if (trimmed.empty()) return false;
+    try {
+        const json value = json::parse(trimmed);
+        return parse_json_tool_call_value(value, calls);
+    } catch (...) {
+        return false;
+    }
+}
+
+// XML <parameter=k>v</parameter> values are always textual. Coerce a single
+// scalar string into the JSON type the tool schema declares. On any failure to
+// represent the value as the requested type, fall back to the original string
+// so a malformed value never drops the parameter.
+json coerce_scalar_string(const std::string &raw, const std::string &type) {
+    const std::string value = trim_ascii_ws(raw);
+    if (type == "integer") {
+        try {
+            size_t idx = 0;
+            const long long v = std::stoll(value, &idx);
+            if (!value.empty() && idx == value.size()) return json(v);
+        } catch (...) {}
+        return json(raw);
+    }
+    if (type == "number") {
+        try {
+            size_t idx = 0;
+            const double v = std::stod(value, &idx);
+            if (!value.empty() && idx == value.size()) return json(v);
+        } catch (...) {}
+        return json(raw);
+    }
+    if (type == "boolean") {
+        std::string lower = value;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        if (lower == "true") return json(true);
+        if (lower == "false") return json(false);
+        return json(raw);
+    }
+    if (type == "null") {
+        if (value == "null" || value.empty()) return json(nullptr);
+        return json(raw);
+    }
+    if (type == "array" || type == "object") {
+        try {
+            const json parsed = json::parse(value);
+            if (type == "array" && parsed.is_array()) return parsed;
+            if (type == "object" && parsed.is_object()) return parsed;
+        } catch (...) {}
+        return json(raw);
+    }
+    return json(raw);  // "string" or unknown type
+}
+
+// Coerce a textual parameter value using a JSON-schema property node. Supports
+// a scalar "type", a "type" array (union), and simple anyOf/oneOf. For unions
+// the first sub-schema that yields a non-string (a real coercion) wins, falling
+// back to the raw string when nothing matches.
+json coerce_value_by_schema(const std::string &value, const json &schema) {
+    if (!schema.is_object()) return json(value);
+    for (const char *combo : {"anyOf", "oneOf"}) {
+        if (schema.contains(combo) && schema[combo].is_array()) {
+            for (const auto &sub : schema[combo]) {
+                const json coerced = coerce_value_by_schema(value, sub);
+                if (!coerced.is_string()) return coerced;
+            }
+            return json(value);
+        }
+    }
+    if (schema.contains("type")) {
+        const json &t = schema["type"];
+        if (t.is_string()) {
+            return coerce_scalar_string(value, t.get<std::string>());
+        }
+        if (t.is_array()) {
+            for (const auto &tt : t) {
+                if (!tt.is_string()) continue;
+                const std::string ty = tt.get<std::string>();
+                if (ty == "string") return json(value);
+                const json coerced = coerce_scalar_string(value, ty);
+                if (!coerced.is_string()) return coerced;
+            }
+            return json(value);
+        }
+    }
+    return json(value);
+}
+
+// Find the JSON-schema "properties" map for a named function in an OpenAI
+// tools array. Returns nullptr when the tool, its parameters, or its properties
+// are absent, in which case parameters are left as raw strings.
+const json *find_tool_definition(const json *tools, const std::string &name) {
+    if (!tools || !tools->is_array()) return nullptr;
+    for (const auto &t : *tools) {
+        if (!t.is_object()) continue;
+        const json *fn = (t.contains("function") && t["function"].is_object())
+                             ? &t["function"]
+                             : &t;
+        if (!fn->is_object()) continue;
+        if (fn->value("name", std::string()) != name) continue;
+        return fn;
+    }
+    return nullptr;
+}
+
+const json *find_tool_properties(const json *tools, const std::string &name) {
+    const json *fn = find_tool_definition(tools, name);
+    if (!fn || !fn->contains("parameters") || !(*fn)["parameters"].is_object()) {
+        return nullptr;
+    }
+    const json &params = (*fn)["parameters"];
+    if (params.contains("properties") && params["properties"].is_object()) {
+        return &params["properties"];
+    }
+    return nullptr;
+}
+
+bool tool_name_allowed(const json *tools, const std::string &name) {
+    return !tools || !tools->is_array() || find_tool_definition(tools, name) != nullptr;
+}
+
+std::string strip_tool_control_tokens(std::string text) {
+    // Some Qwen generations leak chat-template control tokens inside the
+    // tool block. They are framing noise, not part of the tool name/arguments.
+    for (const char *token : {"<|im_start|>", "<|im_end|>", "<|assistant|>",
+                              "<|tool|>"}) {
+        size_t pos = 0;
+        while ((pos = text.find(token, pos)) != std::string::npos) {
+            text.erase(pos, std::string(token).size());
+        }
+    }
+    return text;
+}
+
+std::string trim_single_newlines(std::string value) {
+    if (!value.empty() && value.front() == '\n') value.erase(value.begin());
+    if (!value.empty() && value.front() == '\r') value.erase(value.begin());
+    if (!value.empty() && value.back() == '\n') value.pop_back();
+    if (!value.empty() && value.back() == '\r') value.pop_back();
+    return value;
+}
+
+std::string normalized_identifier(std::string value) {
+    std::string out;
+    for (const unsigned char c : value) {
+        if (std::isalnum(c) || c == '_' || c == '-') {
+            out.push_back(static_cast<char>(std::tolower(c)));
+        }
+    }
+    return out;
+}
+
+std::string snake_case_identifier(const std::string &value) {
+    std::string out;
+    for (size_t i = 0; i < value.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(value[i]);
+        if (std::isupper(c) && i > 0) out.push_back('_');
+        out.push_back(static_cast<char>(std::tolower(c)));
+    }
+    return out;
+}
+
+std::string schema_property_name(const json *props, const std::string &raw_key) {
+    if (!props || !props->is_object()) return trim_ascii_ws(raw_key);
+    const std::string wanted = normalized_identifier(raw_key);
+    for (auto it = props->begin(); it != props->end(); ++it) {
+        if (normalized_identifier(it.key()) == wanted) return it.key();
+    }
+    return trim_ascii_ws(raw_key);
+}
+
+void add_tool_argument(json &args, const json *props,
+                       const std::string &raw_key, std::string value) {
+    const std::string key = schema_property_name(props, raw_key);
+    if (key.empty()) return;
+    value = trim_single_newlines(std::move(value));
+    if (props && props->contains(key) && (*props)[key].is_object()) {
+        args[key] = coerce_value_by_schema(value, (*props)[key]);
+    } else {
+        args[key] = value;
+    }
+}
+
+// Parse the canonical Qwen XML form with the same state machine used for
+// irreversible streaming deltas.  The permissive recovery parser below is
+// intentionally not involved: source text inside a Write/Edit argument may
+// legitimately contain tags whose names collide with schema properties (for
+// example SCXML's <content>0</content> inside Write.content).
+bool parse_canonical_tool_call_block(const std::string &block,
+                                     const json *tools,
+                                     std::string &name,
+                                     json &args) {
+    detail::CanonicalToolCallStreamParser parser;
+    std::vector<detail::ToolCallStreamEvent> events;
+    const std::string framed = "<tool_call>" + block + "</tool_call>";
+    if (!parser.feed(framed, events) || !parser.finish(events) ||
+        !parser.complete()) {
+        return false;
+    }
+
+    std::string parameter_name;
+    std::string parameter_value;
+    std::unordered_set<std::string> seen;
+    bool parameter_open = false;
+    bool tool_complete = false;
+    args = json::object();
+    for (const detail::ToolCallStreamEvent &event : events) {
+        switch (event.kind) {
+            case detail::ToolCallStreamEventKind::ToolStart:
+                if (!name.empty()) return false;
+                name = event.value;
+                break;
+            case detail::ToolCallStreamEventKind::ParameterStart: {
+                if (parameter_open || name.empty()) return false;
+                const json *props = find_tool_properties(tools, name);
+                parameter_name = schema_property_name(props, event.value);
+                if (parameter_name.empty() ||
+                    !seen.insert(parameter_name).second) {
+                    return false;
+                }
+                parameter_value.clear();
+                parameter_open = true;
+                break;
+            }
+            case detail::ToolCallStreamEventKind::ParameterData:
+                if (!parameter_open) return false;
+                parameter_value += event.value;
+                break;
+            case detail::ToolCallStreamEventKind::ParameterEnd: {
+                if (!parameter_open) return false;
+                const json *props = find_tool_properties(tools, name);
+                if (props && props->contains(parameter_name) &&
+                    (*props)[parameter_name].is_object()) {
+                    args[parameter_name] = coerce_value_by_schema(
+                        parameter_value, (*props)[parameter_name]);
+                } else {
+                    args[parameter_name] = parameter_value;
+                }
+                parameter_name.clear();
+                parameter_value.clear();
+                parameter_open = false;
+                break;
+            }
+            case detail::ToolCallStreamEventKind::ToolEnd:
+                if (parameter_open) return false;
+                tool_complete = true;
+                break;
+        }
+    }
+    return tool_complete && !name.empty() && tool_name_allowed(tools, name);
+}
+
+void parse_parameter_tags(const std::string &block, const json *props, json &args) {
+    size_t pos = 0;
+    while ((pos = block.find("<parameter=", pos)) != std::string::npos) {
+        const size_t key0 = pos + std::string("<parameter=").size();
+        const size_t key1 = block.find('>', key0);
+        if (key1 == std::string::npos) break;
+        const size_t value0 = key1 + 1;
+        const size_t value1 = block.find("</parameter>", value0);
+        if (value1 == std::string::npos) break;
+        add_tool_argument(args, props, block.substr(key0, key1 - key0),
+                          block.substr(value0, value1 - value0));
+        pos = value1 + std::string("</parameter>").size();
+    }
+}
+
+void parse_arg_key_value_tags(const std::string &block, const json *props, json &args) {
+    size_t pos = 0;
+    while ((pos = block.find("<arg_key>", pos)) != std::string::npos) {
+        const size_t key0 = pos + std::string("<arg_key>").size();
+        const size_t key1 = block.find("</arg_key>", key0);
+        if (key1 == std::string::npos) break;
+        const size_t value_tag = block.find("<arg_value>", key1);
+        if (value_tag == std::string::npos) break;
+        const size_t value0 = value_tag + std::string("<arg_value>").size();
+        size_t value1 = block.find("</arg_value>", value0);
+        if (value1 == std::string::npos) value1 = block.find("</parameter>", value0);
+        if (value1 == std::string::npos) value1 = block.find("</tool_call>", value0);
+        if (value1 == std::string::npos) value1 = block.size();
+        if (value1 == std::string::npos) break;
+        add_tool_argument(args, props, block.substr(key0, key1 - key0),
+                          block.substr(value0, value1 - value0));
+        pos = value1;
+    }
+}
+
+void parse_loose_parameter_tags(const std::string &block, const json *props, json &args) {
+    // Handles variants such as <parameter>lines>[680, 720] where the model
+    // omitted the '=' and used the next '>' as the key/value separator.
+    size_t pos = 0;
+    while ((pos = block.find("<parameter>", pos)) != std::string::npos) {
+        const size_t key0 = pos + std::string("<parameter>").size();
+        const size_t key1 = block.find('>', key0);
+        if (key1 == std::string::npos) break;
+        const size_t value0 = key1 + 1;
+        size_t value1 = block.find("</parameter>", value0);
+        if (value1 == std::string::npos) value1 = block.find("</tool_call>", value0);
+        if (value1 == std::string::npos) value1 = block.size();
+        if (value1 == std::string::npos) break;
+        add_tool_argument(args, props, block.substr(key0, key1 - key0),
+                          block.substr(value0, value1 - value0));
+        pos = value1;
+    }
+}
+
+void parse_schema_named_tags(const std::string &block, const json *props, json &args) {
+    if (!props || !props->is_object()) return;
+    for (auto it = props->begin(); it != props->end(); ++it) {
+        const std::string key = it.key();
+        const std::string snake_key = snake_case_identifier(key);
+        const std::vector<std::string> tag_names =
+            snake_key == key ? std::vector<std::string>{key}
+                              : std::vector<std::string>{key, snake_key};
+        for (const std::string &tag_name : tag_names) {
+            const std::string open = "<" + tag_name + ">";
+            size_t pos = 0;
+            while ((pos = block.find(open, pos)) != std::string::npos) {
+                const size_t value0 = pos + open.size();
+                const std::string close = "</" + tag_name + ">";
+                size_t value1 = block.find(close, value0);
+                if (value1 == std::string::npos) {
+                    // A seen malformed form uses <file_path>value<parameter>...
+                    // rather than a matching closing tag. Limit recovery to
+                    // the next tool/parameter delimiter so code text cannot swallow
+                    // the rest of the request.
+                    value1 = block.find("<parameter", value0);
+                    const size_t arg_key = block.find("<arg_key>", value0);
+                    if (value1 == std::string::npos ||
+                        (arg_key != std::string::npos && arg_key < value1)) {
+                        value1 = arg_key;
+                    }
+                    const size_t end = block.find("</tool_call>", value0);
+                    if (value1 == std::string::npos ||
+                        (end != std::string::npos && end < value1)) {
+                        value1 = end;
+                    }
+                    if (value1 == std::string::npos) value1 = block.size();
+                }
+                if (value1 == std::string::npos) break;
+                add_tool_argument(args, props, key, block.substr(value0, value1 - value0));
+                pos = value1 + (block.compare(value1, close.size(), close) == 0
+                                    ? close.size() : 1);
+            }
+        }
+    }
+}
+
+std::string tool_name_from_prefix(const std::string &inner, const json *tools) {
+    const std::string text = trim_ascii_ws(inner);
+    size_t pos = 0;
+    while (pos < text.size() &&
+           !(std::isalnum(static_cast<unsigned char>(text[pos])) ||
+             text[pos] == '_' || text[pos] == '-')) {
+        ++pos;
+    }
+    if (pos == text.size()) return {};
+    size_t end = pos;
+    while (end < text.size() &&
+           (std::isalnum(static_cast<unsigned char>(text[end])) ||
+            text[end] == '_' || text[end] == '-')) {
+        ++end;
+    }
+    std::string candidate = text.substr(pos, end - pos);
+    if (candidate == "function") {
+        while (end < text.size() && (text[end] == ' ' || text[end] == '=' ||
+                                     text[end] == '<' || text[end] == '>')) {
+            ++end;
+        }
+        const size_t name0 = end;
+        while (end < text.size() &&
+               (std::isalnum(static_cast<unsigned char>(text[end])) ||
+                text[end] == '_' || text[end] == '-')) {
+            ++end;
+        }
+        candidate = text.substr(name0, end - name0);
+    }
+    return tool_name_allowed(tools, candidate) ? candidate : std::string();
+}
+
+std::string tool_name_from_marker(const std::string &inner, const json *tools) {
+    for (const std::string &marker : {"<function=", "function=", "function_"}) {
+        size_t pos = inner.find(marker);
+        if (pos == std::string::npos) continue;
+        pos += marker.size();
+        size_t end = pos;
+        while (end < inner.size() &&
+               (std::isalnum(static_cast<unsigned char>(inner[end])) ||
+                inner[end] == '_' || inner[end] == '-')) {
+            ++end;
+        }
+        const std::string candidate = inner.substr(pos, end - pos);
+        if (tool_name_allowed(tools, candidate)) return candidate;
+    }
+    return tool_name_from_prefix(inner, tools);
+}
+
+std::string infer_tool_name_from_arguments(const json *tools, const json &args) {
+    if (!tools || !tools->is_array() || !args.is_object() || args.empty()) return {};
+    std::string match;
+    size_t best_required = 0;
+    bool tied = false;
+    for (const auto &tool : *tools) {
+        if (!tool.is_object()) continue;
+        const json *fn = (tool.contains("function") && tool["function"].is_object())
+                             ? &tool["function"] : &tool;
+        if (!fn->is_object() || !fn->contains("name") ||
+            !fn->contains("parameters") || !(*fn)["parameters"].is_object()) {
+            continue;
+        }
+        const json &required = (*fn)["parameters"].value("required", json::array());
+        if (!required.is_array() || required.empty()) continue;
+        bool all_present = true;
+        for (const auto &key : required) {
+            if (!key.is_string() || !args.contains(key.get<std::string>())) {
+                all_present = false;
+                break;
+            }
+        }
+        if (all_present) {
+            const size_t required_count = required.size();
+            if (required_count > best_required) {
+                best_required = required_count;
+                match = fn->value("name", std::string());
+                tied = false;
+            } else if (required_count == best_required) {
+                tied = true;
+            }
+        }
+    }
+    return tied ? std::string() : match;
+}
+
+bool parse_tool_call_block(const std::string &inner, const json *tools,
+                           std::vector<json> &calls) {
+    if (parse_json_tool_call_text(inner, calls)) return true;
+
+    const std::string normalized = strip_tool_control_tokens(inner);
+    std::string canonical_name;
+    json canonical_args = json::object();
+    if (parse_canonical_tool_call_block(
+            normalized, tools, canonical_name, canonical_args)) {
+        calls.push_back(make_tool_call_json(canonical_name, canonical_args));
+        return true;
+    }
+
+    std::string name = tool_name_from_marker(normalized, tools);
+    const json *props = find_tool_properties(tools, name);
+    json args = json::object();
+    parse_parameter_tags(normalized, props, args);
+    // Recovery grammars are mutually exclusive fallbacks.  Never merge them
+    // into a successfully parsed parameter-tag call: doing so lets source text
+    // such as <content>...</content> overwrite the enclosing Write.content.
+    if (args.empty()) parse_arg_key_value_tags(normalized, props, args);
+    if (args.empty()) parse_loose_parameter_tags(normalized, props, args);
+    if (args.empty()) parse_schema_named_tags(normalized, props, args);
+
+    // A few generations place a JSON object directly after function_edit>.
+    // Parse it only when it starts at an object boundary; arbitrary code text
+    // must never be interpreted as tool arguments.
+    if (name.empty() || args.empty()) {
+        const size_t object0 = normalized.find('{');
+        const size_t object1 = normalized.rfind('}');
+        if (object0 != std::string::npos && object1 > object0) {
+            std::vector<json> parsed;
+            if (parse_json_tool_call_text(
+                    "{\"name\":" + dump_json(name) +
+                    ",\"arguments\":" +
+                        normalized.substr(object0, object1 - object0 + 1) + "}",
+                    parsed) && !parsed.empty()) {
+                if (!name.empty() || parsed.front().contains("function")) {
+                    calls.push_back(parsed.front());
+                    return true;
+                }
+            }
+        }
+    }
+
+    if (name.empty()) name = infer_tool_name_from_arguments(tools, args);
+    if (name.empty() || !tool_name_allowed(tools, name)) return false;
+    calls.push_back(make_tool_call_json(name, args));
+    return true;
+}
+
+std::vector<json> parse_tool_calls_xml(const std::string &text,
+                                       const json *tools = nullptr) {
+    std::vector<json> calls;
+    size_t pos = 0;
+    while (true) {
+        const size_t tc0 = text.find("<tool_call>", pos);
+        if (tc0 == std::string::npos) break;
+        const size_t tc1 = text.find("</tool_call>", tc0);
+        if (tc1 == std::string::npos) break;
+        const size_t inner0 = tc0 + std::string("<tool_call>").size();
+        const std::string inner = text.substr(inner0, tc1 - inner0);
+        (void)parse_tool_call_block(inner, tools, calls);
+        pos = tc1 + std::string("</tool_call>").size();
+    }
+    return calls;
+}
+
+json tool_call_delta(const json &calls, size_t begin = 0) {
+    json deltas = json::array();
+    for (size_t i = begin; i < calls.size(); ++i) {
+        const json &call = calls[i];
+        json d = {
+            {"index", static_cast<int>(i)},
+            {"id", call.value("id", "")},
+            {"type", call.value("type", "function")},
+            {"function", json::object()}
+        };
+        if (call.contains("function") && call["function"].is_object()) {
+            d["function"]["name"] = call["function"].value("name", "");
+            d["function"]["arguments"] = call["function"].value("arguments", "{}");
+        }
+        deltas.push_back(d);
+    }
+    return json{{"tool_calls", deltas}};
+}
+
+bool schema_is_plain_string(const json &schema) {
+    return schema.is_object() && schema.contains("type") &&
+           schema["type"].is_string() &&
+           schema["type"].get<std::string>() == "string";
+}
+
+bool tool_has_only_string_properties(const json *tools,
+                                     const std::string &name) {
+    const json *props = find_tool_properties(tools, name);
+    if (!props || !props->is_object() || props->empty()) return false;
+    for (auto it = props->begin(); it != props->end(); ++it) {
+        if (!schema_is_plain_string(it.value())) return false;
+    }
+    return true;
+}
+
+json incremental_tool_start_delta(size_t index,
+                                  const std::string &id,
+                                  const std::string &name,
+                                  const std::string &arguments) {
+    return json{{"tool_calls", json::array({json{
+        {"index", static_cast<int>(index)},
+        {"id", id},
+        {"type", "function"},
+        {"function", json{{"name", name},
+                          {"arguments", arguments}}}
+    }})}};
+}
+
+json incremental_tool_arguments_delta(size_t index,
+                                      const std::string &arguments) {
+    return json{{"tool_calls", json::array({json{
+        {"index", static_cast<int>(index)},
+        {"function", json{{"arguments", arguments}}}
+    }})}};
+}
+
+class IncrementalToolCallStream {
+public:
+    explicit IncrementalToolCallStream(const json *tools) : tools_(tools) {}
+
+    void feed(const std::string &text) {
+        if (abandoned_ || fatal_ || parser_.complete()) return;
+        std::vector<detail::ToolCallStreamEvent> events;
+        if (!parser_.feed(text, events)) {
+            parser_failed();
+            return;
+        }
+        process(events);
+    }
+
+    void finish() {
+        if (abandoned_ || fatal_) return;
+        std::vector<detail::ToolCallStreamEvent> events;
+        if (!parser_.finish(events)) {
+            parser_failed();
+            return;
+        }
+        process(events);
+    }
+
+    bool streaming() const { return streaming_; }
+    bool abandoned() const { return abandoned_; }
+    bool fatal() const { return fatal_; }
+    bool complete() const { return complete_; }
+    bool start_pending() const { return start_pending_; }
+    size_t pending_size() const { return pending_arguments_.size(); }
+    const std::string &error() const { return error_; }
+
+    json take_start_delta() {
+        start_pending_ = false;
+        const std::string fragment = take_pending_arguments();
+        return incremental_tool_start_delta(0, call_id_, name_, fragment);
+    }
+
+    json take_arguments_delta() {
+        return incremental_tool_arguments_delta(0, take_pending_arguments());
+    }
+
+    bool validate(const std::vector<json> &calls, std::string &reason) const {
+        if (!streaming_ || fatal_ || !complete_) {
+            reason = fatal_ ? error_ : "canonical stream did not complete";
+            return false;
+        }
+        if (calls.empty() || !calls.front().is_object() ||
+            !calls.front().contains("function") ||
+            !calls.front()["function"].is_object()) {
+            reason = "full parser did not produce the streamed tool call";
+            return false;
+        }
+        const json &fn = calls.front()["function"];
+        if (fn.value("name", std::string()) != name_) {
+            reason = "streamed and fully parsed function names differ";
+            return false;
+        }
+        try {
+            const json streamed = json::parse(arguments_all_);
+            const json parsed =
+                json::parse(fn.value("arguments", std::string("{}")));
+            if (streamed != parsed) {
+                reason = "streamed and fully parsed arguments differ";
+                if (streamed.is_object() && parsed.is_object()) {
+                    std::unordered_set<std::string> keys;
+                    for (auto it = streamed.begin(); it != streamed.end(); ++it) {
+                        keys.insert(it.key());
+                    }
+                    for (auto it = parsed.begin(); it != parsed.end(); ++it) {
+                        keys.insert(it.key());
+                    }
+                    for (const std::string &key : keys) {
+                        const bool has_streamed = streamed.contains(key);
+                        const bool has_parsed = parsed.contains(key);
+                        if (has_streamed && has_parsed &&
+                            streamed[key] == parsed[key]) {
+                            continue;
+                        }
+                        reason += " key=" + dump_json(json(key));
+                        reason += " streamed=";
+                        if (!has_streamed) {
+                            reason += "missing";
+                        } else if (streamed[key].is_string()) {
+                            reason += "string(chars=" + std::to_string(
+                                streamed[key].get_ref<const std::string &>().size()) +
+                                ")";
+                        } else {
+                            reason += streamed[key].type_name();
+                        }
+                        reason += " parsed=";
+                        if (!has_parsed) {
+                            reason += "missing";
+                        } else if (parsed[key].is_string()) {
+                            reason += "string(chars=" + std::to_string(
+                                parsed[key].get_ref<const std::string &>().size()) +
+                                ")";
+                        } else {
+                            reason += parsed[key].type_name();
+                        }
+                        break;
+                    }
+                }
+                return false;
+            }
+        } catch (const std::exception &e) {
+            reason = std::string("argument validation failed: ") + e.what();
+            return false;
+        }
+        return true;
+    }
+
+private:
+    void parser_failed() {
+        if (streaming_) {
+            fatal_ = true;
+            error_ = parser_.error();
+        } else {
+            abandoned_ = true;
+        }
+    }
+
+    void append_arguments(const std::string &text) {
+        arguments_all_ += text;
+        pending_arguments_ += text;
+    }
+
+    std::string take_pending_arguments() {
+        std::string out;
+        out.swap(pending_arguments_);
+        return out;
+    }
+
+    void fail(std::string message) {
+        fatal_ = true;
+        error_ = std::move(message);
+    }
+
+    void process(const std::vector<detail::ToolCallStreamEvent> &events) {
+        for (const detail::ToolCallStreamEvent &event : events) {
+            if (abandoned_ || fatal_) return;
+            switch (event.kind) {
+                case detail::ToolCallStreamEventKind::ToolStart:
+                    name_ = event.value;
+                    if (!tool_name_allowed(tools_, name_) ||
+                        !tool_has_only_string_properties(tools_, name_)) {
+                        abandoned_ = true;
+                        return;
+                    }
+                    call_id_ = gen_id("call_");
+                    streaming_ = true;
+                    start_pending_ = true;
+                    append_arguments("{");
+                    break;
+                case detail::ToolCallStreamEventKind::ParameterStart: {
+                    if (!streaming_ || parameter_open_) {
+                        fail("invalid incremental parameter start");
+                        return;
+                    }
+                    const json *props = find_tool_properties(tools_, name_);
+                    parameter_name_ =
+                        schema_property_name(props, event.value);
+                    if (parameter_name_.empty() ||
+                        !seen_parameters_.insert(parameter_name_).second) {
+                        fail("empty or duplicate incremental parameter");
+                        return;
+                    }
+                    if (!first_parameter_) append_arguments(",");
+                    first_parameter_ = false;
+                    append_arguments(dump_json(json(parameter_name_)) + ":\"");
+                    parameter_open_ = true;
+                    break;
+                }
+                case detail::ToolCallStreamEventKind::ParameterData:
+                    if (!parameter_open_) {
+                        fail("incremental parameter data outside a parameter");
+                        return;
+                    }
+                    append_arguments(
+                        detail::json_string_fragment(event.value));
+                    break;
+                case detail::ToolCallStreamEventKind::ParameterEnd:
+                    if (!parameter_open_) {
+                        fail("incremental parameter end without a parameter");
+                        return;
+                    }
+                    append_arguments("\"");
+                    parameter_name_.clear();
+                    parameter_open_ = false;
+                    break;
+                case detail::ToolCallStreamEventKind::ToolEnd:
+                    if (!streaming_ || parameter_open_) {
+                        fail("incremental tool ended inside a parameter");
+                        return;
+                    }
+                    append_arguments("}");
+                    complete_ = true;
+                    break;
+            }
+        }
+    }
+
+    const json *tools_ = nullptr;
+    detail::CanonicalToolCallStreamParser parser_;
+    std::string name_;
+    std::string call_id_;
+    std::string parameter_name_;
+    std::string arguments_all_;
+    std::string pending_arguments_;
+    std::string error_;
+    std::unordered_set<std::string> seen_parameters_;
+    bool streaming_ = false;
+    bool abandoned_ = false;
+    bool fatal_ = false;
+    bool complete_ = false;
+    bool start_pending_ = false;
+    bool parameter_open_ = false;
+    bool first_parameter_ = true;
+};
+
+std::string tool_calls_debug_summary(const std::vector<json> &calls) {
+    json summary = json::array();
+    for (const auto &call : calls) {
+        json item = json::object();
+        if (call.contains("function") && call["function"].is_object()) {
+            const json &fn = call["function"];
+            item["name"] = fn.value("name", "");
+            json keys = json::array();
+            try {
+                const json args =
+                    json::parse(fn.value("arguments", "{}"));
+                if (args.is_object()) {
+                    for (auto it = args.begin(); it != args.end(); ++it) {
+                        keys.push_back(it.key());
+                    }
+                }
+            } catch (...) {
+                keys.push_back("<invalid-json-arguments>");
+            }
+            item["argument_keys"] = keys;
+        }
+        summary.push_back(item);
+    }
+    return dump_json(summary);
+}
+
+std::string tools_debug_summary(const json &tools) {
+    json summary = json::array();
+    if (!tools.is_array()) return "[]";
+    for (const auto &tool : tools) {
+        if (!tool.is_object()) continue;
+        const json *fn = &tool;
+        if (tool.contains("function") && tool["function"].is_object()) {
+            fn = &tool["function"];
+        }
+        json item = json::object();
+        item["name"] = fn->value("name", "");
+        json required = json::array();
+        if (fn->contains("parameters") && (*fn)["parameters"].is_object()) {
+            const json &params = (*fn)["parameters"];
+            if (params.contains("required") && params["required"].is_array()) {
+                required = params["required"];
+            }
+        }
+        item["required"] = required;
+        summary.push_back(item);
+    }
+    return dump_json(summary);
+}
+
+// Streaming tool-call detection. The model may emit natural-language reasoning
+// before a <tool_call> block (the Hermes prompt at render_messages explicitly
+// allows this), so the stream cannot be classified once on its first token.
+// Content streams until a marker appears; canonical string arguments then stream
+// as OpenAI deltas, while recovery formats remain buffered for the full parser.
+//
+// Returns how many leading bytes of `text` are safe to emit as content right
+// now. If a complete "<tool_call>" marker is present, returns its byte offset
+// and sets marker_found. Otherwise holds back the longest tail of `text` that
+// could be the start of a "<tool_call>" marker still being streamed.
+size_t tool_call_safe_emit_len(const std::string &text, bool &marker_found) {
+    static const std::string marker = "<tool_call>";
+    marker_found = false;
+    const size_t pos = text.find(marker);
+    if (pos != std::string::npos) {
+        marker_found = true;
+        return pos;
+    }
+    const size_t max_partial = std::min(text.size(), marker.size() - 1);
+    for (size_t k = max_partial; k > 0; --k) {
+        if (text.compare(text.size() - k, k, marker, 0, k) == 0) {
+            return text.size() - k;
+        }
+    }
+    return text.size();
+}
+
+// Render an OpenAI messages[] array into a Qwen3.6 chat transcript. This mirrors
+// the GGUF chat_template's text/tool subset closely enough for tool calling:
+// tools are emitted in a system block, assistant tool_calls are serialized as
+// Qwen XML tool calls, and tool results become user-side <tool_response> blocks.
+// The final assistant header (+ thinking prefill or empty-think block) is
+// appended for generation.
+using RenderedMessageSpan = detail::HarnessRenderedMessageSpan;
+
+std::string render_messages(
+        const json &messages, const json *tools, bool enable_thinking,
+        const std::string &forced_tool_name = {},
+        std::vector<RenderedMessageSpan> *message_spans = nullptr,
+        bool add_generation_prompt = true,
+        bool require_tool_call = false,
+        detail::HarnessKind harness_kind = detail::HarnessKind::None,
+        bool stable_harness_reasoning = false,
+        size_t *control_prefix_end = nullptr) {
+    size_t num_sys = 0;
+    std::string merged_system;
+    while (messages.is_array() && num_sys < messages.size() &&
+           messages[num_sys].is_object()) {
+        const std::string role = messages[num_sys].value("role", "");
+        if (role != "system" && role != "developer") break;
+        const std::string part = trim_ascii_ws(
+            messages[num_sys].contains("content")
+                ? render_content(messages[num_sys]["content"]) : "");
+        if (!part.empty()) {
+            if (!merged_system.empty()) merged_system += "\n";
+            merged_system += part;
+        }
+        ++num_sys;
+    }
+
+    std::string prompt;
+    if (tools && tools->is_array() && !tools->empty()) {
+        prompt += "<|im_start|>system\n";
+        prompt += "# Tools\n\nYou have access to the following functions:\n\n<tools>";
+        for (const auto &tool : *tools) {
+            prompt += "\n" + dump_json(tool);
+        }
+        prompt += "\n</tools>";
+        prompt += "\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n";
+        prompt += "<tool_call>\n<function=example_function_name>\n";
+        prompt += "<parameter=example_parameter_1>\nvalue_1\n</parameter>\n";
+        prompt += "<parameter=example_parameter_2>\n";
+        prompt += "This is the value for the second parameter\nthat can span\nmultiple lines\n";
+        prompt += "</parameter>\n</function>\n</tool_call>\n\n";
+        prompt += "<IMPORTANT>\n";
+        prompt += "Reminder:\n";
+        prompt += "- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n";
+        prompt += "- Required parameters MUST be specified\n";
+        prompt += "- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n";
+        if (!forced_tool_name.empty()) {
+            prompt += "- You MUST call the function named `" + forced_tool_name + "`\n";
+        } else if (require_tool_call) {
+            prompt += "- You MUST call one of the available functions\n";
+        }
+        prompt += "- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n";
+        prompt += "</IMPORTANT>";
+        if (!merged_system.empty()) prompt += "\n\n" + merged_system;
+        prompt += "<|im_end|>\n";
+    } else if (!merged_system.empty()) {
+        prompt += "<|im_start|>system\n" + merged_system + "<|im_end|>\n";
+    }
+
+    if (control_prefix_end) *control_prefix_end = prompt.size();
+    const size_t last_query_index =
+        last_query_index_for_template(messages, harness_kind);
+    for (size_t i = 0; messages.is_array() && i < messages.size(); ++i) {
+        const auto &m = messages[i];
+        if (!m.is_object() || i < num_sys) continue;
+        const std::string role = m.value("role", "");
+        if (role == "system" || role == "developer") continue;
+        const std::string rendered_content =
+            m.contains("content") ? render_content(m["content"]) : "";
+        // Tool results can contain byte-sensitive content such as source code.
+        const std::string content =
+            role == "tool" ? rendered_content : trim_ascii_ws(rendered_content);
+        if (role == "user") {
+            const size_t segment_begin = prompt.size();
+            prompt += "<|im_start|>user\n";
+            const size_t content_begin = prompt.size();
+            prompt += content;
+            const size_t content_end = prompt.size();
+            prompt += "<|im_end|>\n";
+            if (message_spans) {
+                message_spans->push_back(RenderedMessageSpan{
+                    i, role, segment_begin, prompt.size(), content_begin,
+                    content_end});
+            }
+        } else if (role == "assistant") {
+            const size_t segment_begin = prompt.size();
+            std::string assistant_content = content;
+            std::string reasoning_content;
+            if (m.contains("reasoning_content") && m["reasoning_content"].is_string()) {
+                reasoning_content =
+                    trim_ascii_ws(m["reasoning_content"].get<std::string>());
+            } else {
+                const ReasoningSplit split = split_reasoning(assistant_content);
+                if (!split.reasoning.empty() || split.content != assistant_content) {
+                    reasoning_content = trim_ascii_ws(split.reasoning);
+                    assistant_content = split.content;
+                }
+            }
+            prompt += "<|im_start|>assistant\n";
+            // Qwen's compact history convention drops earlier reasoning when
+            // a newer real user message arrives.  That rewrites the token
+            // prefix at the first assistant turn of a long tool trajectory
+            // and defeats persistent KVMem prefix reuse.  In the explicitly
+            // enabled harness+KVMem prefix mode, retain the already-rendered
+            // assistant framing so a new semantic query only appends a suffix.
+            // The default remains byte-identical for ordinary serving.
+            if (add_generation_prompt &&
+                (stable_harness_reasoning || i > last_query_index)) {
+                prompt += "<think>\n" + reasoning_content + "\n</think>\n\n";
+            }
+            prompt += assistant_content;
+            if (m.contains("tool_calls") && m["tool_calls"].is_array()) {
+                bool first_tool_call = true;
+                for (const auto &call : m["tool_calls"]) {
+                    const std::string rendered = render_tool_call(call);
+                    if (rendered.empty()) continue;
+                    if (first_tool_call) {
+                        if (!assistant_content.empty()) prompt += "\n\n";
+                    } else {
+                        prompt += "\n";
+                    }
+                    prompt += rendered;
+                    first_tool_call = false;
+                }
+            }
+            prompt += "<|im_end|>\n";
+            if (message_spans) {
+                message_spans->push_back(RenderedMessageSpan{
+                    i, role, segment_begin, prompt.size(), 0, 0});
+            }
+        } else if (role == "tool") {
+            const size_t segment_begin = prompt.size();
+            const bool prev_tool =
+                i > 0 && messages[i - 1].is_object() &&
+                messages[i - 1].value("role", "") == "tool";
+            const bool next_tool =
+                i + 1 < messages.size() && messages[i + 1].is_object() &&
+                messages[i + 1].value("role", "") == "tool";
+            if (!prev_tool) prompt += "<|im_start|>user";
+            prompt += "\n<tool_response>\n";
+            const size_t content_begin = prompt.size();
+            prompt += content;
+            const size_t content_end = prompt.size();
+            prompt += "\n</tool_response>";
+            if (!next_tool) prompt += "<|im_end|>\n";
+            if (message_spans) {
+                message_spans->push_back(RenderedMessageSpan{
+                    i, role, segment_begin, prompt.size(), content_begin,
+                    content_end});
+            }
+        }
+    }
+
+    if (add_generation_prompt) {
+        prompt += "<|im_start|>assistant\n";
+        if (enable_thinking) {
+            prompt += "<think>\n";
+        } else {
+            prompt += "<think>\n\n</think>\n\n";
+        }
+    }
+    return prompt;
+}
+
+// Apply stop sequences: truncate `text` at the earliest occurrence of any stop
+// string. Returns true if a stop was hit.
+bool apply_stops(std::string &text, const std::vector<std::string> &stops) {
+    size_t cut = std::string::npos;
+    for (const std::string &s : stops) {
+        if (s.empty()) continue;
+        const size_t pos = text.find(s);
+        if (pos != std::string::npos && pos < cut) cut = pos;
+    }
+    if (cut != std::string::npos) {
+        text.erase(cut);
+        return true;
+    }
+    return false;
+}
+
+const char *generation_finish_reason(bool stop_matched,
+                                     size_t completion_tokens,
+                                     int max_tokens) {
+    // The engine returns normally both when it emits EOS and when it exhausts
+    // max_tokens. A client stop string takes precedence; otherwise reaching
+    // the configured token ceiling is OpenAI's "length", while an earlier
+    // normal return is EOS and therefore "stop".
+    if (max_tokens == 0) return "prefill_only";
+    if (stop_matched) return "stop";
+    if (max_tokens > 0 &&
+        completion_tokens >= static_cast<size_t>(max_tokens)) {
+        return "length";
+    }
+    return "stop";
+}
+
+std::vector<std::string> parse_stops(const json &req) {
+    std::vector<std::string> stops;
+    if (!req.contains("stop") || req["stop"].is_null()) return stops;
+    const json &s = req["stop"];
+    if (s.is_string()) {
+        stops.push_back(s.get<std::string>());
+    } else if (s.is_array()) {
+        for (const auto &e : s) if (e.is_string()) stops.push_back(e.get<std::string>());
+    }
+    return stops;
+}
+
+} // namespace
+
+int run_server(EngineOptions engine, ServerConfig cfg) {
+    engine.native_heavy = true;
+    if (engine.native_kernels.empty()) engine.native_kernels = "cuda";
+    if (cfg.max_active <= 0) throw std::runtime_error("--max-active must be > 0");
+    if (cfg.max_pending <= 0) throw std::runtime_error("--max-pending must be > 0");
+    if (cfg.prefill_burst < 0) throw std::runtime_error("--prefill-burst must be >= 0");
+    if (cfg.kv_page_size <= 0) throw std::runtime_error("--kv-page-size must be > 0");
+    if (cfg.kv_pool_pages < 0) throw std::runtime_error("--kv-pool-pages must be >= 0");
+    if (cfg.mtp_kv_pool_pages < 0) throw std::runtime_error("--mtp-kv-pool-pages must be >= 0");
+    if (cfg.kv_dtype != "fp16" && cfg.kv_dtype != "fp32" &&
+        cfg.kv_dtype != "q8" && cfg.kv_dtype != "fp8") {
+        throw std::runtime_error("invalid --kv-dtype (want fp16|fp32|q8|fp8): " + cfg.kv_dtype);
+    }
+    uint64_t archive_prefix_tokens = 0;
+    if (!engine.kvmem_archive_dir.empty()) {
+        const KvMemArchiveManifest manifest =
+            KvMemArchive::read_manifest(engine.kvmem_archive_dir);
+        if (!manifest.sealed) {
+            throw std::runtime_error(
+                "archive-backed serving requires a sealed archive");
+        }
+        archive_prefix_tokens = engine.kvmem_archive_tokens == 0
+            ? manifest.total_tokens
+            : std::min<uint64_t>(engine.kvmem_archive_tokens,
+                                 manifest.total_tokens);
+        const uint32_t bt = std::max<uint32_t>(1, manifest.layout.block_tokens);
+        archive_prefix_tokens = (archive_prefix_tokens / bt) * bt;
+        engine.kvmem_archive_tokens = archive_prefix_tokens;
+        if (archive_prefix_tokens == 0 ||
+            archive_prefix_tokens >=
+                static_cast<uint64_t>(std::max(1, engine.ctx_size))) {
+            throw std::runtime_error(
+                "archive-backed serving needs --ctx larger than its non-empty "
+                "attached prefix");
+        }
+        if (engine.kvmem_semantic_expansion != "none") {
+            throw std::runtime_error(
+                "archive-backed serving v1 requires "
+                "--kvmem-semantic-expansion none because the archive does not "
+                "persist message/round group metadata");
+        }
+    }
+    if (engine.prefill_chunk < 0) {
+        engine.prefill_chunk = 2048;
+    }
+    if (!engine.native_mtp_chain_set) {
+        engine.native_mtp_chain = 0;
+    }
+    if (engine.native_mtp_chain < 0) {
+        throw std::runtime_error("--mtp-chain must be >= 0");
+    }
+    if (engine.mtp_policy != "fixed" && engine.mtp_policy != "adaptive") {
+        throw std::runtime_error("invalid --mtp-policy (want fixed|adaptive): " +
+                                 engine.mtp_policy);
+    }
+    if (engine.mtp_adaptive_min_chain < 0) {
+        throw std::runtime_error("--mtp-adaptive-min-chain must be >= 0");
+    }
+    if (engine.mtp_adaptive_max_chain < 0) {
+        throw std::runtime_error("--mtp-adaptive-max-chain must be >= 0");
+    }
+    if (cfg.continuous_batching) {
+        if (!cfg.paged_kv_set) cfg.paged_kv = true;
+        if (!cfg.body_batch_set) cfg.body_batch = true;
+    }
+    if (cfg.continuous_batching && !cfg.paged_kv) {
+        throw std::runtime_error(
+            "--continuous-batching requires paged KV; remove --no-paged-kv");
+    }
+    if (!cfg.paged_kv) {
+        cfg.continuous_batching = false;
+        cfg.mtp_paged_prefix = false;
+    }
+    const bool mtp_enabled = !engine.native_mtp_trace && engine.native_mtp_chain > 0;
+    engine.native_mtp_speculate = mtp_enabled;
+    const bool guided_boundary =
+        engine.kvmem_guided_reselect == "boundary" ||
+        engine.kvmem_guided_reselect == "both";
+    const bool guided_middecode =
+        engine.kvmem_guided_reselect == "middecode" ||
+        engine.kvmem_guided_reselect == "both";
+    if ((guided_boundary || guided_middecode) &&
+        (!engine.kvmem_enabled || !engine.kvmem_query_conditioned)) {
+        throw std::runtime_error(
+            "--kvmem-guided-reselect requires --kvmem and "
+            "--kvmem-query-conditioned");
+    }
+    if ((guided_boundary || guided_middecode) && !mtp_enabled) {
+        throw std::runtime_error(
+            "--kvmem-guided-reselect currently requires --mtp-chain > 0");
+    }
+    if (guided_middecode &&
+        engine.kvmem_middecode_trigger_tokens >= engine.kvmem_gen_budget) {
+        throw std::runtime_error(
+            "--kvmem-middecode-trigger-tokens must be smaller than "
+            "--kvmem-gen-budget");
+    }
+    if (mtp_enabled && cfg.continuous_batching && !cfg.mtp_batched_draft_set) {
+        cfg.mtp_batched_draft = true;
+    }
+    if (mtp_enabled && cfg.paged_kv && !cfg.mtp_paged_prefix_set) {
+        cfg.mtp_paged_prefix = true;
+    }
+    if (!mtp_enabled) {
+        cfg.mtp_batched_draft = false;
+        cfg.mtp_paged_prefix = false;
+    }
+    if (cfg.prefix_cache && !cfg.continuous_batching) {
+        std::cerr << "[qw3-serve] --prefix-cache requires --continuous-batching; "
+                     "prefix caching disabled\n";
+        cfg.prefix_cache = false;
+    }
+    if (cfg.prefix_cache && mtp_enabled) {
+        std::cerr << "[qw3-serve] --prefix-cache with MTP: caching paired "
+                     "main/draft KV pages and MTP prefix state\n";
+    }
+    if (cfg.kvmem_prefix_cache && !engine.kvmem_enabled) {
+        std::cerr << "[qw3-serve] --kvmem-prefix-cache requires --kvmem; "
+                     "kvmem prefix caching disabled\n";
+        cfg.kvmem_prefix_cache = false;
+    }
+    if (cfg.kvmem_prefix_cache && cfg.continuous_batching) {
+        std::cerr << "[qw3-serve] note: --kvmem-prefix-cache applies to the plain "
+                     "(non-continuous-batching) serve route; it is inert while "
+                     "--continuous-batching is active\n";
+    }
+    if (cfg.kvmem_query_replay &&
+        (!engine.kvmem_enabled || !engine.kvmem_query_conditioned)) {
+        throw std::runtime_error(
+            "--kvmem-query-replay requires --kvmem and "
+            "--kvmem-query-conditioned");
+    }
+    if (cfg.kvmem_query_replay && cfg.continuous_batching) {
+        std::cerr << "[qw3-serve] note: --kvmem-query-replay is currently "
+                     "single-request only; it is inert while "
+                     "--continuous-batching is active\n";
+    }
+
+    detail::validate_kvmem_runtime_contract(engine, cfg);
+
+    // The backend still reads several low-level toggles from process config.
+    // Keep that as an internal bridge; the user-facing API is the explicit CLI
+    // surface above, and this happens before model load.
+    setenv_bool("QW3_CONTINUOUS_BATCHING", cfg.continuous_batching);
+    setenv_bool("QW3_CONTINUOUS_BATCHING_BODY_BATCH", cfg.body_batch);
+    setenv_bool("QW3_CONTINUOUS_MTP_BATCHED_DRAFT", cfg.mtp_batched_draft);
+    setenv_bool("QW3_MTP_PAGED_PREFIX", cfg.mtp_paged_prefix);
+    // Prefix caching is only meaningful on the continuous-batching path; force
+    // it off otherwise. Page budget unlimited (0) remains the default, but do
+    // not clobber an explicit internal limit. Long-lived frozen-branch servers
+    // need that limit because every distinct prompt prefix also owns a hybrid
+    // recurrent-state snapshot, whose memory is not bounded by KV-pool pressure.
+    // Tracing is likewise an internal diagnostic and is intentionally left
+    // untouched.
+    {
+        const bool prefix_cache_on = cfg.prefix_cache && cfg.continuous_batching;
+        setenv_bool("QW3_PREFIX_CACHE", prefix_cache_on);
+        if (std::getenv("QW3_PREFIX_CACHE_MAX_PAGES") == nullptr) {
+            setenv_value("QW3_PREFIX_CACHE_MAX_PAGES", 0);
+        }
+    }
+    // kvmem single-request prefix cache: plain-route warm reuse. Requires kvmem;
+    // inert on the CB path (only generate_plain / generate_mtp on the shared
+    // executor read it). Tracing left to QW3_KVMEM_PREFIX_CACHE_TRACE opt-in.
+    setenv_bool("QW3_KVMEM_PREFIX_CACHE",
+                cfg.kvmem_prefix_cache && engine.kvmem_enabled);
+    setenv_bool("QW3_KVMEM_QUERY_REPLAY",
+                cfg.kvmem_query_replay && engine.kvmem_enabled &&
+                    engine.kvmem_query_conditioned && !cfg.continuous_batching);
+    setenv_bool("QW3_MTP_SPECULATE", engine.native_mtp_speculate);
+    setenv_bool("QW3_KVMEM_ARCHIVE_SERVE",
+                !engine.kvmem_archive_dir.empty());
+    setenv_value("QW3_MTP_POLICY", engine.mtp_policy);
+    if (engine.mtp_adaptive_min_chain > 0) {
+        setenv_value("QW3_MTP_ADAPTIVE_MIN_CHAIN",
+                     engine.mtp_adaptive_min_chain);
+    }
+    if (engine.mtp_adaptive_max_chain > 0) {
+        setenv_value("QW3_MTP_ADAPTIVE_MAX_CHAIN",
+                     engine.mtp_adaptive_max_chain);
+    }
+    setenv_value("QW3_KV_DTYPE", cfg.kv_dtype);
+    setenv_value("QW3_MATMUL", "mmq");
+    setenv_bool("QW3_DISABLE_HGEMM", true);
+    setenv_value("QW3_PAGED_KV_PAGE_SIZE", cfg.kv_page_size);
+    setenv_value("QW3_CONTINUOUS_BATCHING_MAX_ACTIVE", cfg.max_active);
+    setenv_value("QW3_CONTINUOUS_BATCHING_MAX_PENDING", cfg.max_pending);
+    if (cfg.prefill_burst > 0) {
+        setenv_value("QW3_CONTINUOUS_BATCHING_PREFILL_BURST", cfg.prefill_burst);
+        setenv_value("QW3_CONTINUOUS_BATCHING_ACTIVE_PREFILL_BURST",
+                     cfg.prefill_burst);
+    }
+    if (cfg.max_total_tokens_set) {
+        setenv_value("QW3_CONTINUOUS_BATCHING_MAX_TOTAL_TOKENS", cfg.max_total_tokens);
+    }
+    if (cfg.kv_pool_pages > 0) {
+        setenv_value("QW3_CONTINUOUS_BATCHING_KV_POOL_PAGES", cfg.kv_pool_pages);
+    }
+    if (cfg.mtp_kv_pool_pages > 0) {
+        setenv_value("QW3_CONTINUOUS_BATCHING_MTP_KV_POOL_PAGES", cfg.mtp_kv_pool_pages);
+    }
+
+    const bool kvmem_all_optimizations =
+        engine.kvmem_opt_stage_out &&
+        engine.kvmem_opt_stage_in &&
+        engine.kvmem_opt_pack;
+    const KvMemKeepAllocation kvmem_keep =
+        resolve_kvmem_keep_allocation(
+            static_cast<uint32_t>(std::max(1, engine.kvmem_block_tokens)),
+            static_cast<uint32_t>(std::max(1, engine.kvmem_budget)),
+            engine.kvmem_sink_blocks,
+            engine.kvmem_recent_blocks,
+            engine.kvmem_sink_tokens,
+            engine.kvmem_recent_tokens);
+    auto keep_source_name = [](KvMemKeepSource source) {
+        switch (source) {
+            case KvMemKeepSource::Tokens: return "tokens";
+            case KvMemKeepSource::Blocks: return "blocks";
+            case KvMemKeepSource::Auto: return "auto";
+        }
+        return "unknown";
+    };
+    std::cerr << "[qw3-serve] effective serving parameters:\n"
+              << "  host=" << cfg.host << "\n"
+              << "  port=" << cfg.port << "\n"
+              << "  model=" << engine.model_path << "\n"
+              << "  native_kernels=" << engine.native_kernels << "\n"
+              << "  cpu_embedding=" << yesno(engine.cpu_embedding) << "\n"
+              << "  ctx=" << engine.ctx_size << "\n"
+              << "  prefill_chunk=" << engine.prefill_chunk << "\n"
+              << "  kv_dtype=" << cfg.kv_dtype << "\n"
+              << "  paged_kv=" << yesno(cfg.paged_kv) << "\n"
+              << "  kv_page_size=" << cfg.kv_page_size << "\n"
+              << "  kv_pool_pages=" << cfg.kv_pool_pages << " (0=auto)\n"
+              << "  mtp_kv_pool_pages=" << cfg.mtp_kv_pool_pages << " (0=auto)\n"
+              << "  continuous_batching=" << yesno(cfg.continuous_batching) << "\n"
+              << "  body_batch=" << yesno(cfg.body_batch) << "\n"
+              << "  max_active=" << cfg.max_active << "\n"
+              << "  max_pending=" << cfg.max_pending << "\n"
+              << "  prefill_burst="
+              << (cfg.prefill_burst > 0 ? std::to_string(cfg.prefill_burst)
+                                         : std::string("max-active"))
+              << "\n"
+              << "  max_total_tokens="
+              << (cfg.max_total_tokens_set ? std::to_string(cfg.max_total_tokens)
+                                           : std::string("auto(ctx)"))
+              << "\n"
+              << "  mtp_chain=" << engine.native_mtp_chain << "\n"
+              << "  mtp_policy=" << engine.mtp_policy << "\n"
+              << "  mtp_adaptive_min_chain="
+              << (engine.mtp_adaptive_min_chain > 0
+                      ? std::to_string(engine.mtp_adaptive_min_chain)
+                      : std::string("auto"))
+              << "\n"
+              << "  mtp_adaptive_max_chain="
+              << (engine.mtp_adaptive_max_chain > 0
+                      ? std::to_string(engine.mtp_adaptive_max_chain)
+                      : std::string("auto"))
+              << "\n"
+              << "  mtp_speculate=" << yesno(engine.native_mtp_speculate) << "\n"
+              << "  mtp_batched_draft=" << yesno(cfg.mtp_batched_draft) << "\n"
+              << "  mtp_paged_prefix=" << yesno(cfg.mtp_paged_prefix) << "\n"
+              << "  prefix_cache="
+              << yesno(cfg.prefix_cache && cfg.continuous_batching) << "\n"
+              << "  prefix_cache_max_pages="
+              << (std::getenv("QW3_PREFIX_CACHE_MAX_PAGES")
+                      ? std::getenv("QW3_PREFIX_CACHE_MAX_PAGES")
+                      : "0(unlimited)")
+              << "\n"
+              << "  prefix_cache_max_entries="
+              << (std::getenv("QW3_PREFIX_CACHE_MAX_ENTRIES")
+                      ? std::getenv("QW3_PREFIX_CACHE_MAX_ENTRIES")
+                      : "64(default)")
+              << "\n"
+              << "  tool_argument_streaming=canonical-string\n"
+              << "  matmul=mmq\n"
+              << "  disable_hgemm=1\n"
+              << "  default_max_tokens="
+              << (cfg.default_max_tokens_set
+                      ? std::to_string(cfg.default_generation.max_tokens)
+                      : std::string("remaining_context"))
+              << "\n"
+              << "  enable_thinking_default="
+              << yesno(cfg.enable_thinking_default) << "\n"
+              << "  thinking_budget_default="
+              << (cfg.thinking_budget_default > 0
+                      ? std::to_string(cfg.thinking_budget_default)
+                      : std::string("0(disabled)"))
+              << "\n"
+              << "  kvmem=" << yesno(engine.kvmem_enabled) << "\n"
+              << "  kvmem_block_tokens=" << engine.kvmem_block_tokens << "\n"
+              << "  kvmem_budget=" << engine.kvmem_budget << "\n"
+              << "  kvmem_prefill_budget="
+              << (engine.kvmem_prefill_budget > 0
+                      ? engine.kvmem_prefill_budget
+                      : engine.kvmem_budget)
+              << "\n"
+              << "  kvmem_update_mode=" << engine.kvmem_update_mode << "\n"
+              << "  kvmem_performance_mode="
+              << (kvmem_all_optimizations
+                      ? "all-on" : "factorial-ablation")
+              << "\n"
+              << "  kvmem_opt_stage_out="
+              << yesno(engine.kvmem_opt_stage_out) << "\n"
+              << "  kvmem_opt_stage_in="
+              << yesno(engine.kvmem_opt_stage_in) << "\n"
+              << "  kvmem_opt_pack="
+              << yesno(engine.kvmem_opt_pack) << "\n"
+              << "  kvmem_query_conditioned="
+              << yesno(engine.kvmem_query_conditioned) << "\n"
+              << "  kvmem_guided_reselect="
+              << engine.kvmem_guided_reselect << "\n"
+              << "  kvmem_guided_thinking_tokens="
+              << engine.kvmem_guided_thinking_tokens << "\n"
+              << "  kvmem_guided_query_tokens="
+              << engine.kvmem_guided_query_tokens << "\n"
+              << "  kvmem_middecode_trigger_tokens="
+              << engine.kvmem_middecode_trigger_tokens << "\n"
+              << "  kvmem_middecode_max_refreshes="
+              << engine.kvmem_middecode_max_refreshes << "\n"
+              << "  kvmem_recompute_query="
+              << yesno(engine.kvmem_recompute_query) << "\n"
+              << "  kvmem_immutable_k="
+              << yesno(engine.kvmem_immutable_source_k) << "\n"
+              << "  kvmem_raw_k_nvme="
+              << yesno(engine.kvmem_raw_k_nvme) << "\n"
+              << "  kvmem_query_replay="
+              << yesno(cfg.kvmem_query_replay && !cfg.continuous_batching) << "\n"
+              << "  kvmem_method=" << engine.kvmem_method << "\n"
+              << "  kvmem_retrieval_method=" << engine.kvmem_retrieval_method << "\n"
+              << "  kvmem_strict_retrieval=" << yesno(engine.kvmem_strict_retrieval) << "\n"
+              << "  kvmem_adaptive_gain_1to2="
+              << engine.kvmem_adaptive_gain_1to2 << "\n"
+              << "  kvmem_adaptive_gain_2to4="
+              << engine.kvmem_adaptive_gain_2to4 << "\n"
+              << "  kvmem_index_placement=" << engine.kvmem_index_placement << "\n"
+              << "  kvmem_numa_policy=" << engine.kvmem_numa_policy << "\n"
+              << "  kvmem_index_staging_mb="
+              << engine.kvmem_index_staging_mb << "\n"
+              << "  kvmem_adaptive_score_mode="
+              << engine.kvmem_adaptive_score_mode << "\n"
+              << "  kvmem_semantic_expansion="
+              << engine.kvmem_semantic_expansion << "\n"
+              << "  kvmem_round_retrieval="
+              << yesno(engine.kvmem_semantic_expansion == "round") << "\n"
+              << "  kvmem_group_score_reduce="
+              << engine.kvmem_group_score_reduce << "\n"
+              << "  kvmem_group_length_alpha="
+              << engine.kvmem_group_length_alpha << "\n"
+              << "  kvmem_sink="
+              << kvmem_keep.sink_effective_tokens << " tokens / "
+              << kvmem_keep.sink_blocks << " blocks"
+              << " (target=" << kvmem_keep.sink_target_tokens
+              << ", source=" << keep_source_name(kvmem_keep.sink_source)
+              << ")\n"
+              << "  kvmem_recent="
+              << kvmem_keep.recent_effective_tokens << " tokens / "
+              << kvmem_keep.recent_blocks << " blocks"
+              << " (target=" << kvmem_keep.recent_target_tokens
+              << ", source=" << keep_source_name(kvmem_keep.recent_source)
+              << ")\n"
+              << "  kvmem_gpu_memory_ratio=" << engine.kvmem_gpu_memory_ratio << "\n"
+              << "  kvmem_cpu_tier=" << engine.kvmem_cpu_bytes
+              << " bytes (" << bytes_gib_label(engine.kvmem_cpu_bytes) << ")\n"
+              << "  kvmem_nvme_tier=" << engine.kvmem_nvme_bytes
+              << " bytes (" << bytes_gib_label(engine.kvmem_nvme_bytes) << ")\n"
+              << "  kvmem_nvme_dir="
+              << (engine.kvmem_nvme_dir.empty()
+                      ? std::string("(unset)")
+                      : engine.kvmem_nvme_dir)
+              << "\n"
+              << "  kvmem_prefix_cache="
+              << yesno(cfg.kvmem_prefix_cache && engine.kvmem_enabled &&
+                       !cfg.continuous_batching)
+              << "\n"
+              << "  kvmem_archive="
+              << (engine.kvmem_archive_dir.empty()
+                      ? std::string("(disabled)")
+                      : engine.kvmem_archive_dir)
+              << "\n"
+              << "  kvmem_archive_tokens=" << archive_prefix_tokens << "\n";
+
+    const bool state_epoch_bound = !engine.state_epoch_id.empty() ||
+        !engine.state_manifest_digest.empty() || !engine.state_artifact_root.empty() ||
+        !engine.state_adapter_set_root.empty() ||
+        !engine.state_native_adapter_bundle_root.empty() ||
+        !engine.state_foundation_digest.empty() || !engine.state_tokenizer_digest.empty() ||
+        !engine.state_kvmem_archive_root.empty() || !engine.state_retrieval_policy_root.empty() ||
+        !engine.state_skill_policy_root.empty() || !engine.state_runtime_binary_digest.empty() ||
+        !engine.state_adapter_set_artifact.empty() || !engine.state_retrieval_policy_artifact.empty() ||
+        !engine.state_skill_policy_artifact.empty();
+    RuntimeClosureMeasurements runtime_closure;
+    if (state_epoch_bound) {
+        if (engine.state_epoch_id.empty() || engine.state_manifest_digest.empty() ||
+            engine.state_artifact_root.empty() || engine.state_adapter_set_root.empty() ||
+            engine.state_foundation_digest.empty() || engine.state_tokenizer_digest.empty() ||
+            engine.state_kvmem_archive_root.empty() ||
+            engine.state_retrieval_policy_root.empty() || engine.state_skill_policy_root.empty() ||
+            engine.state_runtime_binary_digest.empty()) {
+            throw std::runtime_error(
+                "ArtifactClosure1 governed serving requires epoch, manifest, artifact, "
+                "foundation, tokenizer, KVMem, adapter-set, retrieval-policy, skill-policy, "
+                "and runtime-binary roots");
+        }
+        const std::string native_root = engine.state_native_adapter_bundle_root.empty()
+            ? std::string(64, '0') : engine.state_native_adapter_bundle_root;
+        runtime_closure = verify_runtime_closure_v155(
+            engine.model_path, engine.kvmem_archive_dir,
+            engine.state_adapter_set_artifact, engine.state_retrieval_policy_artifact,
+            engine.state_skill_policy_artifact, engine.state_epoch_id,
+            engine.state_manifest_digest, engine.state_artifact_root,
+            engine.state_foundation_digest, engine.state_tokenizer_digest,
+            engine.state_kvmem_archive_root, engine.state_adapter_set_root,
+            engine.state_retrieval_policy_root, engine.state_skill_policy_root,
+            engine.state_runtime_binary_digest, native_root);
+        std::cerr << "[qw3-serve] runtime closure verified: "
+                  << runtime_closure.closure_digest << "\n";
+    }
+
+    std::cerr << "[qw3-serve] loading model: " << engine.model_path << "\n";
+    Engine eng(engine);
+    std::unique_ptr<GgufFile> usage_gguf;
+    std::unique_ptr<QwenTokenizer> usage_tokenizer_owner;
+    if (std::filesystem::is_directory(engine.model_path)) {
+        usage_tokenizer_owner = std::make_unique<QwenTokenizer>(engine.model_path);
+    } else {
+        usage_gguf = std::make_unique<GgufFile>(engine.model_path);
+        usage_tokenizer_owner = std::make_unique<QwenTokenizer>(*usage_gguf);
+    }
+    QwenTokenizer &usage_tokenizer = *usage_tokenizer_owner;
+    const std::string model_id = basename_of(engine.model_path);
+    std::cerr << "[qw3-serve] model loaded; id=" << model_id << "\n";
+
+    std::unique_ptr<detail::CpuVisionFrontend> vision_frontend;
+    VisionEncoder vision_encoder;
+    const std::string vision_model = !engine.vision_model_path.empty()
+        ? engine.vision_model_path : engine.vision_cpu_model_path;
+    if (!vision_model.empty() && engine.vision_device == "cpu") {
+        std::string python = engine.vision_cpu_python;
+        if (python.empty()) {
+            if (const char *env = std::getenv("QW3_VISION_CPU_PYTHON")) {
+                python = env;
+            }
+        }
+        if (python.empty()) {
+            const std::filesystem::path local_python =
+                std::filesystem::path(QW3_SOURCE_DIR) / ".venv/bin/python";
+            python = std::filesystem::exists(local_python)
+                ? local_python.string() : "python3";
+        }
+        std::string worker = engine.vision_cpu_worker;
+        if (worker.empty()) {
+            if (const char *env = std::getenv("QW3_VISION_CPU_WORKER")) {
+                worker = env;
+            }
+        }
+        if (worker.empty()) {
+            worker = (std::filesystem::path(QW3_SOURCE_DIR) /
+                      "scripts/qw3_vision_cpu_worker.py").string();
+        }
+        uint32_t threads = engine.vision_cpu_threads > 0
+            ? static_cast<uint32_t>(engine.vision_cpu_threads)
+            : std::max<uint32_t>(1, std::thread::hardware_concurrency());
+        if (engine.vision_cpu_threads <= 0) {
+            if (const char *value = std::getenv("QW3_VISION_CPU_THREADS")) {
+                try {
+                    const unsigned long parsed = std::stoul(value);
+                    if (parsed > 0 &&
+                        parsed <= std::numeric_limits<uint32_t>::max()) {
+                        threads = static_cast<uint32_t>(parsed);
+                    }
+                } catch (...) {
+                    throw std::runtime_error(
+                        "QW3_VISION_CPU_THREADS must be a positive integer");
+                }
+            }
+        }
+        std::cerr << "[qw3-serve] loading CPU vision frontend model="
+                  << vision_model << " threads=" << threads
+                  << "\n";
+        vision_frontend = std::make_unique<detail::CpuVisionFrontend>(
+            vision_model, python, worker, threads);
+        vision_encoder = [&](const std::vector<VisionImage> &images) {
+            return vision_frontend->encode(images);
+        };
+        std::cerr << "[qw3-serve] CPU vision frontend ready\n";
+    } else if (!vision_model.empty() && engine.vision_device == "cuda") {
+        vision_encoder = [&](const std::vector<VisionImage> &images) {
+            return eng.encode_vision(images);
+        };
+        std::cerr << "[qw3-serve] native CUDA vision frontend ready\n";
+    }
+
+    // Single shared KV cache + scratch in the executor => serialize generation.
+    std::mutex gen_mu;
+    struct GuidedTrajectoryState {
+        uint64_t last_seen_prompt_tokens = 0;
+        uint64_t last_refresh_prompt_tokens = 0;
+        size_t current_query_key = 0;
+        bool has_current_query = false;
+        bool selection_started = false;
+    };
+    std::mutex guided_trajectory_mu;
+    std::unordered_map<size_t, GuidedTrajectoryState> guided_trajectories;
+    std::atomic<uint64_t> req_counter{0};
+
+    httplib::Server svr;
+
+    if (!engine.native_adapter_bundle.empty() &&
+        (!state_epoch_bound || engine.state_native_adapter_bundle_root.empty())) {
+        throw std::runtime_error(
+            "--native-adapter-bundle requires governed serving and "
+            "--state-native-adapter-bundle-root");
+    }
+    if (engine.native_adapter_bundle.empty() &&
+        !engine.state_native_adapter_bundle_root.empty()) {
+        throw std::runtime_error(
+            "--state-native-adapter-bundle-root requires --native-adapter-bundle");
+    }
+
+    auto governed_runtime_state_json = [&]() {
+        return json{
+            {"object", "minagi.runtime_state"},
+            {"governed", state_epoch_bound},
+            {"epoch_id", state_epoch_bound ? json(engine.state_epoch_id) : json(nullptr)},
+            {"manifest_digest", state_epoch_bound ? json(engine.state_manifest_digest) : json(nullptr)},
+            {"artifact_root", state_epoch_bound ? json(engine.state_artifact_root) : json(nullptr)},
+            {"adapter_set_root", state_epoch_bound ? json(engine.state_adapter_set_root) : json(nullptr)},
+            {"native_adapter_bundle_root", !engine.native_adapter_bundle.empty()
+                ? json(engine.state_native_adapter_bundle_root) : json(nullptr)},
+            {"native_adapter_loaded", !engine.native_adapter_bundle.empty()},
+            {"runtime_closure_verified", state_epoch_bound && runtime_closure.verified},
+            {"runtime_closure_digest", state_epoch_bound ? json(runtime_closure.closure_digest) : json(nullptr)},
+            {"measured_foundation_digest", state_epoch_bound ? json(runtime_closure.foundation_digest) : json(nullptr)},
+            {"measured_tokenizer_digest", state_epoch_bound ? json(runtime_closure.tokenizer_digest) : json(nullptr)},
+            {"measured_runtime_binary_digest", state_epoch_bound ? json(runtime_closure.runtime_binary_digest) : json(nullptr)},
+            {"measured_kvmem_archive_root", state_epoch_bound ? json(runtime_closure.kvmem_archive_root) : json(nullptr)},
+            {"measured_adapter_set_root", state_epoch_bound ? json(runtime_closure.adapter_set_root) : json(nullptr)},
+            {"measured_retrieval_policy_root", state_epoch_bound ? json(runtime_closure.retrieval_policy_root) : json(nullptr)},
+            {"measured_skill_policy_root", state_epoch_bound ? json(runtime_closure.skill_policy_root) : json(nullptr)},
+            {"model_id", basename_of(engine.model_path)}
+        };
+    };
+
+    if (state_epoch_bound) {
+        svr.set_pre_routing_handler([&](const httplib::Request &req, httplib::Response &res) {
+            const bool protected_route =
+                req.path == "/v1/chat/completions" || req.path == "/v1/completions" ||
+                req.path == "/v1/messages";
+            if (!protected_route) return httplib::Server::HandlerResponse::Unhandled;
+            const std::string epoch = req.get_header_value("X-MiniAGI-State-Epoch");
+            const std::string manifest = req.get_header_value("X-MiniAGI-Manifest-Digest");
+            const std::string artifact_root = req.get_header_value("X-MiniAGI-Artifact-Root");
+            const std::string adapter_set_root = req.get_header_value("X-MiniAGI-Adapter-Set-Root");
+            const std::string tokenizer_digest = req.get_header_value("X-MiniAGI-Tokenizer-Digest");
+            const std::string retrieval_policy_root = req.get_header_value("X-MiniAGI-Retrieval-Policy-Root");
+            const std::string skill_policy_root = req.get_header_value("X-MiniAGI-Skill-Policy-Root");
+            const std::string native_adapter_bundle_root =
+                req.get_header_value("X-MiniAGI-Native-Adapter-Bundle-Root");
+            const bool native_adapter_mismatch = !engine.native_adapter_bundle.empty() &&
+                native_adapter_bundle_root != engine.state_native_adapter_bundle_root;
+            if (epoch != engine.state_epoch_id || manifest != engine.state_manifest_digest ||
+                artifact_root != engine.state_artifact_root ||
+                adapter_set_root != engine.state_adapter_set_root ||
+                tokenizer_digest != engine.state_tokenizer_digest ||
+                retrieval_policy_root != engine.state_retrieval_policy_root ||
+                skill_policy_root != engine.state_skill_policy_root ||
+                native_adapter_mismatch) {
+                res.status = 409;
+                res.set_content(dump_json(json{
+                    {"error", "state_epoch_mismatch"},
+                    {"required_epoch_id", engine.state_epoch_id},
+                    {"required_manifest_digest", engine.state_manifest_digest},
+                    {"required_artifact_root", engine.state_artifact_root},
+                    {"required_adapter_set_root", engine.state_adapter_set_root},
+                    {"required_tokenizer_digest", engine.state_tokenizer_digest},
+                    {"required_retrieval_policy_root", engine.state_retrieval_policy_root},
+                    {"required_skill_policy_root", engine.state_skill_policy_root},
+                    {"required_native_adapter_bundle_root",
+                        engine.native_adapter_bundle.empty()
+                            ? json(nullptr)
+                            : json(engine.state_native_adapter_bundle_root)}
+                }), "application/json");
+                return httplib::Server::HandlerResponse::Handled;
+            }
+            return httplib::Server::HandlerResponse::Unhandled;
+        });
+    }
+
+    auto kvmem_status_json = [&]() {
+        const auto sessions = eng.kvmem_session_infos();
+        uint64_t registered_session_host_bytes = 0;
+        for (const auto &session : sessions)
+            registered_session_host_bytes += session.host_bytes;
+        std::string hot_session_id;
+        json mounted_session_ids = json::array();
+        for (const auto &session : sessions) {
+            if (session.hot) {
+                if (hot_session_id.empty()) hot_session_id = session.id;
+                mounted_session_ids.push_back(session.id);
+            }
+        }
+        const auto scheduler = eng.kvmem_executor_scheduler_info();
+        const auto physical = eng.kvmem_physical_executor_pool_info();
+        const auto resources = eng.kvmem_resource_admission_info();
+        return json{
+            {"object", "kvmem.status"},
+            {"enabled", engine.kvmem_enabled},
+            {"profile", engine.kvmem_profile},
+            {"state_coherence", engine.kvmem_state_coherence},
+            {"hybrid_state_exact_for_supported_one_shot",
+                detail::kvmem_hybrid_state_exact_for_request(engine)},
+            {"kvmi_012_applies", engine.kvmem_enabled &&
+                engine.kvmem_state_coherence != "selected-replay"},
+            {"strict_retrieval", engine.kvmem_strict_retrieval},
+            {"method", engine.kvmem_method},
+            {"retrieval_method", engine.kvmem_retrieval_method},
+            {"index_placement", engine.kvmem_index_placement},
+            {"update_mode", engine.kvmem_update_mode},
+            {"semantic_expansion", engine.kvmem_semantic_expansion},
+            {"immutable_source_k", engine.kvmem_immutable_source_k},
+            {"raw_k_nvme", engine.kvmem_raw_k_nvme},
+            {"configured_cpu_bytes", engine.kvmem_cpu_bytes},
+            {"configured_nvme_bytes", engine.kvmem_nvme_bytes},
+            {"gpu_memory_ratio", engine.kvmem_gpu_memory_ratio},
+            {"logical_context_tokens", std::max(1, engine.ctx_size)},
+            {"selection_budget_tokens", std::max(0, engine.kvmem_budget)},
+            {"prefill_budget_tokens", engine.kvmem_prefill_budget > 0
+                ? engine.kvmem_prefill_budget : engine.kvmem_budget},
+            {"generation_budget_tokens", std::max(0, engine.kvmem_gen_budget)},
+            {"block_tokens", std::max(1, engine.kvmem_block_tokens)},
+            {"query_conditioned", engine.kvmem_query_conditioned},
+            {"query_replay", cfg.kvmem_query_replay && !cfg.continuous_batching},
+            {"selected_replay_one_shot_only",
+                engine.kvmem_state_coherence == "selected-replay"},
+            {"serialized_generation", !cfg.continuous_batching},
+            {"session_policy", "detachable-host-state"},
+            {"session_state_abi_version", 1},
+            {"session_state_portability", "canonical-host-only"},
+            {"session_scheduler", "lru-affinity-fail-fast"},
+            {"executor_slots_configured", engine.kvmem_executor_slots},
+            {"executor_slots_certified", physical.certified_slots},
+            {"physical_executor_runtime_abi", physical.runtime_abi},
+            {"physical_executor_runtimes_installed", physical.installed_runtimes},
+            {"scheduler_busy_slots", scheduler.busy_slots},
+            {"scheduler_warm_hits", scheduler.warm_hits},
+            {"scheduler_cold_mounts", scheduler.cold_mounts},
+            {"scheduler_backpressure_rejections", scheduler.backpressure_rejections},
+            {"scheduler_faulted_releases", scheduler.faulted_releases},
+            {"scheduler_forced_cold_resets", scheduler.forced_cold_resets},
+            {"resource_policy", "fail-fast-byte-envelope"},
+            {"resource_slot_vram_bytes", resources.slot_vram_bytes},
+            {"resource_slot_host_bytes", resources.slot_host_bytes},
+            {"resource_slot_nvme_bytes", resources.slot_nvme_bytes},
+            {"resource_capacity_vram_bytes", resources.capacity_vram_bytes},
+            {"resource_capacity_host_bytes", resources.capacity_host_bytes},
+            {"resource_capacity_nvme_bytes", resources.capacity_nvme_bytes},
+            {"resource_max_inflight", resources.max_inflight},
+            {"resource_inflight", resources.inflight},
+            {"resource_rejections", resources.rejections},
+            {"session_max", engine.kvmem_session_max},
+            {"session_host_token_limit", engine.kvmem_session_host_token_limit},
+            {"session_host_byte_limit", engine.kvmem_session_host_byte_limit},
+            {"registered_session_host_bytes", registered_session_host_bytes},
+            {"session_snapshot_enabled", !engine.kvmem_session_snapshot_dir.empty()},
+            {"registered_sessions", sessions.size()},
+            {"mounted_session_ids", std::move(mounted_session_ids)},
+            {"hot_session_id", hot_session_id.empty() ? json(nullptr) : json(hot_session_id)}
+        };
+    };
+
+    auto health_handler = [](const httplib::Request &, httplib::Response &res) {
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+    };
+    svr.Get("/health", health_handler);
+    svr.Get("/v1/runtime/state", [&](const httplib::Request &, httplib::Response &res) {
+        res.set_content(dump_json(governed_runtime_state_json()), "application/json");
+    });
+    svr.Get("/healthz", health_handler);
+    svr.Get("/readyz", [&](const httplib::Request &, httplib::Response &res) {
+        json out = {{"status", "ready"}, {"kvmem", kvmem_status_json()}};
+        res.set_content(dump_json(out), "application/json");
+    });
+    svr.Get("/v1/kvmem/status", [&](const httplib::Request &, httplib::Response &res) {
+        res.set_content(dump_json(kvmem_status_json()), "application/json");
+    });
+    svr.Get("/v1/kvmem/scheduler", [&](const httplib::Request &, httplib::Response &res) {
+        res.set_content(dump_json(kvmem_scheduler_info_json(
+                            eng.kvmem_executor_scheduler_info())),
+                        "application/json");
+    });
+    svr.Get("/v1/kvmem/executors", [&](const httplib::Request &, httplib::Response &res) {
+        res.set_content(dump_json(kvmem_physical_executor_pool_info_json(
+                            eng.kvmem_physical_executor_pool_info())),
+                        "application/json");
+    });
+    svr.Get("/v1/kvmem/resources", [&](const httplib::Request &, httplib::Response &res) {
+        res.set_content(dump_json(kvmem_resource_info_json(
+                            eng.kvmem_resource_admission_info())),
+                        "application/json");
+    });
+
+    svr.Get("/v1/kvmem/sessions", [&](const httplib::Request &, httplib::Response &res) {
+        json data = json::array();
+        for (const auto &info : eng.kvmem_session_infos()) {
+            data.push_back(kvmem_session_info_json(info));
+        }
+        res.set_content(dump_json(json{{"object", "kvmem.session.list"},
+                                       {"data", data}}),
+                        "application/json");
+    });
+
+    svr.Get(R"(/v1/kvmem/sessions/([A-Za-z0-9_.:-]+))",
+            [&](const httplib::Request &req, httplib::Response &res) {
+        const std::string id = req.matches[1].str();
+        const KvMemSessionInfo info = eng.kvmem_session_info(id);
+        if (!info.found) {
+            set_error_response(res, 404, "KVMem session not found: " + id);
+            return;
+        }
+        res.set_content(dump_json(json{{"object", "kvmem.session"},
+                                       {"kvmem_session", kvmem_session_info_json(info)}}),
+                        "application/json");
+    });
+
+    svr.Delete(R"(/v1/kvmem/sessions/([A-Za-z0-9_.:-]+))",
+               [&](const httplib::Request &req, httplib::Response &res) {
+        const std::string id = req.matches[1].str();
+        std::lock_guard<std::mutex> lk(gen_mu);
+        if (!eng.erase_kvmem_session(id)) {
+            set_error_response(res, 404, "KVMem session not found: " + id);
+            return;
+        }
+        res.set_content(dump_json(json{{"id", id}, {"status", "evicted"}}),
+                        "application/json");
+    });
+
+    svr.Get(R"(/v1/kvmem/sessions/([A-Za-z0-9_.:-]+)/snapshot)",
+            [&](const httplib::Request &req, httplib::Response &res) {
+        const std::string id = req.matches[1].str();
+        try {
+            const auto info = eng.kvmem_session_snapshot_info(id);
+            if (!info.found) {
+                set_error_response(res, 404, "KVMem session snapshot not found: " + id);
+                return;
+            }
+            res.set_content(dump_json(json{{"object", "kvmem.session.snapshot"},
+                                           {"snapshot", kvmem_session_snapshot_info_json(info)}}),
+                            "application/json");
+        } catch (const std::exception &e) {
+            set_error_response(res, 409, e.what());
+        }
+    });
+
+    svr.Post(R"(/v1/kvmem/sessions/([A-Za-z0-9_.:-]+)/snapshot)",
+             [&](const httplib::Request &req, httplib::Response &res) {
+        const std::string id = req.matches[1].str();
+        std::lock_guard<std::mutex> lk(gen_mu);
+        try {
+            const auto info = eng.snapshot_kvmem_session(id);
+            res.set_content(dump_json(json{{"object", "kvmem.session.snapshot"},
+                                           {"snapshot", kvmem_session_snapshot_info_json(info)}}),
+                            "application/json");
+        } catch (const std::exception &e) {
+            set_error_response(res, 409, e.what());
+        }
+    });
+
+    svr.Post(R"(/v1/kvmem/sessions/([A-Za-z0-9_.:-]+)/restore)",
+             [&](const httplib::Request &req, httplib::Response &res) {
+        const std::string id = req.matches[1].str();
+        std::lock_guard<std::mutex> lk(gen_mu);
+        try {
+            const auto snap = eng.restore_kvmem_session_snapshot(id);
+            const auto session = eng.kvmem_session_info(id);
+            res.set_content(dump_json(json{{"object", "kvmem.session.restore"},
+                                           {"snapshot", kvmem_session_snapshot_info_json(snap)},
+                                           {"kvmem_session", kvmem_session_info_json(session)}}),
+                            "application/json");
+        } catch (const std::exception &e) {
+            set_error_response(res, 409, e.what());
+        }
+    });
+
+    svr.Get("/v1/models", [&](const httplib::Request &, httplib::Response &res) {
+        const int context_window = std::max(1, engine.ctx_size);
+        int max_output_tokens = context_window;
+        if (cfg.default_max_tokens_set &&
+            cfg.default_generation.max_tokens > 0) {
+            max_output_tokens = std::min(
+                max_output_tokens, cfg.default_generation.max_tokens);
+        }
+        if (engine.kvmem_enabled && engine.kvmem_gen_budget > 0) {
+            const uint64_t kvmem_cap = guided_middecode
+                ? static_cast<uint64_t>(engine.kvmem_gen_budget) +
+                    static_cast<uint64_t>(
+                        engine.kvmem_middecode_max_refreshes) *
+                    static_cast<uint64_t>(
+                        engine.kvmem_middecode_trigger_tokens)
+                : static_cast<uint64_t>(engine.kvmem_gen_budget);
+            max_output_tokens = std::min(
+                max_output_tokens,
+                static_cast<int>(std::min<uint64_t>(
+                    kvmem_cap,
+                    static_cast<uint64_t>(
+                        std::numeric_limits<int>::max()))));
+        }
+
+        json out = {
+            {"object", "list"},
+            {"data", json::array({json{{"id", model_id},
+                                       {"object", "model"},
+                                       {"created", unix_now()},
+                                       {"owned_by", "qw3"},
+                                       {"context_window", context_window},
+                                       {"context_length", context_window},
+                                       {"max_output_tokens", max_output_tokens},
+                                       {"max_tokens", max_output_tokens}}})}};
+        res.set_content(dump_json(out), "application/json");
+    });
+
+    svr.Get(R"(/v1/kvmem/caches/([A-Za-z0-9_.:-]+))",
+            [&](const httplib::Request &req, httplib::Response &res) {
+        const std::string id = req.matches[1].str();
+        std::lock_guard<std::mutex> lk(gen_mu);
+        const KvMemLocalCacheInfo info = eng.kvmem_local_cache_info(id);
+        if (!info.found) {
+            set_error_response(res, 404,
+                               "KVMem local cache not found: " + id);
+            return;
+        }
+        res.set_content(
+            dump_json(json{{"object", "kvmem.cache"},
+                           {"kvmem_cache", kvmem_cache_info_json(info)}}),
+            "application/json");
+    });
+
+    svr.Delete(R"(/v1/kvmem/caches/([A-Za-z0-9_.:-]+))",
+               [&](const httplib::Request &req, httplib::Response &res) {
+        const std::string id = req.matches[1].str();
+        std::lock_guard<std::mutex> lk(gen_mu);
+        if (!eng.erase_kvmem_local_cache(id)) {
+            set_error_response(res, 404,
+                               "KVMem local cache not found: " + id);
+            return;
+        }
+        res.set_content(
+            dump_json(json{{"id", id}, {"status", "evicted"}}),
+            "application/json");
+    });
+
+    // llama.cpp-compatible tokenizer-count endpoint.  AgentLongBench's
+    // canonical worker uses this to size the generation request before it
+    // calls /v1/chat/completions.  Returning only count by default avoids
+    // serializing a 100K-250K element token-id array for long prompts; the
+    // opt-in return_tokens mode exists for tokenizer-parity validation.
+    auto handle_tokenize = [&](const httplib::Request &hreq,
+                               httplib::Response &res) {
+        json req;
+        try {
+            req = json::parse(hreq.body);
+        } catch (const std::exception &e) {
+            res.status = 400;
+            res.set_content(
+                dump_json(json{{"error", std::string("invalid JSON: ") + e.what()}}),
+                "application/json");
+            return;
+        }
+        if (!req.contains("content") || !req["content"].is_string()) {
+            res.status = 400;
+            res.set_content(dump_json(json{{"error", "missing string content"}}),
+                            "application/json");
+            return;
+        }
+        const std::string content = req["content"].get<std::string>();
+        const std::vector<int32_t> tokens = usage_tokenizer.encode(content);
+        json out{{"count", tokens.size()}};
+        if (req.value("return_tokens", false)) out["tokens"] = tokens;
+        res.set_content(dump_json(out), "application/json");
+    };
+    svr.Post("/tokenize", handle_tokenize);
+    svr.Post("/v1/tokenize", handle_tokenize);
+
+    // Build GenerationOptions from common OpenAI fields. Sampling defaults to
+    // the Qwen3-recommended preset for the request's thinking mode (see below);
+    // any field the client sends overrides it.
+    auto make_gen = [&](const json &req, size_t prompt_token_count,
+                        bool enable_thinking = true,
+                        bool allow_kvmem_multi_epoch = false)
+            -> GenerationOptions {
+        GenerationOptions g = cfg.default_generation;
+        // Qwen3-recommended sampling preset per mode, applied only where the
+        // user did not pin the value on the CLI or in the request. Thinking:
+        // temp 0.6 / top_p 0.95 (the struct + CLI default). Non-thinking:
+        // temp 0.7 / top_p 0.8. top_k=20 / min_p=0 are shared, so untouched.
+        if (!enable_thinking) {
+            if (!cfg.temperature_set) g.temperature = 0.7f;
+            if (!cfg.top_p_set) g.top_p = 0.8f;
+        }
+        const uint64_t occupied = archive_prefix_tokens +
+            static_cast<uint64_t>(prompt_token_count);
+        const int remaining_ctx = occupied <
+                static_cast<uint64_t>(std::max(1, engine.ctx_size))
+            ? static_cast<int>(
+                  static_cast<uint64_t>(engine.ctx_size) - occupied)
+            : 0;
+        bool has_max_tokens = false;
+        int requested_max_tokens = 0;
+        std::string max_tokens_error;
+        if (!parse_explicit_max_tokens(req, has_max_tokens,
+                                       requested_max_tokens,
+                                       max_tokens_error)) {
+            throw std::invalid_argument(max_tokens_error);
+        }
+        if (has_max_tokens) {
+            // 0 has an intentional, first-class meaning: execute the complete
+            // prefill/state-update path without entering sampling or decode.
+            g.max_tokens = requested_max_tokens;
+        } else {
+            g.max_tokens = cfg.default_max_tokens_set
+                ? cfg.default_generation.max_tokens
+                : remaining_ctx;
+        }
+        if (cfg.default_max_tokens_set &&
+            cfg.default_generation.max_tokens > 0 &&
+            g.max_tokens > cfg.default_generation.max_tokens) {
+            std::cerr << "[qw3-serve] capping request max_tokens from "
+                      << g.max_tokens << " to "
+                      << cfg.default_generation.max_tokens
+                      << " (server limit)\n";
+            g.max_tokens = cfg.default_generation.max_tokens;
+        }
+        if (g.max_tokens > remaining_ctx) {
+            std::cerr << "[qw3-serve] capping request max_tokens from "
+                      << g.max_tokens << " to " << remaining_ctx
+                      << " (remaining context)\n";
+            g.max_tokens = remaining_ctx;
+        }
+        // Ordinarily one turn cannot exceed the physical generation reserve.
+        // Mid-decode guided reselection explicitly starts a new bounded epoch;
+        // cap the request by the configured number of epochs instead of by one
+        // reserve, while the backend still enforces each epoch independently.
+        const uint64_t kvmem_request_output_cap = allow_kvmem_multi_epoch
+            ? static_cast<uint64_t>(std::max(0, engine.kvmem_gen_budget)) +
+                static_cast<uint64_t>(
+                    std::max(0, engine.kvmem_middecode_max_refreshes)) *
+                static_cast<uint64_t>(
+                    std::max(0, engine.kvmem_middecode_trigger_tokens))
+            : static_cast<uint64_t>(
+                  std::max(0, engine.kvmem_gen_budget));
+        if (engine.kvmem_enabled && engine.kvmem_gen_budget > 0 &&
+            static_cast<uint64_t>(g.max_tokens) > kvmem_request_output_cap) {
+            std::cerr << "[qw3-serve] capping request max_tokens from "
+                      << g.max_tokens << " to " << kvmem_request_output_cap
+                      << (allow_kvmem_multi_epoch
+                              ? " (kvmem multi-epoch output cap)\n"
+                              : " (kvmem gen budget)\n");
+            g.max_tokens = static_cast<int>(std::min<uint64_t>(
+                kvmem_request_output_cap,
+                static_cast<uint64_t>(std::numeric_limits<int>::max())));
+        }
+        g.temperature = req.value("temperature", g.temperature);
+        g.top_p = req.value("top_p", g.top_p);
+        g.top_k = req.value("top_k", g.top_k);
+        g.min_p = req.value("min_p", g.min_p);
+        g.presence_penalty = req.value("presence_penalty", g.presence_penalty);
+        g.repetition_penalty = req.value("repetition_penalty", g.repetition_penalty);
+        g.seed = req.value("seed", g.seed);
+        g.ignore_eos = req.value("ignore_eos",
+                                 req.value("ignore_eos_token", g.ignore_eos));
+        g.recover_thinking_eos = req.value("recover_thinking_eos", enable_thinking);
+        g.thinking_budget = req.value("thinking_budget", cfg.thinking_budget_default);
+        if (g.thinking_budget < 0) g.thinking_budget = 0;
+
+        const bool has_guided_thinking =
+            req.contains("kvmem_query_guided_thinking_max_tokens");
+        const bool has_guided_query =
+            req.contains("kvmem_query_guided_query_max_tokens");
+        bool guided_direct = false;
+        if (req.contains("kvmem_query_guided_direct")) {
+            if (!req["kvmem_query_guided_direct"].is_boolean()) {
+                throw std::invalid_argument(
+                    "kvmem_query_guided_direct must be a boolean");
+            }
+            guided_direct =
+                req["kvmem_query_guided_direct"].get<bool>();
+        }
+        if (has_guided_thinking != has_guided_query) {
+            throw std::invalid_argument(
+                "guided query requires both "
+                "kvmem_query_guided_thinking_max_tokens and "
+                "kvmem_query_guided_query_max_tokens");
+        }
+        if (has_guided_thinking) {
+            if (!engine.kvmem_enabled || !engine.kvmem_query_conditioned) {
+                throw std::invalid_argument(
+                    "guided query requires --kvmem and "
+                    "--kvmem-query-conditioned");
+            }
+            uint64_t thinking_max = 0;
+            uint64_t query_max = 0;
+            if (!parse_bounded_json_u64(
+                    req["kvmem_query_guided_thinking_max_tokens"],
+                    guided_direct ? 0 : 1, 4096, thinking_max) ||
+                !parse_bounded_json_u64(
+                    req["kvmem_query_guided_query_max_tokens"], 1,
+                    4096, query_max)) {
+                throw std::invalid_argument(
+                    "guided-query thinking/query limits must be integers in "
+                    "[1,4096] (or 0 for direct mode) and [1,4096] "
+                    "respectively");
+            }
+            g.kvmem_query_guided_thinking_max_tokens =
+                static_cast<uint32_t>(thinking_max);
+            g.kvmem_query_guided_query_max_tokens =
+                static_cast<uint32_t>(query_max);
+            g.kvmem_query_guided_direct = guided_direct;
+            if (guided_direct && thinking_max != 0) {
+                throw std::invalid_argument(
+                    "direct guided query requires a zero private-thinking "
+                    "limit");
+            }
+        } else if (guided_direct) {
+            throw std::invalid_argument(
+                "kvmem_query_guided_direct requires guided-query token limits");
+        }
+
+        if (req.contains("kvmem_semantic_budget")) {
+            if (!engine.kvmem_enabled) {
+                throw std::invalid_argument(
+                    "kvmem_semantic_budget requires --kvmem");
+            }
+            const uint64_t configured_max = static_cast<uint64_t>(
+                std::max(0, engine.kvmem_budget));
+            uint64_t requested = 0;
+            if (!parse_bounded_json_u64(
+                    req["kvmem_semantic_budget"], 1, configured_max,
+                    requested)) {
+                throw std::invalid_argument(
+                    "kvmem_semantic_budget must be a positive integer no "
+                    "larger than --kvmem-budget (" +
+                    std::to_string(configured_max) + ")");
+            }
+            const uint64_t block_tokens = static_cast<uint64_t>(
+                std::max(1, engine.kvmem_block_tokens));
+            if (requested % block_tokens != 0) {
+                throw std::invalid_argument(
+                    "kvmem_semantic_budget must be divisible by "
+                    "--kvmem-block-tokens (" +
+                    std::to_string(block_tokens) + ")");
+            }
+            const KvMemKeepAllocation keep =
+                resolve_kvmem_keep_allocation(
+                    static_cast<uint32_t>(block_tokens),
+                    static_cast<uint32_t>(configured_max),
+                    engine.kvmem_sink_blocks,
+                    engine.kvmem_recent_blocks,
+                    engine.kvmem_sink_tokens,
+                    engine.kvmem_recent_tokens);
+            const uint64_t keep_blocks =
+                static_cast<uint64_t>(keep.sink_blocks) +
+                keep.recent_blocks;
+            if (requested / block_tokens < keep_blocks) {
+                throw std::invalid_argument(
+                    "kvmem_semantic_budget is smaller than the configured "
+                    "sink + recent allocation (" +
+                    std::to_string(keep_blocks * block_tokens) +
+                    " tokens)");
+            }
+            g.kvmem_semantic_budget =
+                static_cast<uint32_t>(requested);
+        }
+
+        // ARCHIVED DeltaNet-state debug entry (2026-07-23).
+        //
+        // The frozen LongMemEval-M error-10 experiments did not show a stable,
+        // attributable gain:
+        //   * replace accumulated recurrent state with a state rebuilt from the
+        //     selected 224K source tokens: 1/10 with the inline grader, but 6/10
+        //     when the same outputs were rejudged by DeepSeek V4 Pro;
+        //   * retain the accumulated state and replay the same selected tokens as
+        //     additional DeltaNet updates: 5/10 with the inline grader.
+        // Exporting one ~229K-token state also cost about 91 seconds and wrote a
+        // ~150.5 MiB artifact per sample. Because the score depended strongly on
+        // judge route and neither construction isolated a reliable improvement,
+        // export/import/capture/seed are no longer supported request controls.
+        // Keep rejecting the retired names instead of silently ignoring an old
+        // experiment script and accidentally reporting a normal KVMem result.
+        static constexpr const char *kArchivedRebuiltStateFields[] = {
+            "kvmem_rebuilt_state_export",
+            "kvmem_rebuilt_state_import",
+            "kvmem_rebuilt_state_capture",
+            "kvmem_rebuilt_state_seed",
+        };
+        for (const char *field : kArchivedRebuiltStateFields) {
+            if (req.contains(field)) {
+                throw std::invalid_argument(
+                    std::string(field) +
+                    " is archived and disabled; see KVMI-012");
+            }
+        }
+
+#if 0  // Archived DeltaNet recurrent-state debug parser; see note above.
+        auto parse_rebuilt_state_key = [&](const char *field,
+                                           std::string &out) {
+            if (!req.contains(field)) return;
+            if (!req[field].is_string()) {
+                throw std::invalid_argument(std::string(field) +
+                                            " must be a string key");
+            }
+            out = req[field].get<std::string>();
+            const bool valid = !out.empty() && out.size() <= 128 &&
+                std::all_of(out.begin(), out.end(), [](unsigned char c) {
+                    return std::isalnum(c) || c == '-' || c == '_' || c == '.';
+                });
+            if (!valid) {
+                throw std::invalid_argument(
+                    std::string(field) +
+                    " must contain 1..128 characters from [A-Za-z0-9_.-]");
+            }
+        };
+        parse_rebuilt_state_key("kvmem_rebuilt_state_export",
+                                g.kvmem_rebuilt_state_export_key);
+        parse_rebuilt_state_key("kvmem_rebuilt_state_import",
+                                g.kvmem_rebuilt_state_import_key);
+        parse_rebuilt_state_key("kvmem_rebuilt_state_capture",
+                                g.kvmem_rebuilt_state_capture_key);
+        parse_rebuilt_state_key("kvmem_rebuilt_state_seed",
+                                g.kvmem_rebuilt_state_seed_key);
+        if (!g.kvmem_rebuilt_state_export_key.empty() &&
+            !g.kvmem_rebuilt_state_import_key.empty()) {
+            throw std::invalid_argument(
+                "kvmem_rebuilt_state_export and kvmem_rebuilt_state_import "
+                "are mutually exclusive");
+        }
+        if (!g.kvmem_rebuilt_state_capture_key.empty() &&
+            (!g.kvmem_rebuilt_state_export_key.empty() ||
+             !g.kvmem_rebuilt_state_import_key.empty() ||
+             !g.kvmem_rebuilt_state_seed_key.empty())) {
+            throw std::invalid_argument(
+                "kvmem_rebuilt_state_capture cannot be combined with other "
+                "rebuilt-state operations");
+        }
+        if (!g.kvmem_rebuilt_state_seed_key.empty() &&
+            g.kvmem_rebuilt_state_export_key.empty()) {
+            throw std::invalid_argument(
+                "kvmem_rebuilt_state_seed requires kvmem_rebuilt_state_export");
+        }
+        if (!g.kvmem_rebuilt_state_export_key.empty() && g.max_tokens != 0) {
+            throw std::invalid_argument(
+                "kvmem_rebuilt_state_export requires max_tokens=0");
+        }
+#endif
+        return g;
+    };
+
+    auto handle_chat_completions = [&](const httplib::Request &hreq,
+                                       httplib::Response &res,
+                                       detail::HarnessProtocol protocol) {
+        const auto server_request_start = std::chrono::steady_clock::now();
+        json req;
+        try {
+            req = json::parse(hreq.body);
+        } catch (const std::exception &e) {
+            res.status = 400;
+            res.set_content(dump_json(json{{"error", std::string("invalid JSON: ") + e.what()}}),
+                            "application/json");
+            return;
+        }
+        const auto server_json_end = std::chrono::steady_clock::now();
+        if (!req.contains("messages") || !req["messages"].is_array()) {
+            res.status = 400;
+            res.set_content(dump_json(json{{"error", "missing messages[]"}}),
+                            "application/json");
+            return;
+        }
+        PreparedVisionRequest prepared_vision;
+        std::string vision_error;
+        if (!prepare_vision_messages(req["messages"], vision_encoder,
+                                     prepared_vision, vision_error)) {
+            set_error_response(res, 400, vision_error);
+            return;
+        }
+        bool explicit_max_tokens = false;
+        int requested_max_tokens = 0;
+        std::string max_tokens_error;
+        if (!parse_explicit_max_tokens(req, explicit_max_tokens,
+                                       requested_max_tokens,
+                                       max_tokens_error)) {
+            set_error_response(res, 400, max_tokens_error);
+            return;
+        }
+        const bool prefill_only = explicit_max_tokens
+            ? requested_max_tokens == 0
+            : (cfg.default_max_tokens_set &&
+               cfg.default_generation.max_tokens == 0);
+        KvMemReselectMode kvmem_reselect_mode = KvMemReselectMode::Auto;
+        if (req.contains("kvmem_reselect")) {
+            if (!req["kvmem_reselect"].is_string()) {
+                set_error_response(res, 400,
+                                   "kvmem_reselect must be auto|force|off");
+                return;
+            }
+            const std::string mode = req["kvmem_reselect"].get<std::string>();
+            if (mode == "auto") {
+                kvmem_reselect_mode = KvMemReselectMode::Auto;
+            } else if (mode == "force") {
+                kvmem_reselect_mode = KvMemReselectMode::Force;
+            } else if (mode == "off") {
+                kvmem_reselect_mode = KvMemReselectMode::Off;
+            } else {
+                set_error_response(res, 400,
+                                   "kvmem_reselect must be auto|force|off");
+                return;
+            }
+        }
+        KvMemPrefillWindowMode kvmem_prefill_window_mode =
+            KvMemPrefillWindowMode::Pressure;
+        if (req.contains("kvmem_prefill_window")) {
+            if (!req["kvmem_prefill_window"].is_string()) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_prefill_window must be "
+                    "pressure|keep_selected|semantic_chunk");
+                return;
+            }
+            const std::string mode =
+                req["kvmem_prefill_window"].get<std::string>();
+            if (mode == "pressure") {
+                kvmem_prefill_window_mode =
+                    KvMemPrefillWindowMode::Pressure;
+            } else if (mode == "keep_selected") {
+                kvmem_prefill_window_mode =
+                    KvMemPrefillWindowMode::KeepSelected;
+            } else if (mode == "semantic_chunk") {
+                kvmem_prefill_window_mode =
+                    KvMemPrefillWindowMode::SemanticChunk;
+            } else {
+                set_error_response(
+                    res, 400,
+                    "kvmem_prefill_window must be "
+                    "pressure|keep_selected|semantic_chunk");
+                return;
+            }
+        }
+        uint32_t kvmem_prefill_semantic_start_tokens = 0;
+        uint32_t kvmem_prefill_semantic_query_tokens = 0;
+        auto parse_nonnegative_u32 = [&](const char *name,
+                                         uint32_t &value) -> bool {
+            if (!req.contains(name)) return true;
+            if (!req[name].is_number_integer()) {
+                set_error_response(
+                    res, 400, std::string(name) +
+                                  " must be a non-negative integer");
+                return false;
+            }
+            const int64_t parsed = req[name].get<int64_t>();
+            if (parsed < 0 ||
+                static_cast<uint64_t>(parsed) >
+                    std::numeric_limits<uint32_t>::max()) {
+                set_error_response(
+                    res, 400, std::string(name) +
+                                  " must fit in uint32");
+                return false;
+            }
+            value = static_cast<uint32_t>(parsed);
+            return true;
+        };
+        if (!parse_nonnegative_u32(
+                "kvmem_prefill_semantic_start_tokens",
+                kvmem_prefill_semantic_start_tokens) ||
+            !parse_nonnegative_u32(
+                "kvmem_prefill_semantic_query_tokens",
+                kvmem_prefill_semantic_query_tokens)) {
+            return;
+        }
+        if (kvmem_prefill_window_mode !=
+                KvMemPrefillWindowMode::SemanticChunk &&
+            (kvmem_prefill_semantic_start_tokens != 0 ||
+             kvmem_prefill_semantic_query_tokens != 0)) {
+            set_error_response(
+                res, 400,
+                "kvmem_prefill_semantic_* requires "
+                "kvmem_prefill_window=semantic_chunk");
+            return;
+        }
+        bool kvmem_session_request = false;
+        bool kvmem_session_reset = false;
+        std::string kvmem_session_id;
+        std::string kvmem_session_op;
+        std::string kvmem_workspace_id;
+        if (req.contains("kvmem_session_id") ||
+            req.contains("kvmem_session_op")) {
+            if (!req.contains("kvmem_session_id") ||
+                !req["kvmem_session_id"].is_string() ||
+                req["kvmem_session_id"].get<std::string>().empty()) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_session_id must be a non-empty string");
+                return;
+            }
+            if (!req.contains("kvmem_session_op") ||
+                !req["kvmem_session_op"].is_string()) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_session_op must be start|append|finish");
+                return;
+            }
+            kvmem_session_id = req["kvmem_session_id"].get<std::string>();
+            kvmem_session_op = req["kvmem_session_op"].get<std::string>();
+            if (kvmem_session_op != "start" &&
+                kvmem_session_op != "append" &&
+                kvmem_session_op != "finish") {
+                set_error_response(
+                    res, 400,
+                    "kvmem_session_op must be start|append|finish");
+                return;
+            }
+            if (!engine.kvmem_enabled) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_session_* requires --kvmem");
+                return;
+            }
+            kvmem_session_request = true;
+            kvmem_session_reset = kvmem_session_op == "start";
+            if (kvmem_session_op != "finish" && !prefill_only) {
+                set_error_response(
+                    res, 400,
+                    "kvmem session start/append requires max_tokens=0");
+                return;
+            }
+            if (kvmem_session_reset &&
+                kvmem_prefill_window_mode ==
+                    KvMemPrefillWindowMode::KeepSelected) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_prefill_window=keep_selected requires an active "
+                    "session selection");
+                return;
+            }
+        }
+        if (req.contains("kvmem_workspace_id")) {
+            if (!kvmem_session_request) {
+                set_error_response(res, 400,
+                    "kvmem_workspace_id requires kvmem_session_id/op");
+                return;
+            }
+            if (!req["kvmem_workspace_id"].is_string()) {
+                set_error_response(res, 400,
+                    "kvmem_workspace_id must be a string");
+                return;
+            }
+            kvmem_workspace_id = req["kvmem_workspace_id"].get<std::string>();
+            if (kvmem_workspace_id.empty() || kvmem_workspace_id.size() > 256) {
+                set_error_response(res, 400,
+                    "kvmem_workspace_id must be 1..256 bytes");
+                return;
+            }
+        }
+        bool kvmem_cache_request = false;
+        std::string kvmem_cache_id;
+        std::string kvmem_cache_operation;
+        KvMemLocalCacheMode kvmem_cache_mode =
+            KvMemLocalCacheMode::None;
+        uint64_t kvmem_cache_expected_version = 0;
+        bool kvmem_cache_expected_version_set = false;
+        uint64_t kvmem_cache_ttl_seconds = 0;
+        if (req.contains("kvmem_cache")) {
+            if (!engine.kvmem_enabled) {
+                set_error_response(res, 400,
+                                   "kvmem_cache requires --kvmem");
+                return;
+            }
+            if (kvmem_session_request) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_cache and kvmem_session_* are mutually exclusive");
+                return;
+            }
+            const json &cache = req["kvmem_cache"];
+            if (!cache.is_object()) {
+                set_error_response(res, 400,
+                                   "kvmem_cache must be an object");
+                return;
+            }
+            const bool save = cache.contains("save");
+            const bool load = cache.contains("load");
+            if (save == load) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_cache requires exactly one save or load object");
+                return;
+            }
+            const json &operation = cache[save ? "save" : "load"];
+            if (!operation.is_object() || !operation.contains("id") ||
+                !operation["id"].is_string()) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_cache save/load requires a string id");
+                return;
+            }
+            kvmem_cache_id = operation["id"].get<std::string>();
+            if (!valid_kvmem_cache_id(kvmem_cache_id)) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_cache id must be 1..128 characters using only "
+                    "letters, digits, '.', '_', '-', or ':'");
+                return;
+            }
+            if (save) {
+                kvmem_cache_operation = "save";
+                if (!prefill_only) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_cache save currently requires max_tokens=0");
+                    return;
+                }
+                const std::string scope = operation.value("scope", "local");
+                const std::string when =
+                    operation.value("when", "after_request");
+                if (scope != "local" || when != "after_request") {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_cache save supports only scope=local and "
+                        "when=after_request");
+                    return;
+                }
+                if (operation.contains("ttl_seconds")) {
+                    if (!parse_bounded_json_u64(
+                            operation["ttl_seconds"], 0, 31536000,
+                            kvmem_cache_ttl_seconds)) {
+                        set_error_response(
+                            res, 400,
+                            "kvmem_cache ttl_seconds must be in [0,31536000]");
+                        return;
+                    }
+                }
+            } else {
+                kvmem_cache_operation = "load";
+                const std::string mode = operation.value("mode", "frozen");
+                if (mode == "frozen") {
+                    kvmem_cache_mode = KvMemLocalCacheMode::Frozen;
+                } else if (mode == "append") {
+                    kvmem_cache_mode = KvMemLocalCacheMode::Append;
+                } else {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_cache load mode must be frozen|append");
+                    return;
+                }
+                if (operation.contains("required") &&
+                    (!operation["required"].is_boolean() ||
+                     !operation["required"].get<bool>())) {
+                    set_error_response(
+                        res, 400,
+                        "process-local cache loads require required=true; "
+                        "missing caches never silently trigger full prefill");
+                    return;
+                }
+                if (operation.contains("expected_version")) {
+                    if (!parse_bounded_json_u64(
+                            operation["expected_version"], 1,
+                            std::numeric_limits<uint64_t>::max(),
+                            kvmem_cache_expected_version)) {
+                        set_error_response(
+                            res, 400,
+                            "kvmem_cache expected_version must be a positive "
+                            "integer");
+                        return;
+                    }
+                    kvmem_cache_expected_version_set = true;
+                }
+                if (kvmem_cache_mode == KvMemLocalCacheMode::Append) {
+                    if (!prefill_only) {
+                        set_error_response(
+                            res, 400,
+                            "kvmem_cache append currently requires "
+                            "max_tokens=0");
+                        return;
+                    }
+                    if (!kvmem_cache_expected_version_set) {
+                        set_error_response(
+                            res, 400,
+                            "kvmem_cache append requires expected_version");
+                        return;
+                    }
+                }
+            }
+            kvmem_cache_request = true;
+        }
+        const bool has_kvmem_query =
+            req.contains("kvmem_query_span") ||
+            req.contains("kvmem_query_message_range");
+        if (kvmem_reselect_mode == KvMemReselectMode::Force &&
+            !has_kvmem_query) {
+            set_error_response(
+                res, 400,
+                "kvmem_reselect=force requires kvmem_query_span or "
+                "kvmem_query_message_range");
+            return;
+        }
+        if (kvmem_reselect_mode == KvMemReselectMode::Force &&
+            !engine.kvmem_query_conditioned) {
+            set_error_response(
+                res, 400,
+                "kvmem_reselect=force requires --kvmem-query-conditioned");
+            return;
+        }
+        if (kvmem_reselect_mode == KvMemReselectMode::Off &&
+            has_kvmem_query) {
+            set_error_response(
+                res, 400,
+                "KVMem query metadata cannot be used with "
+                "kvmem_reselect=off");
+            return;
+        }
+        if (req.contains("kvmem_query_span") &&
+            req.contains("kvmem_query_message_range")) {
+            set_error_response(
+                res, 400,
+                "kvmem_query_span and kvmem_query_message_range are "
+                "mutually exclusive");
+            return;
+        }
+        const bool enable_thinking =
+            req.value("enable_thinking", cfg.enable_thinking_default);
+        const json *raw_tools = req.contains("tools") ? &req["tools"] : nullptr;
+        const bool tool_choice_none =
+            req.contains("tool_choice") && req["tool_choice"].is_string() &&
+            req["tool_choice"].get<std::string>() == "none";
+        const bool tool_choice_required =
+            req.contains("tool_choice") && req["tool_choice"].is_string() &&
+            req["tool_choice"].get<std::string>() == "required";
+        std::string forced_tool_name;
+        if (req.contains("tool_choice") && req["tool_choice"].is_object()) {
+            const json &tc = req["tool_choice"];
+            if (tc.contains("function") && tc["function"].is_object()) {
+                forced_tool_name = tc["function"].value("name", "");
+            }
+        }
+        const json *tools = tool_choice_none ? nullptr : raw_tools;
+        const bool tool_request = tools && tools->is_array() && !tools->empty();
+        if (tool_request) {
+            std::cerr << "[qw3-serve] incoming tools="
+                      << tools_debug_summary(*tools);
+            if (!forced_tool_name.empty()) {
+                std::cerr << " forced=" << forced_tool_name;
+            }
+            std::cerr << "\n";
+        }
+        bool has_leading_control_message = false;
+        if (!req["messages"].empty() && req["messages"][0].is_object()) {
+            const std::string role = req["messages"][0].value("role", "");
+            has_leading_control_message =
+                role == "system" || role == "developer";
+        }
+        const bool dsh_compact =
+            hreq.has_header("x-deepseek-harness-compact") &&
+            trim_ascii_ws(hreq.get_header_value(
+                "x-deepseek-harness-compact")) == "1";
+        const bool mini_swe_agent =
+            hreq.has_header("x-qw3-harness") &&
+            trim_ascii_ws(hreq.get_header_value("x-qw3-harness")) ==
+                "mini-swe-agent";
+        const detail::HarnessRequestContext harness =
+            detail::classify_harness(detail::HarnessRequestSignals{
+                protocol,
+                hreq.has_header("User-Agent")
+                    ? hreq.get_header_value("User-Agent") : std::string(),
+                mini_swe_agent,
+                hreq.has_header("x-deepseek-harness-user-id") ||
+                    hreq.has_header("x-deepseek-harness-session-id") ||
+                    hreq.has_header("x-deepseek-harness-compact"),
+                hreq.has_header("x-opencode-session") ||
+                    hreq.has_header("x-opencode-project") ||
+                    hreq.has_header("x-opencode-request") ||
+                    hreq.has_header("x-opencode-client"),
+                raw_tools && raw_tools->is_array() && !raw_tools->empty(),
+                has_leading_control_message,
+                dsh_compact});
+        bool transcript_replay = false;
+        if (req.contains("kvmem_transcript_replay")) {
+            if (!req["kvmem_transcript_replay"].is_boolean()) {
+                set_error_response(res, 400,
+                                   "kvmem_transcript_replay must be a boolean");
+                return;
+            }
+            transcript_replay = req["kvmem_transcript_replay"].get<bool>();
+        }
+        if (transcript_replay &&
+            (!engine.kvmem_enabled || !engine.kvmem_query_conditioned)) {
+            set_error_response(
+                res, 400,
+                "kvmem_transcript_replay requires --kvmem and "
+                "--kvmem-query-conditioned");
+            return;
+        }
+        if (transcript_replay && engine.kvmem_retrieval_method != "mean-k") {
+            set_error_response(
+                res, 400,
+                "kvmem_transcript_replay currently requires mean-k retrieval");
+            return;
+        }
+        if (kvmem_cache_request && transcript_replay) {
+            set_error_response(
+                res, 400,
+                "kvmem_cache cannot be combined with "
+                "kvmem_transcript_replay");
+            return;
+        }
+        std::vector<RenderedMessageSpan> rendered_message_spans;
+        const bool harness_semantic_pins =
+            harness.kind != detail::HarnessKind::None &&
+            engine.kvmem_enabled;
+        const bool explicit_retrieval_groups =
+            req.contains("kvmem_retrieval_group_spans");
+        const bool auto_message_groups =
+            engine.kvmem_semantic_expansion == "message" &&
+            !explicit_retrieval_groups;
+        const bool map_retrieval_groups =
+            explicit_retrieval_groups || auto_message_groups;
+        const bool stable_harness_reasoning =
+            harness_semantic_pins && cfg.kvmem_prefix_cache;
+        size_t control_prefix_end = 0;
+        const auto server_render_start = std::chrono::steady_clock::now();
+        const std::string prompt = render_messages(
+            req["messages"], tools, enable_thinking, forced_tool_name,
+            (transcript_replay || map_retrieval_groups ||
+             harness_semantic_pins)
+                ? &rendered_message_spans : nullptr,
+            /*add_generation_prompt=*/!prefill_only,
+            /*require_tool_call=*/tool_choice_required,
+            harness.kind,
+            stable_harness_reasoning,
+            harness_semantic_pins ? &control_prefix_end : nullptr);
+        const auto server_render_end = std::chrono::steady_clock::now();
+        std::vector<int32_t> prompt_token_ids =
+            usage_tokenizer.encode(prompt);
+        const auto server_tokenize_end = std::chrono::steady_clock::now();
+        size_t prompt_token_count = prompt_token_ids.size();
+        std::optional<detail::HarnessSemanticPlan> harness_semantic_plan;
+        if (harness_semantic_pins) {
+            harness_semantic_plan = detail::derive_harness_semantic_plan(
+                harness.kind, prompt, control_prefix_end,
+                rendered_message_spans);
+        }
+        if (archive_prefix_tokens + prompt_token_count >=
+            static_cast<uint64_t>(std::max(1, engine.ctx_size))) {
+            set_error_response(
+                res,
+                413,
+                "archive prefix plus prompt exceeds KV context: archive_tokens=" +
+                    std::to_string(archive_prefix_tokens) +
+                    " prompt_tokens=" +
+                    std::to_string(prompt_token_count) +
+                    " ctx=" + std::to_string(engine.ctx_size));
+            return;
+        }
+        const bool above_selection_budget =
+            archive_prefix_tokens + prompt_token_count >
+                static_cast<uint64_t>(std::max(0, engine.kvmem_budget));
+        bool private_guided_refresh = false;
+        bool private_refresh_requires_pressure = false;
+        bool headroom_grace = false;
+        bool initial_headroom_grace = false;
+        uint32_t grace_middecode_trigger_tokens = 0;
+        uint32_t grace_epoch_limit_tokens = 0;
+        uint64_t cross_turn_delta_tokens = 0;
+        bool same_task_guided_suppressed = false;
+        std::optional<size_t> guided_trajectory_key;
+        detail::KvmemHarnessRefreshReason harness_refresh_reason =
+            detail::KvmemHarnessRefreshReason::None;
+        if ((guided_boundary || guided_middecode) &&
+            harness.kind != detail::HarnessKind::None &&
+            !req["messages"].empty() && harness_semantic_plan.has_value()) {
+            const detail::HarnessSemanticPlan &semantic_plan =
+                *harness_semantic_plan;
+            const size_t fallback_query_index =
+                last_query_index_for_template(req["messages"], harness.kind);
+            const size_t root_index =
+                semantic_plan.root_task_message_index.value_or(
+                    fallback_query_index);
+            const size_t current_index =
+                semantic_plan.current_query_message_index.value_or(
+                    fallback_query_index);
+            auto message_identity = [&](size_t index) {
+                std::string identity = std::to_string(index) + ":";
+                if (index < req["messages"].size()) {
+                    const json &message = req["messages"][index];
+                    identity += message.value("role", "") + ":" +
+                        dump_json(message.contains("content")
+                            ? message["content"] : json());
+                }
+                return identity;
+            };
+            const size_t trajectory_key = std::hash<std::string>{}(
+                std::to_string(static_cast<int>(harness.kind)) + ":" +
+                message_identity(root_index));
+            const size_t current_query_key =
+                std::hash<std::string>{}(message_identity(current_index));
+            guided_trajectory_key = trajectory_key;
+            const uint64_t logical_prompt_tokens =
+                archive_prefix_tokens + prompt_token_count;
+            std::lock_guard<std::mutex> lock(guided_trajectory_mu);
+            if (guided_trajectories.size() >= 128 &&
+                guided_trajectories.find(trajectory_key) ==
+                    guided_trajectories.end()) {
+                guided_trajectories.clear();
+            }
+            auto state_it = guided_trajectories.find(trajectory_key);
+            bool known_task = state_it != guided_trajectories.end();
+            if (!known_task) {
+                state_it = guided_trajectories.emplace(
+                    trajectory_key, GuidedTrajectoryState{}).first;
+            }
+            GuidedTrajectoryState &state = state_it->second;
+            const detail::KvmemCrossTurnRefreshDecision decision =
+                detail::kvmem_cross_turn_refresh_decision(
+                    logical_prompt_tokens,
+                    state.last_seen_prompt_tokens,
+                    state.last_refresh_prompt_tokens,
+                    guided_middecode
+                        ? static_cast<uint64_t>(
+                              std::max(0,
+                                  engine.kvmem_middecode_trigger_tokens))
+                        : 0);
+            if (decision.reset) {
+                state.last_refresh_prompt_tokens = 0;
+                state.selection_started = false;
+            }
+            const bool same_user_query =
+                known_task && !decision.reset && state.has_current_query &&
+                state.current_query_key == current_query_key;
+            const detail::KvmemHarnessRefreshDecision refresh =
+                detail::kvmem_harness_refresh_decision(
+                    detail::KvmemHarnessRefreshInput{
+                        known_task && !decision.reset,
+                        same_user_query,
+                        state.selection_started,
+                        kvmem_reselect_mode != KvMemReselectMode::Off,
+                        kvmem_reselect_mode == KvMemReselectMode::Force,
+                        decision.reset,
+                        logical_prompt_tokens,
+                        static_cast<uint64_t>(
+                            std::max(0, engine.kvmem_budget)),
+                        guided_middecode
+                            ? static_cast<uint64_t>(std::max(
+                                  0,
+                                  engine.kvmem_middecode_trigger_tokens))
+                            : 0,
+                        decision});
+            harness_refresh_reason = refresh.reason;
+            if (refresh.reselect) {
+                private_guided_refresh = refresh.private_query;
+                cross_turn_delta_tokens = decision.delta_tokens;
+                private_refresh_requires_pressure =
+                    detail::kvmem_private_refresh_requires_pressure(
+                        private_guided_refresh,
+                        state.selection_started,
+                        decision.delta_tokens,
+                        logical_prompt_tokens,
+                        static_cast<uint64_t>(
+                            std::max(0, engine.kvmem_budget)),
+                        static_cast<uint64_t>(
+                            std::max(0, engine.kvmem_gen_budget)));
+                if (kvmem_reselect_mode != KvMemReselectMode::Force) {
+                    kvmem_reselect_mode = KvMemReselectMode::Auto;
+                }
+            } else if (above_selection_budget) {
+                headroom_grace = refresh.headroom_grace;
+                initial_headroom_grace = refresh.initial_headroom_grace;
+                if (headroom_grace) {
+                    grace_middecode_trigger_tokens = static_cast<uint32_t>(
+                        std::min<uint64_t>(
+                            refresh.middecode_tokens_until_refresh,
+                            std::numeric_limits<uint32_t>::max()));
+                    const uint64_t epoch_tokens_used = state.selection_started
+                        ? decision.delta_tokens
+                        : logical_prompt_tokens - static_cast<uint64_t>(
+                              std::max(0, engine.kvmem_budget));
+                    const uint64_t generation_budget = static_cast<uint64_t>(
+                        std::max(0, engine.kvmem_gen_budget));
+                    grace_epoch_limit_tokens = static_cast<uint32_t>(
+                        std::min<uint64_t>(
+                            generation_budget > epoch_tokens_used
+                                ? generation_budget - epoch_tokens_used
+                                : 1,
+                            std::numeric_limits<uint32_t>::max()));
+                }
+                same_task_guided_suppressed = known_task;
+                cross_turn_delta_tokens = decision.delta_tokens;
+                kvmem_reselect_mode = KvMemReselectMode::Off;
+            }
+            state.last_seen_prompt_tokens = logical_prompt_tokens;
+            state.current_query_key = current_query_key;
+            state.has_current_query = true;
+        }
+        if (same_task_guided_suppressed) {
+            std::cerr
+                << "[qw3-serve] KVMem harness continuation gate harness="
+                << detail::harness_kind_name(harness.kind)
+                << " reselect=off trajectory_delta_tokens="
+                << cross_turn_delta_tokens
+                << " threshold="
+                << engine.kvmem_middecode_trigger_tokens
+                << " initial_headroom_grace="
+                << (initial_headroom_grace ? 1 : 0)
+                << " headroom_grace=" << (headroom_grace ? 1 : 0)
+                << " middecode_until_refresh="
+                << grace_middecode_trigger_tokens << "\n";
+        }
+        const bool automatic_harness_retrieval =
+            harness.kind != detail::HarnessKind::None &&
+            above_selection_budget &&
+            kvmem_reselect_mode != KvMemReselectMode::Off;
+        const bool automatic_harness_refresh_active =
+            automatic_harness_retrieval || headroom_grace;
+        const bool keep_refresh_epoch =
+            detail::kvmem_refresh_prefill_keeps_epoch(
+                headroom_grace,
+                automatic_harness_retrieval && private_guided_refresh &&
+                    !private_refresh_requires_pressure);
+        GenerationOptions g;
+        try {
+            g = make_gen(req, prompt_token_count, enable_thinking,
+                         automatic_harness_refresh_active &&
+                             guided_middecode);
+        } catch (const std::invalid_argument &e) {
+            set_error_response(res, 400, e.what());
+            return;
+        }
+        g.raw_prompt = true; // prompt is already chat-framed
+        g.thinking_open = enable_thinking; // budget only runs while <think> is open
+        g.kvmem_reselect_mode = kvmem_reselect_mode;
+        g.kvmem_prepare_query_only =
+            above_selection_budget && same_task_guided_suppressed;
+        g.kvmem_prefill_window_mode = kvmem_prefill_window_mode;
+        if (keep_refresh_epoch) {
+            if (req.contains("kvmem_prefill_window") &&
+                kvmem_prefill_window_mode !=
+                    KvMemPrefillWindowMode::KeepSelected) {
+                set_error_response(
+                    res, 400,
+                    "an active KVMem A+B/private-query epoch requires "
+                    "kvmem_prefill_window=keep_selected (or omit the field)");
+                return;
+            }
+            g.kvmem_prefill_window_mode =
+                KvMemPrefillWindowMode::KeepSelected;
+        }
+        g.kvmem_prefill_semantic_start_tokens =
+            kvmem_prefill_semantic_start_tokens;
+        g.kvmem_prefill_semantic_query_tokens =
+            kvmem_prefill_semantic_query_tokens;
+        g.kvmem_session_id = kvmem_session_id;
+        g.kvmem_workspace_id = kvmem_workspace_id;
+        const bool request_has_guided_query =
+            req.contains("kvmem_query_guided_thinking_max_tokens") ||
+            req.contains("kvmem_query_guided_query_max_tokens") ||
+            req.contains("kvmem_query_guided_direct");
+        if (automatic_harness_retrieval && private_guided_refresh &&
+            !request_has_guided_query) {
+            g.kvmem_query_guided_thinking_max_tokens =
+                static_cast<uint32_t>(
+                    engine.kvmem_guided_thinking_tokens);
+            g.kvmem_query_guided_query_max_tokens =
+                static_cast<uint32_t>(engine.kvmem_guided_query_tokens);
+            g.kvmem_query_guided_direct = false;
+        }
+        if (automatic_harness_refresh_active && guided_middecode) {
+            g.kvmem_middecode_trigger_tokens = headroom_grace
+                ? std::max<uint32_t>(1, grace_middecode_trigger_tokens)
+                : static_cast<uint32_t>(
+                      engine.kvmem_middecode_trigger_tokens);
+            g.kvmem_middecode_steady_trigger_tokens =
+                static_cast<uint32_t>(
+                    engine.kvmem_middecode_trigger_tokens);
+            g.kvmem_middecode_max_refreshes = static_cast<uint32_t>(
+                engine.kvmem_middecode_max_refreshes);
+            g.kvmem_middecode_query_max_tokens = static_cast<uint32_t>(
+                engine.kvmem_guided_query_tokens);
+            g.kvmem_middecode_epoch_limit_tokens = headroom_grace
+                ? std::max<uint32_t>(1, grace_epoch_limit_tokens)
+                : static_cast<uint32_t>(
+                      std::max(1, engine.kvmem_gen_budget));
+        }
+        if (automatic_harness_refresh_active &&
+            !g.kvmem_refresh_observer &&
+            guided_trajectory_key.has_value()) {
+            const size_t trajectory_key = *guided_trajectory_key;
+            const uint64_t request_prompt_tokens =
+                archive_prefix_tokens + prompt_token_count;
+            g.kvmem_refresh_observer =
+                [&, trajectory_key, request_prompt_tokens](
+                        uint32_t decoded_tokens) {
+                    std::lock_guard<std::mutex> lock(
+                        guided_trajectory_mu);
+                    const auto it = guided_trajectories.find(
+                        trajectory_key);
+                    if (it == guided_trajectories.end()) return;
+                    GuidedTrajectoryState &state = it->second;
+                    state.selection_started = true;
+                    state.last_refresh_prompt_tokens =
+                        detail::kvmem_saturating_add_u64(
+                            request_prompt_tokens, decoded_tokens);
+                    state.last_seen_prompt_tokens = std::max(
+                        state.last_seen_prompt_tokens,
+                        state.last_refresh_prompt_tokens);
+                };
+        }
+        if (automatic_harness_refresh_active &&
+            (guided_boundary || guided_middecode)) {
+            std::cerr
+                << "[qw3-serve] KVMem automatic retrieval harness="
+                << detail::harness_kind_name(harness.kind)
+                << " mode=" << engine.kvmem_guided_reselect
+                << " trigger="
+                << detail::kvmem_harness_refresh_reason_name(
+                       harness_refresh_reason)
+                << " trajectory_delta_tokens="
+                << cross_turn_delta_tokens
+                << " prompt_tokens=" << prompt_token_count
+                << " boundary_query_tokens="
+                << g.kvmem_query_guided_query_max_tokens
+                << " middecode_trigger="
+                << g.kvmem_middecode_trigger_tokens
+                << " middecode_steady_trigger="
+                << g.kvmem_middecode_steady_trigger_tokens
+                << " max_refreshes="
+                << g.kvmem_middecode_max_refreshes
+                << " middecode_query_tokens="
+                << g.kvmem_middecode_query_max_tokens
+                << " epoch_limit="
+                << g.kvmem_middecode_epoch_limit_tokens << "\n";
+        }
+        if (kvmem_cache_request) {
+            if (kvmem_cache_operation == "save") {
+                g.kvmem_cache_save_id = kvmem_cache_id;
+                g.kvmem_cache_ttl_seconds = kvmem_cache_ttl_seconds;
+            } else {
+                g.kvmem_cache_load_id = kvmem_cache_id;
+                g.kvmem_cache_load_mode = kvmem_cache_mode;
+                g.kvmem_cache_expected_version =
+                    kvmem_cache_expected_version;
+                g.kvmem_cache_expected_version_set =
+                    kvmem_cache_expected_version_set;
+            }
+        }
+
+        uint32_t request_raw_mandatory_blocks = 0;
+        uint32_t request_mandatory_blocks = 0;
+        uint32_t request_raw_live_suffix_blocks = 0;
+        uint32_t request_live_suffix_blocks = 0;
+        uint32_t request_soft_retrievable_blocks = 0;
+        uint32_t request_sink_blocks = 0;
+        uint32_t request_retrieval_reserve_blocks = 0;
+        bool request_capacity_fitted = false;
+
+        // Harness-aware semantic lifetimes. Stable controls, the exact task,
+        // and deduplicated policy frames are bounded mandatory spans. The
+        // unfinished tool transaction is a separate replay suffix; completed
+        // tool rounds remain ordinary semantic candidates.
+        if (harness_semantic_pins) {
+            const detail::HarnessSemanticPlan &semantic_plan =
+                *harness_semantic_plan;
+            auto generation_reason = [](detail::HarnessSpanReason reason) {
+                switch (reason) {
+                case detail::HarnessSpanReason::SystemControl:
+                    return GenerationOptions::KvMemPinnedReason::SystemControl;
+                case detail::HarnessSpanReason::CurrentQuery:
+                    return GenerationOptions::KvMemPinnedReason::CurrentQuery;
+                case detail::HarnessSpanReason::LiveToolTrajectory:
+                    return GenerationOptions::KvMemPinnedReason::
+                        LiveToolTrajectory;
+                case detail::HarnessSpanReason::ProjectPolicy:
+                    return GenerationOptions::KvMemPinnedReason::ProjectPolicy;
+                case detail::HarnessSpanReason::RootTask:
+                    return GenerationOptions::KvMemPinnedReason::RootTask;
+                }
+                return GenerationOptions::KvMemPinnedReason::CurrentQuery;
+            };
+            size_t reason_span_counts[5] = {0, 0, 0, 0, 0};
+            for (const detail::HarnessByteSpan &pin : semantic_plan.spans) {
+                const size_t index = static_cast<size_t>(pin.reason);
+                if (index < 5) ++reason_span_counts[index];
+            }
+
+            std::vector<size_t> token_bytes;
+            token_bytes.reserve(prompt_token_ids.size() + 1);
+            token_bytes.push_back(0);
+            size_t decoded_bytes = 0;
+            bool decode_matches = true;
+            for (int32_t token : prompt_token_ids) {
+                const std::string piece = usage_tokenizer.decode_one(token);
+                if (decoded_bytes + piece.size() > prompt.size() ||
+                    prompt.compare(decoded_bytes, piece.size(), piece) != 0) {
+                    decode_matches = false;
+                    break;
+                }
+                decoded_bytes += piece.size();
+                token_bytes.push_back(decoded_bytes);
+            }
+            if (!decode_matches || decoded_bytes != prompt.size()) {
+                set_error_response(
+                    res, 500,
+                    "could not map harness semantic spans through tokenizer "
+                    "pieces exactly");
+                return;
+            }
+
+            auto map_byte_span = [&](const detail::HarnessByteSpan &span)
+                    -> std::optional<std::pair<uint32_t, uint32_t>> {
+                if (span.begin >= span.end || span.end > prompt.size()) {
+                    return std::nullopt;
+                }
+                const auto begin_it = std::upper_bound(
+                    token_bytes.begin(), token_bytes.end(), span.begin);
+                const size_t token_begin = begin_it == token_bytes.begin()
+                    ? 0
+                    : static_cast<size_t>(
+                          begin_it - token_bytes.begin() - 1);
+                const auto end_it = std::lower_bound(
+                    token_bytes.begin(), token_bytes.end(), span.end);
+                const size_t token_end = static_cast<size_t>(
+                    end_it - token_bytes.begin());
+                if (token_begin >= token_end ||
+                    token_end > prompt_token_ids.size()) {
+                    return std::nullopt;
+                }
+                return std::make_pair(
+                    static_cast<uint32_t>(token_begin),
+                    static_cast<uint32_t>(token_end));
+            };
+
+            for (const detail::HarnessByteSpan &pin : semantic_plan.spans) {
+                const auto mapped = map_byte_span(pin);
+                if (!mapped.has_value()) {
+                    set_error_response(
+                        res, 500,
+                        "harness semantic region maps to an empty token span");
+                    return;
+                }
+                g.kvmem_pinned_token_spans.push_back(
+                    GenerationOptions::KvMemPinnedTokenSpan{
+                        mapped->first,
+                        mapped->second,
+                        generation_reason(pin.reason)});
+            }
+
+            std::optional<std::pair<uint32_t, uint32_t>> live_suffix_tokens;
+            if (semantic_plan.live_suffix_span.has_value()) {
+                live_suffix_tokens = map_byte_span(
+                    *semantic_plan.live_suffix_span);
+                if (!live_suffix_tokens.has_value()) {
+                    set_error_response(
+                        res, 500,
+                        "harness live suffix maps to an empty token span");
+                    return;
+                }
+                // kvmem_replay_* is deliberately independent of the score
+                // query. Only query-conditioned selection consumes it.
+                g.kvmem_replay_begin = live_suffix_tokens->first;
+                g.kvmem_replay_end = live_suffix_tokens->second;
+            }
+
+            const uint32_t block_tokens = static_cast<uint32_t>(
+                std::max(1, engine.kvmem_block_tokens));
+            const uint32_t prompt_blocks = static_cast<uint32_t>(
+                (prompt_token_count + block_tokens - 1) / block_tokens);
+            std::vector<uint8_t> system_blocks(prompt_blocks, 0);
+            std::vector<uint8_t> root_blocks(prompt_blocks, 0);
+            std::vector<uint8_t> query_blocks(prompt_blocks, 0);
+            std::vector<uint8_t> policy_blocks(prompt_blocks, 0);
+            std::vector<uint8_t> live_blocks(prompt_blocks, 0);
+            const uint32_t budget_tokens = g.kvmem_semantic_budget > 0
+                ? g.kvmem_semantic_budget
+                : static_cast<uint32_t>(
+                      std::max(0, engine.kvmem_budget));
+            const KvMemKeepAllocation harness_keep =
+                resolve_kvmem_keep_allocation(
+                    block_tokens, budget_tokens,
+                    engine.kvmem_sink_blocks,
+                    engine.kvmem_recent_blocks,
+                    engine.kvmem_sink_tokens,
+                    engine.kvmem_recent_tokens);
+            const uint32_t sink_blocks = std::min<uint32_t>(
+                harness_keep.sink_blocks,
+                prompt_blocks);
+            request_sink_blocks = sink_blocks;
+            std::vector<detail::KvmemMandatoryBlockSpan> hard_spans;
+            hard_spans.reserve(g.kvmem_pinned_token_spans.size());
+            auto pin_priority = [](GenerationOptions::KvMemPinnedReason reason) {
+                switch (reason) {
+                case GenerationOptions::KvMemPinnedReason::SystemControl:
+                case GenerationOptions::KvMemPinnedReason::CurrentQuery:
+                    return static_cast<uint8_t>(0);
+                case GenerationOptions::KvMemPinnedReason::RootTask:
+                case GenerationOptions::KvMemPinnedReason::ProjectPolicy:
+                    return static_cast<uint8_t>(1);
+                case GenerationOptions::KvMemPinnedReason::LiveToolTrajectory:
+                case GenerationOptions::KvMemPinnedReason::ExplicitClientPin:
+                    return static_cast<uint8_t>(0);
+                }
+                return static_cast<uint8_t>(3);
+            };
+            for (const auto &pin : g.kvmem_pinned_token_spans) {
+                const uint32_t first = pin.begin / block_tokens;
+                const uint32_t last = (pin.end - 1) / block_tokens;
+                hard_spans.push_back(detail::KvmemMandatoryBlockSpan{
+                    first, std::min<uint32_t>(last + 1, prompt_blocks),
+                    pin_priority(pin.reason)});
+                for (uint32_t block = first;
+                     block <= last && block < prompt_blocks; ++block) {
+                    std::vector<uint8_t> *reason_blocks = nullptr;
+                    switch (pin.reason) {
+                    case GenerationOptions::KvMemPinnedReason::SystemControl:
+                        reason_blocks = &system_blocks;
+                        break;
+                    case GenerationOptions::KvMemPinnedReason::CurrentQuery:
+                        reason_blocks = &query_blocks;
+                        break;
+                    case GenerationOptions::KvMemPinnedReason::RootTask:
+                        reason_blocks = &root_blocks;
+                        break;
+                    case GenerationOptions::KvMemPinnedReason::ProjectPolicy:
+                        reason_blocks = &policy_blocks;
+                        break;
+                    case GenerationOptions::KvMemPinnedReason::
+                            LiveToolTrajectory:
+                        reason_blocks = &live_blocks;
+                        break;
+                    case GenerationOptions::KvMemPinnedReason::
+                            ExplicitClientPin:
+                        break;
+                    }
+                    if (reason_blocks) (*reason_blocks)[block] = 1;
+                }
+            }
+            uint32_t live_suffix_blocks = 0;
+            uint32_t live_first_block = prompt_blocks;
+            uint32_t live_end_block = prompt_blocks;
+            if (live_suffix_tokens.has_value()) {
+                const uint32_t first =
+                    live_suffix_tokens->first / block_tokens;
+                const uint32_t last =
+                    (live_suffix_tokens->second - 1) / block_tokens;
+                live_first_block = first;
+                live_end_block = std::min<uint32_t>(last + 1, prompt_blocks);
+                live_suffix_blocks = last - first + 1;
+                for (uint32_t block = first;
+                     block <= last && block < prompt_blocks; ++block) {
+                    live_blocks[block] = 1;
+                }
+            }
+            const uint32_t budget_blocks =
+                budget_tokens / block_tokens;
+            const detail::KvmemMandatoryFitResult mandatory_fit =
+                detail::kvmem_fit_mandatory_blocks(
+                    detail::KvmemMandatoryFitInput{
+                        prompt_blocks,
+                        budget_blocks,
+                        sink_blocks,
+                        harness_keep.recent_blocks,
+                        hard_spans,
+                        live_first_block,
+                        live_end_block});
+            // Executor pins are the fitted hard anchors only. Every omitted
+            // source block was still tokenized/prefilled and remains in the
+            // KVMem content index as an ordinary retrieval candidate.
+            g.kvmem_pinned_token_spans.clear();
+            for (size_t i = 0; i < mandatory_fit.hard_blocks.size();) {
+                const uint32_t first = mandatory_fit.hard_blocks[i];
+                uint32_t end = first + 1;
+                ++i;
+                while (i < mandatory_fit.hard_blocks.size() &&
+                       mandatory_fit.hard_blocks[i] == end) {
+                    ++end;
+                    ++i;
+                }
+                g.kvmem_pinned_token_spans.push_back(
+                    GenerationOptions::KvMemPinnedTokenSpan{
+                        first * block_tokens,
+                        static_cast<uint32_t>(std::min<uint64_t>(
+                            static_cast<uint64_t>(end) * block_tokens,
+                            prompt_token_count)),
+                        GenerationOptions::KvMemPinnedReason::
+                            ExplicitClientPin});
+            }
+            if (live_suffix_tokens.has_value()) {
+                // Replay only the contiguous fitted tail. The full raw live
+                // transaction remains stored/retrievable but can no longer
+                // force A+N blocks back into the A-token active window.
+                g.kvmem_replay_begin = std::min<uint32_t>(
+                    mandatory_fit.replay_begin_block * block_tokens,
+                    static_cast<uint32_t>(prompt_token_count));
+                g.kvmem_replay_end =
+                    static_cast<uint32_t>(prompt_token_count);
+            }
+            const auto count_marked = [](const std::vector<uint8_t> &marks) {
+                return static_cast<uint32_t>(std::count(
+                    marks.begin(), marks.end(), static_cast<uint8_t>(1)));
+            };
+            const uint32_t system_block_count = count_marked(system_blocks);
+            const uint32_t root_block_count = count_marked(root_blocks);
+            const uint32_t query_block_count = count_marked(query_blocks);
+            const uint32_t policy_block_count = count_marked(policy_blocks);
+            const uint32_t live_block_count = count_marked(live_blocks);
+            const uint32_t mandatory_count = static_cast<uint32_t>(
+                mandatory_fit.hard_blocks.size());
+            const uint32_t recent_budget_blocks =
+                budget_blocks > mandatory_count
+                    ? budget_blocks - mandatory_count : 0;
+            request_raw_mandatory_blocks =
+                mandatory_fit.raw_mandatory_blocks;
+            request_mandatory_blocks = mandatory_count;
+            request_raw_live_suffix_blocks = live_suffix_blocks;
+            request_live_suffix_blocks = mandatory_fit.fitted_live_blocks;
+            request_soft_retrievable_blocks =
+                mandatory_fit.soft_retrievable_blocks;
+            request_retrieval_reserve_blocks =
+                mandatory_fit.retrieval_reserve_blocks;
+            request_capacity_fitted = mandatory_fit.capacity_fitted;
+            std::cerr << "[qw3-serve] KVMem harness pins harness="
+                      << detail::harness_kind_name(harness.kind)
+                      << " compact=" << (harness.compact ? 1 : 0)
+                      << " spans="
+                      << g.kvmem_pinned_token_spans.size()
+                      << " spans_system=" << reason_span_counts[0]
+                      << " spans_root=" << reason_span_counts[4]
+                      << " spans_query=" << reason_span_counts[1]
+                      << " spans_policy=" << reason_span_counts[3]
+                      << " policy_frames="
+                      << semantic_plan.project_policy_frame_count
+                      << " root_task_message="
+                      << (semantic_plan.root_task_message_index.has_value()
+                              ? std::to_string(
+                                    *semantic_plan.root_task_message_index)
+                              : "none")
+                      << " score_query_message="
+                      << (semantic_plan.current_query_message_index.has_value()
+                              ? std::to_string(
+                                    *semantic_plan.current_query_message_index)
+                              : "none")
+                      << " live_suffix_message="
+                      << (semantic_plan.live_suffix_message_begin_index
+                                  .has_value()
+                              ? std::to_string(
+                                    *semantic_plan
+                                         .live_suffix_message_begin_index)
+                              : "none")
+                      << " live_suffix=["
+                      << (live_suffix_tokens.has_value()
+                              ? std::to_string(live_suffix_tokens->first)
+                              : "0")
+                      << ","
+                      << (live_suffix_tokens.has_value()
+                              ? std::to_string(live_suffix_tokens->second)
+                              : "0")
+                      << ") live_suffix_blocks_raw=" << live_suffix_blocks
+                      << " live_suffix_blocks_fitted="
+                      << mandatory_fit.fitted_live_blocks
+                      << " live_replay_begin=" << g.kvmem_replay_begin
+                      << " blocks_system=" << system_block_count
+                      << " blocks_root=" << root_block_count
+                      << " blocks_query=" << query_block_count
+                      << " blocks_policy=" << policy_block_count
+                      << " blocks_live=" << live_block_count
+                      << " mandatory_blocks_raw="
+                      << mandatory_fit.raw_mandatory_blocks
+                      << " mandatory_blocks_fitted=" << mandatory_count
+                      << " soft_retrievable_blocks="
+                      << mandatory_fit.soft_retrievable_blocks
+                      << " retrieval_reserve_blocks="
+                      << mandatory_fit.retrieval_reserve_blocks
+                      << " capacity_fitted="
+                      << (mandatory_fit.capacity_fitted ? 1 : 0)
+                      << " mandatory_tokens="
+                      << mandatory_count * block_tokens
+                      << " recent_budget_blocks=" << recent_budget_blocks
+                      << " recent_budget_tokens="
+                      << recent_budget_blocks * block_tokens
+                      << " budget_tokens=" << budget_tokens << "\n";
+        }
+
+        if (request_capacity_fitted && private_guided_refresh) {
+            // An oversized current transaction cannot be appended to the old
+            // A+B physical epoch even when a private semantic refresh is due.
+            // Ingest/index it under pressure first; the generated query then
+            // selects from the complete durable source.
+            g.kvmem_prefill_window_mode =
+                KvMemPrefillWindowMode::Pressure;
+            private_refresh_requires_pressure = true;
+        }
+
+        // The server owns semantic/capacity admission; the backend will
+        // finalize P/M checkpoint reuse on this same plan before touching GPU
+        // or executor state.
+        const uint64_t logical_prompt_tokens =
+            archive_prefix_tokens + prompt_token_count;
+        const bool planned_reselect = above_selection_budget &&
+            g.kvmem_reselect_mode != KvMemReselectMode::Off;
+        const bool planned_keep_selected = above_selection_budget &&
+            !planned_reselect &&
+            (g.kvmem_prefill_window_mode ==
+                 KvMemPrefillWindowMode::KeepSelected ||
+             g.kvmem_prepare_query_only);
+        detail::KvmemRequestPlanInput plan_input;
+        plan_input.enabled = engine.kvmem_enabled;
+        plan_input.reselect = planned_reselect;
+        plan_input.private_query =
+            planned_reselect && private_guided_refresh;
+        plan_input.keep_selected = planned_keep_selected;
+        plan_input.logical_prompt_tokens = logical_prompt_tokens;
+        plan_input.request_prompt_tokens = prompt_token_count;
+        plan_input.context_limit_tokens = static_cast<uint64_t>(
+            std::max(1, engine.ctx_size));
+        plan_input.selection_budget_tokens = static_cast<uint64_t>(
+            std::max(0, engine.kvmem_budget));
+        plan_input.generation_budget_tokens = static_cast<uint64_t>(
+            std::max(0, engine.kvmem_gen_budget));
+        plan_input.refresh_trigger_tokens = static_cast<uint64_t>(
+            std::max(0, engine.kvmem_middecode_trigger_tokens));
+        plan_input.requested_output_tokens = static_cast<uint32_t>(
+            std::max(0, g.max_tokens));
+        plan_input.block_tokens = static_cast<uint32_t>(
+            std::max(0, engine.kvmem_block_tokens));
+        plan_input.raw_mandatory_blocks = request_raw_mandatory_blocks;
+        plan_input.mandatory_blocks = request_mandatory_blocks;
+        plan_input.raw_live_suffix_blocks =
+            request_raw_live_suffix_blocks;
+        plan_input.live_suffix_blocks = request_live_suffix_blocks;
+        plan_input.soft_retrievable_blocks =
+            request_soft_retrievable_blocks;
+        plan_input.sink_blocks = request_sink_blocks;
+        plan_input.retrieval_reserve_blocks =
+            request_retrieval_reserve_blocks;
+        plan_input.capacity_fitted = request_capacity_fitted;
+        plan_input.pressure_ingest =
+            private_refresh_requires_pressure;
+        g.kvmem_request_plan =
+            detail::kvmem_draft_request_plan(plan_input);
+        if (g.kvmem_request_plan.action ==
+            KvMemRequestPlanAction::RejectBeforeExecution) {
+            const int status = g.kvmem_request_plan.reject_reason ==
+                    KvMemRequestPlanRejectReason::ContextLimit
+                ? 413
+                : (g.kvmem_request_plan.reject_reason ==
+                       KvMemRequestPlanRejectReason::InvalidBudget
+                       ? 400 : 500);
+            set_error_response(
+                res, status,
+                std::string("KVMem request admission rejected before ") +
+                    "execution: reason=" +
+                    detail::kvmem_request_plan_reject_name(
+                        g.kvmem_request_plan.reject_reason) +
+                    " prompt_tokens=" +
+                    std::to_string(logical_prompt_tokens) +
+                    " mandatory_blocks_raw=" +
+                    std::to_string(request_raw_mandatory_blocks) +
+                    " mandatory_blocks_fitted=" +
+                    std::to_string(request_mandatory_blocks) +
+                    " live_suffix_blocks_raw=" +
+                    std::to_string(request_raw_live_suffix_blocks) +
+                    " live_suffix_blocks_fitted=" +
+                    std::to_string(request_live_suffix_blocks) +
+                    " selection_budget_tokens=" +
+                    std::to_string(engine.kvmem_budget) +
+                    " block_tokens=" +
+                    std::to_string(engine.kvmem_block_tokens));
+            return;
+        }
+        if (engine.kvmem_enabled) {
+            std::cerr << "[qw3-serve] KVMem request plan stage=draft action="
+                      << detail::kvmem_request_plan_action_name(
+                             g.kvmem_request_plan.action)
+                      << " prompt_tokens=" << logical_prompt_tokens
+                      << " selection_budget=" << engine.kvmem_budget
+                      << " generation_budget=" << engine.kvmem_gen_budget
+                      << " mandatory_blocks_raw="
+                      << request_raw_mandatory_blocks
+                      << " mandatory_blocks_fitted="
+                      << request_mandatory_blocks
+                      << " live_suffix_blocks_raw="
+                      << request_raw_live_suffix_blocks
+                      << " live_suffix_blocks_fitted="
+                      << request_live_suffix_blocks
+                      << " soft_retrievable_blocks="
+                      << request_soft_retrievable_blocks
+                      << " retrieval_reserve_blocks="
+                      << request_retrieval_reserve_blocks
+                      << " capacity_fitted="
+                      << (request_capacity_fitted ? 1 : 0)
+                      << " pressure_ingest="
+                      << (g.kvmem_request_plan.pressure_ingest ? 1 : 0)
+                      << "\n";
+        }
+
+        // Optional semantic retrieval groups. Flattened benchmarks supply byte
+        // spans inside one user message; ordinary Chat requests in message mode
+        // derive complete rendered-message spans automatically. All boundaries
+        // are mapped to prompt tokens in one O(prompt_tokens) decode pass.
+        if (map_retrieval_groups) {
+            if (!engine.kvmem_enabled ||
+                engine.kvmem_semantic_expansion == "none") {
+                set_error_response(
+                    res, 400,
+                    "kvmem_retrieval_group_spans requires --kvmem and "
+                    "--kvmem-semantic-expansion round|message");
+                return;
+            }
+
+            struct RequestedGroup {
+                size_t begin = 0;
+                size_t end = 0;
+            };
+            std::vector<RequestedGroup> requested;
+            if (explicit_retrieval_groups) {
+                const json &spans =
+                    req["kvmem_retrieval_group_spans"];
+                if (!spans.is_array() || spans.empty() ||
+                    spans.size() > 65535) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_retrieval_group_spans must be an array of "
+                        "1..65535 spans");
+                    return;
+                }
+                requested.reserve(spans.size());
+                size_t previous_abs_end = 0;
+                for (const json &span : spans) {
+                    if (!span.is_object() ||
+                        !span.contains("message_index") ||
+                        !span.contains("content_start") ||
+                        !span.contains("content_end") ||
+                        !span["message_index"].is_number_integer() ||
+                        !span["content_start"].is_number_integer() ||
+                        !span["content_end"].is_number_integer()) {
+                        set_error_response(
+                            res, 400,
+                            "each kvmem_retrieval_group_spans entry requires "
+                            "integer message_index, content_start, and "
+                            "content_end");
+                        return;
+                    }
+                    const int64_t message_index =
+                        span["message_index"].get<int64_t>();
+                    const int64_t content_start =
+                        span["content_start"].get<int64_t>();
+                    const int64_t content_end =
+                        span["content_end"].get<int64_t>();
+                    if (message_index < 0 ||
+                        message_index >=
+                            static_cast<int64_t>(req["messages"].size()) ||
+                        content_start < 0 || content_end <= content_start) {
+                        set_error_response(
+                            res, 400,
+                            "kvmem retrieval group content span is invalid");
+                        return;
+                    }
+                    const RenderedMessageSpan *rendered = nullptr;
+                    for (const RenderedMessageSpan &candidate :
+                         rendered_message_spans) {
+                        if (candidate.message_index ==
+                            static_cast<size_t>(message_index)) {
+                            rendered = &candidate;
+                            break;
+                        }
+                    }
+                    const json &message =
+                        req["messages"][static_cast<size_t>(message_index)];
+                    if (!rendered || rendered->role != "user" ||
+                        !message.is_object() ||
+                        !message.contains("content") ||
+                        !message["content"].is_string()) {
+                        set_error_response(
+                            res, 400,
+                            "explicit retrieval groups currently require "
+                            "spans inside string-content user messages");
+                        return;
+                    }
+                    const std::string raw_content =
+                        message["content"].get<std::string>();
+                    size_t trim_begin = 0;
+                    while (trim_begin < raw_content.size() &&
+                           (raw_content[trim_begin] == ' ' ||
+                            raw_content[trim_begin] == '\n' ||
+                            raw_content[trim_begin] == '\r' ||
+                            raw_content[trim_begin] == '\t')) {
+                        ++trim_begin;
+                    }
+                    size_t trim_end = raw_content.size();
+                    while (trim_end > trim_begin &&
+                           (raw_content[trim_end - 1] == ' ' ||
+                            raw_content[trim_end - 1] == '\n' ||
+                            raw_content[trim_end - 1] == '\r' ||
+                            raw_content[trim_end - 1] == '\t')) {
+                        --trim_end;
+                    }
+                    if (content_start <
+                            static_cast<int64_t>(trim_begin) ||
+                        content_end >
+                            static_cast<int64_t>(trim_end)) {
+                        set_error_response(
+                            res, 400,
+                            "kvmem retrieval group span falls in whitespace "
+                            "removed by the chat renderer");
+                        return;
+                    }
+                    const size_t abs_begin =
+                        rendered->content_begin +
+                        static_cast<size_t>(content_start) - trim_begin;
+                    const size_t abs_end =
+                        rendered->content_begin +
+                        static_cast<size_t>(content_end) - trim_begin;
+                    if (abs_end > rendered->content_end ||
+                        (!requested.empty() &&
+                         abs_begin < previous_abs_end)) {
+                        set_error_response(
+                            res, 400,
+                            "kvmem retrieval group spans must be sorted and "
+                            "non-overlapping in rendered prompt order");
+                        return;
+                    }
+                    requested.push_back({abs_begin, abs_end});
+                    previous_abs_end = abs_end;
+                }
+            } else {
+                const size_t final_query =
+                    last_query_index_for_template(
+                        req["messages"], harness.kind);
+                requested.reserve(rendered_message_spans.size());
+                for (const RenderedMessageSpan &span :
+                     rendered_message_spans) {
+                    // The final user query is pinned/replayed independently and
+                    // must not become a historical retrieval candidate.
+                    if (span.message_index >= final_query ||
+                        span.segment_end <= span.segment_begin) {
+                        continue;
+                    }
+                    requested.push_back(
+                        {span.segment_begin, span.segment_end});
+                }
+                if (requested.empty()) {
+                    set_error_response(
+                        res, 400,
+                        "message semantic expansion found no historical "
+                        "messages; flattened prompts must provide "
+                        "kvmem_retrieval_group_spans");
+                    return;
+                }
+            }
+
+            std::vector<size_t> token_bytes;
+            token_bytes.reserve(prompt_token_ids.size() + 1);
+            token_bytes.push_back(0);
+            size_t decoded_bytes = 0;
+            bool decode_matches = true;
+            for (int32_t token : prompt_token_ids) {
+                const std::string piece =
+                    usage_tokenizer.decode_one(token);
+                if (decoded_bytes + piece.size() > prompt.size() ||
+                    prompt.compare(decoded_bytes, piece.size(), piece) != 0) {
+                    decode_matches = false;
+                    break;
+                }
+                decoded_bytes += piece.size();
+                token_bytes.push_back(decoded_bytes);
+            }
+            if (!decode_matches || decoded_bytes != prompt.size()) {
+                set_error_response(
+                    res, 500,
+                    "could not map semantic group byte spans through tokenizer "
+                    "pieces exactly");
+                return;
+            }
+
+            uint32_t rounded_boundaries = 0;
+            for (const RequestedGroup &group : requested) {
+                const auto begin_it = std::upper_bound(
+                    token_bytes.begin(), token_bytes.end(),
+                    group.begin);
+                const size_t token_begin =
+                    begin_it == token_bytes.begin()
+                        ? 0
+                        : static_cast<size_t>(
+                              begin_it - token_bytes.begin() - 1);
+                const auto end_it = std::lower_bound(
+                    token_bytes.begin(), token_bytes.end(),
+                    group.end);
+                const size_t token_end = static_cast<size_t>(
+                    end_it - token_bytes.begin());
+                if (token_begin >= token_end ||
+                    token_end > prompt_token_ids.size()) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem retrieval group maps to an empty token span");
+                    return;
+                }
+                rounded_boundaries +=
+                    token_bytes[token_begin] == group.begin ? 0u : 1u;
+                rounded_boundaries +=
+                    token_bytes[token_end] == group.end ? 0u : 1u;
+                const uint32_t begin_u32 =
+                    static_cast<uint32_t>(token_begin);
+                const uint32_t end_u32 =
+                    static_cast<uint32_t>(token_end);
+                // Outward rounding can make two adjacent byte groups overlap
+                // by one BPE token. Preserve that bounded overlap for scoring;
+                // only the original byte spans are required to be disjoint.
+                g.kvmem_retrieval_group_spans.push_back(
+                    GenerationOptions::KvMemRetrievalGroupSpan{
+                        begin_u32, end_u32});
+            }
+            std::cerr
+                << "[qw3-serve] KVMem semantic retrieval mode="
+                << engine.kvmem_semantic_expansion << " groups="
+                << g.kvmem_retrieval_group_spans.size()
+                << " rounded_boundaries=" << rounded_boundaries
+                << " token_span=["
+                << g.kvmem_retrieval_group_spans.front().begin
+                << ","
+                << g.kvmem_retrieval_group_spans.back().end
+                << ") prompt_tokens=" << prompt_token_count << "\n";
+        }
+
+        // One-shot selected-context cache refresh ablation. This never uses
+        // trace dumps or cross-request artifacts: the native backend performs
+        // the long prefill, freezes the final selection, and rebuilds that
+        // compact context inside the same request. Keep it explicitly gated so
+        // production clients cannot opt into an expensive representation test.
+        if (req.contains("kvmem_inline_refresh")) {
+            if (!engine.kvmem_enabled) {
+                set_error_response(
+                    res, 400, "kvmem_inline_refresh requires --kvmem");
+                return;
+            }
+            if (!env_flag_enabled("QW3_KVMEM_ENABLE_INLINE_REFRESH")) {
+                set_error_response(
+                    res, 403,
+                    "kvmem_inline_refresh is disabled; set "
+                    "QW3_KVMEM_ENABLE_INLINE_REFRESH=1 for controlled "
+                    "diagnostics");
+                return;
+            }
+            if (!req["kvmem_inline_refresh"].is_string()) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_inline_refresh must be \"kv_only\" or "
+                    "\"kv_and_state\"");
+                return;
+            }
+            const std::string mode =
+                req["kvmem_inline_refresh"].get<std::string>();
+            if (mode == "kv_only") {
+                g.kvmem_inline_refresh = KvMemInlineRefreshMode::KvOnly;
+            } else if (mode == "kv_and_state") {
+                g.kvmem_inline_refresh =
+                    KvMemInlineRefreshMode::KvAndState;
+            } else {
+                set_error_response(
+                    res, 400,
+                    "kvmem_inline_refresh must be \"kv_only\" or "
+                    "\"kv_and_state\"");
+                return;
+            }
+            if (transcript_replay || !kvmem_session_id.empty()) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_inline_refresh requires a standalone one-shot "
+                    "request");
+                return;
+            }
+            if (kvmem_cache_request) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_inline_refresh cannot be combined with "
+                    "kvmem_cache");
+                return;
+            }
+            std::cerr << "[qw3-serve] KVMem INLINE REFRESH enabled mode="
+                      << mode << " prompt_tokens=" << prompt_token_count
+                      << "\n";
+        }
+
+        // RC2 coherence contract: selected-replay promotes the existing
+        // KvAndState compact-source rebuild from a diagnostics-only ablation to
+        // an explicit server-level mode. It intentionally remains one-shot
+        // until persistent session state can be detached from executor ownership.
+        if (engine.kvmem_state_coherence == "selected-replay" &&
+            above_selection_budget && g.max_tokens > 0) {
+            if (kvmem_reselect_mode == KvMemReselectMode::Off) {
+                set_error_response(
+                    res, 409,
+                    "selected-replay requires semantic reselection for an "
+                    "above-budget answer-producing request");
+                return;
+            }
+            if (transcript_replay || !kvmem_session_id.empty() ||
+                kvmem_cache_request) {
+                set_error_response(
+                    res, 409,
+                    "selected-replay state coherence currently requires a "
+                    "standalone one-shot request (no transcript replay, "
+                    "persistent kvmem_session_id, or local cache)");
+                return;
+            }
+            if (g.kvmem_inline_refresh == KvMemInlineRefreshMode::KvOnly) {
+                set_error_response(
+                    res, 409,
+                    "selected-replay cannot be downgraded to kv_only inline refresh");
+                return;
+            }
+            g.kvmem_inline_refresh = KvMemInlineRefreshMode::KvAndState;
+        }
+
+        // Diagnostics-only oracle selection. The benchmark caller supplies
+        // exact rendered-prompt token spans after verifying tokenizer parity.
+        // Keeping this behind an explicit environment gate prevents a normal
+        // API client from accidentally turning gold provenance into a product
+        // feature or contaminating production evaluations.
+        if (req.contains("kvmem_oracle_token_spans")) {
+            if (!engine.kvmem_enabled) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_oracle_token_spans requires --kvmem");
+                return;
+            }
+            if (transcript_replay) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_oracle_token_spans is a final-query-only control "
+                    "and cannot be combined with kvmem_transcript_replay");
+                return;
+            }
+            if (kvmem_cache_request) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_oracle_token_spans cannot be combined with "
+                    "kvmem_cache");
+                return;
+            }
+            if (!env_flag_enabled("QW3_KVMEM_ENABLE_ORACLE")) {
+                set_error_response(
+                    res, 403,
+                    "kvmem_oracle_token_spans is disabled; set "
+                    "QW3_KVMEM_ENABLE_ORACLE=1 for controlled diagnostics");
+                return;
+            }
+            const json &spans = req["kvmem_oracle_token_spans"];
+            if (!spans.is_array() || spans.empty() || spans.size() > 64) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_oracle_token_spans must be an array of 1..64 spans");
+                return;
+            }
+            for (const json &span : spans) {
+                if (!span.is_object() || !span.contains("begin") ||
+                    !span.contains("end") ||
+                    !span["begin"].is_number_integer() ||
+                    !span["end"].is_number_integer()) {
+                    set_error_response(
+                        res, 400,
+                        "each kvmem_oracle_token_spans entry requires integer "
+                        "begin and end");
+                    return;
+                }
+                const int64_t begin = span["begin"].get<int64_t>();
+                const int64_t end = span["end"].get<int64_t>();
+                if (begin < 0 || end <= begin ||
+                    end > static_cast<int64_t>(prompt_token_count)) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_oracle_token_spans entry is outside the "
+                        "rendered prompt");
+                    return;
+                }
+                g.kvmem_oracle_token_spans.push_back(
+                    GenerationOptions::KvMemOracleTokenSpan{
+                        static_cast<uint32_t>(begin),
+                        static_cast<uint32_t>(end)});
+            }
+            if (req.contains("kvmem_oracle_only")) {
+                if (!req["kvmem_oracle_only"].is_boolean()) {
+                    set_error_response(
+                        res, 400, "kvmem_oracle_only must be a boolean");
+                    return;
+                }
+                g.kvmem_oracle_only =
+                    req["kvmem_oracle_only"].get<bool>();
+            }
+            std::cerr << "[qw3-serve] KVMem ORACLE enabled spans="
+                      << g.kvmem_oracle_token_spans.size()
+                      << " only=" << (g.kvmem_oracle_only ? 1 : 0)
+                      << " prompt_tokens=" << prompt_token_count << "\n";
+        } else if (req.contains("kvmem_oracle_only")) {
+            set_error_response(
+                res, 400,
+                "kvmem_oracle_only requires kvmem_oracle_token_spans");
+            return;
+        }
+
+        // Query-conditioned KVMem: mark the final user message's token span so
+        // the executor selects the decode window by multi-token mean relevance
+        // to the question instead of recency. Computed by render-twice-and-diff
+        // (robust to chat template + BPE): re-render with the final user
+        // message's content emptied; the common-prefix-len + length-delta then
+        // brackets exactly the question content tokens (role markers / assistant
+        // suffix fall in the shared prefix/suffix). Only when the server was
+        // launched with --kvmem-query-conditioned; otherwise the span stays empty
+        // and selection is byte-identical to the single-token / recency path.
+        if (engine.kvmem_query_conditioned &&
+            (kvmem_reselect_mode != KvMemReselectMode::Off ||
+             g.kvmem_prepare_query_only)) {
+            const json &msgs = req["messages"];
+            bool explicit_span = false;
+
+            // Experimental whole-round query. Unlike kvmem_query_span, which
+            // marks bytes inside one message, this half-open message range can
+            // cover a role-preserving user/assistant/tool round. Re-rendering
+            // with those messages removed and taking the token LCP/LCS keeps
+            // the mapping exact across chat-template control tokens. The
+            // ordinary API path never sends this field.
+            if (req.contains("kvmem_query_message_range")) {
+                const json &range = req["kvmem_query_message_range"];
+                if (!range.is_object() ||
+                    !range.contains("message_begin") ||
+                    !range.contains("message_end") ||
+                    !range["message_begin"].is_number_integer() ||
+                    !range["message_end"].is_number_integer()) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_query_message_range requires integer "
+                        "message_begin and message_end");
+                    return;
+                }
+                const int64_t message_begin =
+                    range["message_begin"].get<int64_t>();
+                const int64_t message_end =
+                    range["message_end"].get<int64_t>();
+                if (message_begin < 0 || message_end <= message_begin ||
+                    message_end > static_cast<int64_t>(msgs.size())) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_query_message_range is outside messages[]");
+                    return;
+                }
+                if (transcript_replay) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_query_message_range cannot be combined with "
+                        "kvmem_transcript_replay");
+                    return;
+                }
+
+                json msgs_empty = json::array();
+                for (size_t i = 0; i < msgs.size(); ++i) {
+                    if (i < static_cast<size_t>(message_begin) ||
+                        i >= static_cast<size_t>(message_end)) {
+                        msgs_empty.push_back(msgs[i]);
+                    }
+                }
+                const std::string empty_prompt = render_messages(
+                    msgs_empty, tools, enable_thinking, forced_tool_name,
+                    /*message_spans=*/nullptr,
+                    /*add_generation_prompt=*/!prefill_only,
+                    /*require_tool_call=*/tool_choice_required,
+                    harness.kind,
+                    stable_harness_reasoning);
+                const std::vector<int32_t> tok_empty =
+                    usage_tokenizer.encode(empty_prompt);
+                size_t qb = 0;
+                const size_t prefix_max =
+                    std::min(prompt_token_ids.size(), tok_empty.size());
+                while (qb < prefix_max &&
+                       prompt_token_ids[qb] == tok_empty[qb]) {
+                    ++qb;
+                }
+                size_t suffix = 0;
+                while (suffix < prompt_token_ids.size() - qb &&
+                       suffix < tok_empty.size() - qb &&
+                       prompt_token_ids[prompt_token_ids.size() - 1 - suffix] ==
+                           tok_empty[tok_empty.size() - 1 - suffix]) {
+                    ++suffix;
+                }
+                const size_t qe = prompt_token_ids.size() - suffix;
+                if (qe <= qb) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_query_message_range maps to an empty token "
+                        "span");
+                    return;
+                }
+                g.kvmem_query_begin = static_cast<uint32_t>(qb);
+                g.kvmem_query_end = static_cast<uint32_t>(qe);
+                explicit_span = true;
+                std::cerr
+                    << "[qw3-serve] kvmem explicit query message range ["
+                    << message_begin << "," << message_end << ") -> tokens ["
+                    << qb << "," << qe << ") of "
+                    << prompt_token_ids.size() << "\n";
+            }
+
+            // Experimental role-preserving transcript replay. Render-time byte
+            // spans are converted to exact token spans in one linear pass over
+            // message segments. Segment boundaries are Qwen special-token
+            // boundaries; verify compositional tokenization against the full
+            // prompt before accepting the mapping. Only user messages that
+            // ARRIVE after select_budget + gen_budget is already full become
+            // replay/reselection events.
+            if (transcript_replay) {
+                std::vector<int32_t> rebuilt;
+                rebuilt.reserve(prompt_token_ids.size());
+                size_t byte_cursor = 0;
+                size_t token_cursor = 0;
+                const uint64_t pressure_threshold =
+                    static_cast<uint64_t>(std::max(
+                        0, engine.kvmem_prefill_budget > 0
+                               ? engine.kvmem_prefill_budget
+                               : engine.kvmem_budget)) +
+                    static_cast<uint64_t>(std::max(0, engine.kvmem_gen_budget));
+                for (const RenderedMessageSpan &span : rendered_message_spans) {
+                    const std::string gap = prompt.substr(
+                        byte_cursor, span.segment_begin - byte_cursor);
+                    const std::vector<int32_t> gap_tokens =
+                        usage_tokenizer.encode(gap);
+                    rebuilt.insert(rebuilt.end(), gap_tokens.begin(), gap_tokens.end());
+                    token_cursor += gap_tokens.size();
+
+                    const std::string segment = prompt.substr(
+                        span.segment_begin, span.segment_end - span.segment_begin);
+                    const std::vector<int32_t> segment_tokens =
+                        usage_tokenizer.encode(segment);
+                    const size_t segment_token_begin = token_cursor;
+                    if (span.message_index < msgs.size() &&
+                        msgs[span.message_index].is_object() &&
+                        msgs[span.message_index].contains(
+                            "kvmem_session_start")) {
+                        const json &marker =
+                            msgs[span.message_index]["kvmem_session_start"];
+                        if (!marker.is_boolean()) {
+                            set_error_response(
+                                res, 400,
+                                "message kvmem_session_start must be a boolean");
+                            return;
+                        }
+                        if (marker.get<bool>()) {
+                            g.kvmem_replay_session_starts.push_back(
+                                static_cast<uint32_t>(segment_token_begin));
+                        }
+                    }
+                    if (span.role == "user") {
+                        std::string empty_segment = segment;
+                        const size_t local_content_begin =
+                            span.content_begin - span.segment_begin;
+                        const size_t local_content_end =
+                            span.content_end - span.segment_begin;
+                        empty_segment.erase(
+                            local_content_begin,
+                            local_content_end - local_content_begin);
+                        const std::vector<int32_t> empty_tokens =
+                            usage_tokenizer.encode(empty_segment);
+                        size_t local_qb = 0;
+                        const size_t prefix_max =
+                            std::min(segment_tokens.size(), empty_tokens.size());
+                        while (local_qb < prefix_max &&
+                               segment_tokens[local_qb] == empty_tokens[local_qb]) {
+                            ++local_qb;
+                        }
+                        size_t suffix = 0;
+                        while (suffix < segment_tokens.size() - local_qb &&
+                               suffix < empty_tokens.size() - local_qb &&
+                               segment_tokens[segment_tokens.size() - 1 - suffix] ==
+                                   empty_tokens[empty_tokens.size() - 1 - suffix]) {
+                            ++suffix;
+                        }
+                        const size_t local_qe = segment_tokens.size() - suffix;
+                        if (local_qe > local_qb &&
+                            segment_token_begin >= pressure_threshold) {
+                            g.kvmem_replay_query_spans.push_back(
+                                GenerationOptions::KvMemReplayQuerySpan{
+                                    static_cast<uint32_t>(segment_token_begin +
+                                                          local_qb),
+                                    static_cast<uint32_t>(segment_token_begin +
+                                                          local_qe)});
+                        }
+                    }
+                    rebuilt.insert(rebuilt.end(), segment_tokens.begin(),
+                                   segment_tokens.end());
+                    token_cursor += segment_tokens.size();
+                    byte_cursor = span.segment_end;
+                }
+                const std::vector<int32_t> tail_tokens =
+                    usage_tokenizer.encode(prompt.substr(byte_cursor));
+                rebuilt.insert(rebuilt.end(), tail_tokens.begin(), tail_tokens.end());
+                if (rebuilt != prompt_token_ids) {
+                    set_error_response(
+                        res, 500,
+                        "kvmem_transcript_replay token-span mapping was not "
+                        "compositional at message boundaries");
+                    return;
+                }
+                if (g.kvmem_replay_query_spans.empty()) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_transcript_replay found no user query arriving "
+                        "after the KVMem pressure threshold");
+                    return;
+                }
+                const auto &last = g.kvmem_replay_query_spans.back();
+                g.kvmem_query_begin = last.begin;
+                g.kvmem_query_end = last.end;
+                explicit_span = true;
+                std::cerr << "[qw3-serve] kvmem transcript replay: events="
+                          << g.kvmem_replay_query_spans.size()
+                          << " sessions="
+                          << g.kvmem_replay_session_starts.size()
+                          << " threshold=" << pressure_threshold
+                          << " first=[" << g.kvmem_replay_query_spans.front().begin
+                          << "," << g.kvmem_replay_query_spans.front().end << ")"
+                          << " last=[" << last.begin << "," << last.end << ")"
+                          << " prompt_tokens=" << prompt_token_count << "\n";
+            }
+
+            // Optional diagnostics-only sample key. Restrict it to a compact,
+            // JSON-safe alphabet because the executor's score dump is written
+            // directly with fprintf. It is never consumed by retrieval logic.
+            if (req.contains("kvmem_trace_tag")) {
+                if (!req["kvmem_trace_tag"].is_string()) {
+                    set_error_response(res, 400,
+                                       "kvmem_trace_tag must be a string");
+                    return;
+                }
+                const std::string tag = req["kvmem_trace_tag"].get<std::string>();
+                const bool tag_ok = !tag.empty() && tag.size() <= 128 &&
+                    std::all_of(tag.begin(), tag.end(), [](unsigned char c) {
+                        return std::isalnum(c) || c == '-' || c == '_' ||
+                               c == '.' || c == ':';
+                    });
+                if (!tag_ok) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_trace_tag must be 1..128 characters from "
+                        "[A-Za-z0-9_.:-]");
+                    return;
+                }
+                g.kvmem_trace_tag = tag;
+            }
+
+            // Optional diagnostics-only span for the benchmark history. It is
+            // mapped from UTF-8 content bytes to exact rendered-prompt tokens by
+            // the same remove-and-diff procedure used for the query span. The
+            // resulting bounds are exported with selected KVMem blocks, enabling
+            // offline projection into the RAG history coordinate system.
+            if (req.contains("kvmem_context_span")) {
+                const json &span = req["kvmem_context_span"];
+                if (!span.is_object() || !span.contains("message_index") ||
+                    !span.contains("content_start") ||
+                    !span.contains("content_end") ||
+                    !span["message_index"].is_number_integer() ||
+                    !span["content_start"].is_number_integer() ||
+                    !span["content_end"].is_number_integer()) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_context_span requires integer message_index, "
+                        "content_start, and content_end");
+                    return;
+                }
+                const int64_t message_index = span["message_index"].get<int64_t>();
+                const int64_t content_start = span["content_start"].get<int64_t>();
+                const int64_t content_end = span["content_end"].get<int64_t>();
+                if (message_index < 0 ||
+                    message_index >= static_cast<int64_t>(msgs.size()) ||
+                    !msgs[static_cast<size_t>(message_index)].is_object() ||
+                    !msgs[static_cast<size_t>(message_index)].contains("content") ||
+                    !msgs[static_cast<size_t>(message_index)]["content"].is_string()) {
+                    set_error_response(res, 400,
+                                       "kvmem_context_span message_index does not "
+                                       "reference a string-content message");
+                    return;
+                }
+                const std::string content =
+                    msgs[static_cast<size_t>(message_index)]["content"]
+                        .get<std::string>();
+                if (content_start < 0 || content_end <= content_start ||
+                    content_end > static_cast<int64_t>(content.size())) {
+                    set_error_response(res, 400,
+                                       "kvmem_context_span content offsets are "
+                                       "outside the message content");
+                    return;
+                }
+                json msgs_empty = msgs;
+                std::string content_empty = content;
+                content_empty.erase(static_cast<size_t>(content_start),
+                                    static_cast<size_t>(content_end - content_start));
+                msgs_empty[static_cast<size_t>(message_index)]["content"] =
+                    std::move(content_empty);
+                const std::string empty_prompt = render_messages(
+                    msgs_empty, tools, enable_thinking, forced_tool_name,
+                    /*message_spans=*/nullptr,
+                    /*add_generation_prompt=*/!prefill_only,
+                    /*require_tool_call=*/tool_choice_required,
+                    harness.kind,
+                    stable_harness_reasoning);
+                const std::vector<int32_t> tok_full = usage_tokenizer.encode(prompt);
+                const std::vector<int32_t> tok_empty =
+                    usage_tokenizer.encode(empty_prompt);
+                size_t cb = 0;
+                const size_t prefix_max = std::min(tok_full.size(), tok_empty.size());
+                while (cb < prefix_max && tok_full[cb] == tok_empty[cb]) ++cb;
+                size_t suffix = 0;
+                while (suffix < tok_full.size() - cb &&
+                       suffix < tok_empty.size() - cb &&
+                       tok_full[tok_full.size() - 1 - suffix] ==
+                           tok_empty[tok_empty.size() - 1 - suffix]) {
+                    ++suffix;
+                }
+                const size_t ce = tok_full.size() - suffix;
+                if (ce <= cb) {
+                    set_error_response(res, 400,
+                                       "kvmem_context_span maps to an empty token span");
+                    return;
+                }
+                g.kvmem_context_begin = static_cast<uint32_t>(cb);
+                g.kvmem_context_end = static_cast<uint32_t>(ce);
+                if (std::getenv("QW3_KVMEM_TRACE")) {
+                    std::cerr << "[qw3-serve] kvmem context span [" << cb
+                              << "," << ce << ") of " << tok_full.size()
+                              << " prompt tokens, tag="
+                              << (g.kvmem_trace_tag.empty() ? "(none)"
+                                                           : g.kvmem_trace_tag)
+                              << "\n";
+                }
+            }
+
+            // Optional API extension for benchmarks whose exact canonical
+            // prompt is one long user message containing both history and the
+            // final question.  Offsets are UTF-8 byte offsets into that
+            // message's content.  Removing only the marked substring and
+            // comparing the two chat renderings preserves the exact model
+            // prompt while still identifying the true retrieval query.
+            if (req.contains("kvmem_query_span")) {
+                const json &span = req["kvmem_query_span"];
+                if (!span.is_object() || !span.contains("message_index") ||
+                    !span.contains("content_start") ||
+                    !span.contains("content_end") ||
+                    !span["message_index"].is_number_integer() ||
+                    !span["content_start"].is_number_integer() ||
+                    !span["content_end"].is_number_integer()) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_query_span requires integer message_index, "
+                        "content_start, and content_end");
+                    return;
+                }
+                const int64_t message_index = span["message_index"].get<int64_t>();
+                const int64_t content_start = span["content_start"].get<int64_t>();
+                const int64_t content_end = span["content_end"].get<int64_t>();
+                if (message_index < 0 ||
+                    message_index >= static_cast<int64_t>(msgs.size()) ||
+                    !msgs[static_cast<size_t>(message_index)].is_object() ||
+                    !msgs[static_cast<size_t>(message_index)].contains("content") ||
+                    !msgs[static_cast<size_t>(message_index)]["content"].is_string()) {
+                    set_error_response(res, 400,
+                                       "kvmem_query_span message_index does not "
+                                       "reference a string-content message");
+                    return;
+                }
+                const std::string content =
+                    msgs[static_cast<size_t>(message_index)]["content"]
+                        .get<std::string>();
+                if (content_start < 0 || content_end <= content_start ||
+                    content_end > static_cast<int64_t>(content.size())) {
+                    set_error_response(res, 400,
+                                       "kvmem_query_span content offsets are "
+                                       "outside the message content");
+                    return;
+                }
+
+                json msgs_empty = msgs;
+                std::string content_empty = content;
+                content_empty.erase(static_cast<size_t>(content_start),
+                                    static_cast<size_t>(content_end - content_start));
+                msgs_empty[static_cast<size_t>(message_index)]["content"] =
+                    std::move(content_empty);
+                const std::string empty_prompt = render_messages(
+                    msgs_empty, tools, enable_thinking, forced_tool_name,
+                    /*message_spans=*/nullptr,
+                    /*add_generation_prompt=*/!prefill_only,
+                    /*require_tool_call=*/tool_choice_required,
+                    harness.kind,
+                    stable_harness_reasoning);
+                const std::vector<int32_t> tok_full = usage_tokenizer.encode(prompt);
+                const std::vector<int32_t> tok_empty =
+                    usage_tokenizer.encode(empty_prompt);
+                size_t qb = 0;
+                const size_t prefix_max = std::min(tok_full.size(), tok_empty.size());
+                while (qb < prefix_max && tok_full[qb] == tok_empty[qb]) ++qb;
+                size_t suffix = 0;
+                while (suffix < tok_full.size() - qb &&
+                       suffix < tok_empty.size() - qb &&
+                       tok_full[tok_full.size() - 1 - suffix] ==
+                           tok_empty[tok_empty.size() - 1 - suffix]) {
+                    ++suffix;
+                }
+                const size_t qe = tok_full.size() - suffix;
+                if (qe > qb) {
+                    g.kvmem_query_begin = static_cast<uint32_t>(qb);
+                    g.kvmem_query_end = static_cast<uint32_t>(qe);
+                    if (transcript_replay) {
+                        // The transcript mapper initially records the complete
+                        // arriving user-message content. An explicit subspan on
+                        // that final message is the actual retrieval query, so
+                        // keep the answer-producing replay event and the global
+                        // query coordinates identical. Intermediate historical
+                        // user events retain their complete-message spans.
+                        if (g.kvmem_replay_query_spans.empty()) {
+                            set_error_response(
+                                res, 400,
+                                "explicit transcript query span has no final "
+                                "replay event");
+                            return;
+                        }
+                        g.kvmem_replay_query_spans.back().begin =
+                            static_cast<uint32_t>(qb);
+                        g.kvmem_replay_query_spans.back().end =
+                            static_cast<uint32_t>(qe);
+                    }
+                    explicit_span = true;
+                    std::cerr << "[qw3-serve] kvmem explicit query span ["
+                              << qb << "," << qe << ") of " << tok_full.size()
+                              << " prompt tokens, message=" << message_index
+                              << " content_bytes=[" << content_start << ","
+                              << content_end << ")\n";
+                    if (std::getenv("QW3_KVMEM_TRACE")) {
+                        const std::vector<int32_t> slice(
+                            tok_full.begin() + static_cast<long>(qb),
+                            tok_full.begin() + static_cast<long>(qe));
+                        std::string txt = usage_tokenizer.decode(slice);
+                        if (txt.size() > 200) txt = txt.substr(0, 200) + "...";
+                        std::cerr << "[qw3-serve] kvmem query span text: \""
+                                  << txt << "\"\n";
+                    }
+                }
+            }
+
+            // Existing default behavior is deliberately unchanged when the
+            // explicit field is absent: use the complete final user message.
+            if (!explicit_span && !req.contains("kvmem_query_span")) {
+                const size_t lqi = last_query_index_for_template(
+                    msgs, harness.kind);
+                if (lqi < msgs.size() && msgs[lqi].is_object() &&
+                    msgs[lqi].value("role", "") == "user") {
+                    json msgs_empty = msgs;
+                    msgs_empty[lqi]["content"] = "";
+                    const std::string empty_prompt = render_messages(
+                        msgs_empty, tools, enable_thinking, forced_tool_name,
+                        /*message_spans=*/nullptr,
+                        /*add_generation_prompt=*/!prefill_only,
+                        /*require_tool_call=*/tool_choice_required,
+                        harness.kind,
+                        stable_harness_reasoning);
+                    const std::vector<int32_t> tok_full =
+                        usage_tokenizer.encode(prompt);
+                    const std::vector<int32_t> tok_empty =
+                        usage_tokenizer.encode(empty_prompt);
+                    if (tok_full.size() > tok_empty.size()) {
+                        size_t qb = 0;
+                        const size_t maxn = tok_empty.size();
+                        while (qb < maxn && tok_full[qb] == tok_empty[qb]) ++qb;
+                        const size_t qe =
+                            qb + (tok_full.size() - tok_empty.size());
+                        g.kvmem_query_begin = static_cast<uint32_t>(qb);
+                        g.kvmem_query_end = static_cast<uint32_t>(qe);
+                        std::cerr << "[qw3-serve] kvmem query span [" << qb
+                                  << "," << qe << ") of " << tok_full.size()
+                                  << " prompt tokens\n";
+                        if (std::getenv("QW3_KVMEM_TRACE")) {
+                            const std::vector<int32_t> slice(
+                                tok_full.begin() + static_cast<long>(qb),
+                                tok_full.begin() + static_cast<long>(qe));
+                            std::string txt = usage_tokenizer.decode(slice);
+                            if (txt.size() > 200)
+                                txt = txt.substr(0, 200) + "...";
+                            std::cerr
+                                << "[qw3-serve] kvmem query span text: \""
+                                << txt << "\"\n";
+                        }
+                    }
+                }
+            }
+        }
+
+        if (prepared_vision.active()) {
+            if (req.contains("kvmem_round_padding")) {
+                set_error_response(
+                    res, 400,
+                    "multimodal input cannot be combined with "
+                    "kvmem_round_padding because padding would invalidate "
+                    "the explicit M-RoPE/embedding token map");
+                return;
+            }
+            std::string finalize_error;
+            if (!finalize_vision_tokens(prompt_token_ids, usage_tokenizer,
+                                        prepared_vision, g,
+                                        finalize_error)) {
+                set_error_response(res, 400, finalize_error);
+                return;
+            }
+            g.prompt_token_ids_override.assign(
+                prompt_token_ids.begin(), prompt_token_ids.end());
+            for (const auto &span : prepared_vision.token_spans) {
+                g.kvmem_pinned_token_spans.push_back(
+                    GenerationOptions::KvMemPinnedTokenSpan{
+                        span.first, span.second,
+                        GenerationOptions::KvMemPinnedReason::
+                            ExplicitClientPin});
+            }
+            if (engine.kvmem_enabled) {
+                const uint32_t block_tokens = static_cast<uint32_t>(
+                    std::max(1, engine.kvmem_block_tokens));
+                const uint32_t budget_tokens = g.kvmem_semantic_budget > 0
+                    ? g.kvmem_semantic_budget
+                    : static_cast<uint32_t>(std::max(0, engine.kvmem_budget));
+                std::vector<uint8_t> pinned(
+                    (prompt_token_ids.size() + block_tokens - 1) /
+                        block_tokens,
+                    0);
+                for (const auto &span : g.kvmem_pinned_token_spans) {
+                    if (span.begin >= span.end) continue;
+                    const uint32_t first = span.begin / block_tokens;
+                    const uint32_t last = (span.end - 1) / block_tokens;
+                    for (uint32_t block = first;
+                         block <= last && block < pinned.size(); ++block) {
+                        pinned[block] = 1;
+                    }
+                }
+                const uint64_t pinned_tokens =
+                    static_cast<uint64_t>(std::count(
+                        pinned.begin(), pinned.end(), uint8_t{1})) *
+                    block_tokens;
+                if (pinned_tokens > budget_tokens) {
+                    set_error_response(
+                        res, 413,
+                        "multimodal mandatory spans exceed the KVMem active "
+                        "budget: pinned_tokens=" +
+                            std::to_string(pinned_tokens) +
+                            " budget_tokens=" +
+                            std::to_string(budget_tokens));
+                    return;
+                }
+                const uint32_t pinned_blocks = static_cast<uint32_t>(
+                    std::count(pinned.begin(), pinned.end(), uint8_t{1}));
+                // The generic request plan was drafted before visual token
+                // IDs were installed so byte/token span mapping stayed exact.
+                // Refresh its capacity accounting now that the atomic visual
+                // spans are known, without changing any text-only plan.
+                plan_input.raw_mandatory_blocks = std::max(
+                    plan_input.raw_mandatory_blocks, pinned_blocks);
+                plan_input.mandatory_blocks = pinned_blocks;
+                const uint32_t budget_blocks = budget_tokens / block_tokens;
+                plan_input.retrieval_reserve_blocks =
+                    budget_blocks > pinned_blocks
+                        ? std::min(plan_input.retrieval_reserve_blocks,
+                                   budget_blocks - pinned_blocks)
+                        : 0;
+                g.kvmem_request_plan =
+                    detail::kvmem_draft_request_plan(plan_input);
+            }
+            std::cerr << "[qw3-serve] multimodal prompt images="
+                      << prepared_vision.encoded.grids.size()
+                      << " visual_tokens="
+                      << g.input_embedding_overrides.size()
+                      << " vision_cache_hit="
+                      << (prepared_vision.encoded.cache_hit ? 1 : 0)
+                      << " vision_cache_hits="
+                      << prepared_vision.encoded.cache_hits
+                      << " vision_cache_misses="
+                      << prepared_vision.encoded.cache_misses
+                      << " mandatory_spans="
+                      << prepared_vision.token_spans.size() << "\n";
+        }
+
+        // Controlled round-alignment experiment. The request's byte spans are
+        // first mapped through the canonical, unmodified prompt above so query
+        // and group coordinates remain auditable. We then insert an ordinary
+        // newline token before the first round (to align its absolute start)
+        // and after every real round (to align the next start). Group score
+        // spans continue to cover only real source tokens; fixed-block
+        // materialization naturally includes the trailing newline fillers but
+        // can no longer include tokens from the adjacent round.
+        //
+        // This is intentionally an exact-token override rather than appending
+        // newline text and re-tokenizing: BPE could merge textual whitespace
+        // and silently produce a different filler count. It is standalone and
+        // opt-in because the filler tokens are visible to the model (there is
+        // no internal causal-padding mask) and therefore form an accuracy
+        // ablation, not an API formatting default.
+        if (req.contains("kvmem_round_padding")) {
+            if (!req["kvmem_round_padding"].is_number_integer()) {
+                set_error_response(
+                    res, 400, "kvmem_round_padding must be an integer");
+                return;
+            }
+            const int64_t requested_alignment =
+                req["kvmem_round_padding"].get<int64_t>();
+            if (requested_alignment <= 0 ||
+                requested_alignment >
+                    static_cast<int64_t>(
+                        std::numeric_limits<uint32_t>::max())) {
+                set_error_response(
+                    res, 400, "kvmem_round_padding must be positive");
+                return;
+            }
+            if (!map_retrieval_groups ||
+                g.kvmem_retrieval_group_spans.empty()) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_round_padding requires "
+                    "kvmem_retrieval_group_spans");
+                return;
+            }
+            if (requested_alignment != engine.kvmem_block_tokens) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_round_padding must equal --kvmem-block-tokens "
+                    "for exclusive round blocks");
+                return;
+            }
+            if (transcript_replay || kvmem_session_request ||
+                kvmem_cache_request ||
+                req.contains("kvmem_oracle_token_spans") ||
+                req.contains("kvmem_inline_refresh")) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_round_padding currently supports only standalone "
+                    "round-retrieval requests without replay/oracle/refresh");
+                return;
+            }
+
+            const std::vector<int32_t> newline_tokens =
+                usage_tokenizer.encode("\n");
+            if (newline_tokens.size() != 1 ||
+                usage_tokenizer.decode_one(newline_tokens.front()) != "\n") {
+                set_error_response(
+                    res, 500,
+                    "tokenizer has no exact one-token newline for "
+                    "kvmem_round_padding");
+                return;
+            }
+            const int32_t newline_token = newline_tokens.front();
+            const uint32_t alignment =
+                static_cast<uint32_t>(requested_alignment);
+            const auto original_groups =
+                g.kvmem_retrieval_group_spans;
+            for (size_t i = 1; i < original_groups.size(); ++i) {
+                if (original_groups[i - 1].end !=
+                    original_groups[i].begin) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_round_padding requires exact, gap-free token "
+                        "round boundaries (no BPE overlap/rounding)");
+                    return;
+                }
+            }
+
+            struct PaddingInsertion {
+                uint32_t original_boundary = 0;
+                uint32_t count = 0;
+            };
+            std::vector<PaddingInsertion> insertions;
+            insertions.reserve(original_groups.size() + 1);
+            std::vector<int32_t> aligned_tokens;
+            const uint64_t worst_extra =
+                static_cast<uint64_t>(original_groups.size() + 1) *
+                (alignment - 1u);
+            if (static_cast<uint64_t>(prompt_token_ids.size()) +
+                    worst_extra >
+                std::numeric_limits<size_t>::max()) {
+                set_error_response(
+                    res, 413, "round padding size overflows host indexing");
+                return;
+            }
+            aligned_tokens.reserve(
+                prompt_token_ids.size() +
+                static_cast<size_t>(worst_extra));
+
+            auto append_source = [&](uint32_t begin, uint32_t end) {
+                aligned_tokens.insert(
+                    aligned_tokens.end(),
+                    prompt_token_ids.begin() +
+                        static_cast<std::ptrdiff_t>(begin),
+                    prompt_token_ids.begin() +
+                        static_cast<std::ptrdiff_t>(end));
+            };
+            auto append_padding = [&](uint32_t original_boundary,
+                                      uint32_t count) {
+                if (count == 0) return;
+                aligned_tokens.insert(
+                    aligned_tokens.end(), count, newline_token);
+                insertions.push_back(
+                    PaddingInsertion{original_boundary, count});
+            };
+
+            const uint32_t first_begin = original_groups.front().begin;
+            const uint32_t last_end = original_groups.back().end;
+            if (last_end > prompt_token_ids.size()) {
+                set_error_response(
+                    res, 500,
+                    "round padding group exceeds the tokenized prompt");
+                return;
+            }
+            append_source(0, first_begin);
+            const uint32_t prefix_padding = static_cast<uint32_t>(
+                (alignment - aligned_tokens.size() % alignment) %
+                alignment);
+            append_padding(first_begin, prefix_padding);
+
+            std::vector<GenerationOptions::KvMemRetrievalGroupSpan>
+                aligned_groups;
+            aligned_groups.reserve(original_groups.size());
+            uint32_t cursor = first_begin;
+            uint64_t round_padding = 0;
+            uint32_t min_padding = alignment;
+            uint32_t max_padding = 0;
+            for (const auto &group : original_groups) {
+                if (group.begin != cursor || group.end <= group.begin ||
+                    group.end > prompt_token_ids.size()) {
+                    set_error_response(
+                        res, 500,
+                        "round padding received inconsistent token groups");
+                    return;
+                }
+                const uint32_t aligned_begin =
+                    static_cast<uint32_t>(aligned_tokens.size());
+                if (aligned_begin % alignment != 0) {
+                    set_error_response(
+                        res, 500,
+                        "round padding failed to align a group start");
+                    return;
+                }
+                append_source(group.begin, group.end);
+                const uint32_t aligned_end =
+                    static_cast<uint32_t>(aligned_tokens.size());
+                aligned_groups.push_back(
+                    GenerationOptions::KvMemRetrievalGroupSpan{
+                        aligned_begin, aligned_end});
+                const uint32_t pad = static_cast<uint32_t>(
+                    (alignment - aligned_tokens.size() % alignment) %
+                    alignment);
+                append_padding(group.end, pad);
+                round_padding += pad;
+                min_padding = std::min(min_padding, pad);
+                max_padding = std::max(max_padding, pad);
+                cursor = group.end;
+            }
+            append_source(last_end,
+                          static_cast<uint32_t>(prompt_token_ids.size()));
+
+            auto map_boundary_after_padding =
+                [&](uint32_t original) -> uint32_t {
+                uint64_t mapped = original;
+                for (const PaddingInsertion &insertion : insertions) {
+                    if (insertion.original_boundary > original) break;
+                    mapped += insertion.count;
+                }
+                if (mapped > std::numeric_limits<uint32_t>::max()) {
+                    throw std::runtime_error(
+                        "round padding mapped token position overflows u32");
+                }
+                return static_cast<uint32_t>(mapped);
+            };
+            if (g.kvmem_query_end > g.kvmem_query_begin) {
+                g.kvmem_query_begin =
+                    map_boundary_after_padding(g.kvmem_query_begin);
+                g.kvmem_query_end =
+                    map_boundary_after_padding(g.kvmem_query_end);
+            }
+            if (g.kvmem_context_end > g.kvmem_context_begin) {
+                g.kvmem_context_begin =
+                    map_boundary_after_padding(g.kvmem_context_begin);
+                g.kvmem_context_end =
+                    map_boundary_after_padding(g.kvmem_context_end);
+            }
+            g.kvmem_retrieval_group_spans =
+                std::move(aligned_groups);
+            prompt_token_ids = std::move(aligned_tokens);
+            prompt_token_count = prompt_token_ids.size();
+            if (archive_prefix_tokens + prompt_token_count >=
+                static_cast<uint64_t>(std::max(1, engine.ctx_size))) {
+                set_error_response(
+                    res, 413,
+                    "archive prefix plus round-padded prompt exceeds KV context: "
+                    "archive_tokens=" +
+                        std::to_string(archive_prefix_tokens) +
+                        " "
+                    "prompt_tokens=" +
+                        std::to_string(prompt_token_count) +
+                        " ctx=" + std::to_string(engine.ctx_size));
+                return;
+            }
+            const int remaining_ctx = std::max(
+                1, engine.ctx_size -
+                       static_cast<int>(archive_prefix_tokens) -
+                       static_cast<int>(prompt_token_count));
+            if (g.max_tokens > remaining_ctx) {
+                std::cerr
+                    << "[qw3-serve] capping request max_tokens from "
+                    << g.max_tokens << " to " << remaining_ctx
+                    << " after round padding\n";
+                g.max_tokens = remaining_ctx;
+            }
+            g.prompt_token_ids_override.assign(
+                prompt_token_ids.begin(), prompt_token_ids.end());
+            std::cerr
+                << "[qw3-serve] KVMem round padding alignment="
+                << alignment << " newline_token=" << newline_token
+                << " groups=" << original_groups.size()
+                << " prefix_padding=" << prefix_padding
+                << " round_padding=" << round_padding
+                << " per_round_min=" << min_padding
+                << " per_round_max=" << max_padding
+                << " total_added="
+                << (prefix_padding + round_padding)
+                << " prompt_tokens=" << prompt_token_count
+                << " query_span=[" << g.kvmem_query_begin << ","
+                << g.kvmem_query_end << ")\n";
+        }
+
+        g.continuous_batching =
+            !kvmem_session_request &&
+            !kvmem_cache_request &&
+            serve_continuous_batching_enabled() &&
+            serve_continuous_batch_request_supported(g);
+        const std::string route = kvmem_cache_request
+            ? ("cache-" + kvmem_cache_operation)
+            : (kvmem_session_request
+                   ? ("session-" + kvmem_session_op)
+                   : (g.continuous_batching ? "continuous" : "plain"));
+        const std::string fallback_reason =
+            g.continuous_batching ? "" :
+            (serve_continuous_batching_enabled() ? "request_unsupported" : "disabled");
+        const std::vector<std::string> stops = parse_stops(req);
+        const bool stream = req.value("stream", false);
+        const bool stream_include_usage =
+            req.contains("stream_options") && req["stream_options"].is_object() &&
+            req["stream_options"].value("include_usage", false);
+        const bool forced_tool_request = tool_request && !forced_tool_name.empty();
+        const std::string id = gen_id("chatcmpl-");
+        const int64_t created = unix_now();
+        const uint64_t rid = ++req_counter;
+        const auto server_preprocess_end = std::chrono::steady_clock::now();
+        const auto t0 = server_preprocess_end;
+        auto log_server_accounting =
+            [rid, server_request_start, server_json_end,
+             server_render_start, server_render_end, server_tokenize_end,
+             server_preprocess_end](std::chrono::steady_clock::time_point
+                                       engine_start,
+                                   std::chrono::steady_clock::time_point
+                                       engine_end,
+                                   std::chrono::steady_clock::time_point
+                                       response_end,
+                                   bool streaming,
+                                   bool stream_completed,
+                                   const std::string &terminal_error) {
+                auto ms = [](auto begin, auto end) {
+                    return std::chrono::duration<double, std::milli>(
+                               end - begin)
+                        .count();
+                };
+                const double total_ms =
+                    ms(server_request_start, response_end);
+                const double preprocess_ms =
+                    ms(server_request_start, server_preprocess_end);
+                const double queue_ms =
+                    ms(server_preprocess_end, engine_start);
+                const double engine_ms = ms(engine_start, engine_end);
+                const double response_ms = ms(engine_end, response_end);
+                const double sum_ms =
+                    preprocess_ms + queue_ms + engine_ms + response_ms;
+                const double json_ms =
+                    ms(server_request_start, server_json_end);
+                const double validate_ms =
+                    ms(server_json_end, server_render_start);
+                const double render_ms =
+                    ms(server_render_start, server_render_end);
+                const double tokenize_ms =
+                    ms(server_render_end, server_tokenize_end);
+                const double span_setup_ms =
+                    ms(server_tokenize_end, server_preprocess_end);
+                const double preprocess_sum_ms =
+                    json_ms + validate_ms + render_ms + tokenize_ms +
+                    span_setup_ms;
+                // Preserve additive request accounting in serialized logs;
+                // millisecond precision alone can make the displayed
+                // components differ by a rounding microsecond.
+                std::cerr << std::fixed << std::setprecision(6)
+                          << "[qw3-server-accounting]"
+                          << " rid=" << rid
+                          << " stream=" << (streaming ? 1 : 0)
+                          << " total_ms=" << total_ms
+                          << " preprocess_ms=" << preprocess_ms
+                          << " queue_ms=" << queue_ms
+                          << " engine_ms=" << engine_ms
+                          << " response_ms=" << response_ms
+                          << " sum_ms=" << sum_ms
+                          << " error_ms=" << (total_ms - sum_ms)
+                          << " pre_json_ms=" << json_ms
+                          << " pre_validate_ms=" << validate_ms
+                          << " pre_render_ms=" << render_ms
+                          << " pre_tokenize_ms=" << tokenize_ms
+                          << " pre_span_setup_ms=" << span_setup_ms
+                          << " pre_sum_ms=" << preprocess_sum_ms
+                          << " pre_error_ms="
+                          << (preprocess_ms - preprocess_sum_ms)
+                          << " stream_completed="
+                          << (streaming ? (stream_completed ? 1 : 0) : 1)
+                          << " terminal_status="
+                          << (terminal_error.empty()
+                                  ? (stream_completed ? "success"
+                                                      : "client_closed")
+                                  : "error")
+                          << " terminal_error="
+                          << dump_json(terminal_error)
+                          << "\n";
+            };
+
+        // The streaming content provider outlives this handler scope, so the
+        // raw `tools` pointer into `req` would dangle. Capture a by-value copy
+        // for schema-driven argument coercion inside the stream callback.
+        const json tools_schema = tools ? *tools : json();
+
+        if (stream) {
+            res.set_header("Cache-Control", "no-cache");
+            res.set_header("X-Accel-Buffering", "no");
+            res.set_chunked_content_provider(
+                "text/event-stream",
+                [&, prompt, g, stops, id, created, rid, t0,
+                 server_request_start, enable_thinking,
+                 tool_request, forced_tool_request, tools_schema,
+                 stream_include_usage, prompt_token_count, route,
+                 fallback_reason, kvmem_session_request,
+                 kvmem_session_reset,
+                 kvmem_cache_request, kvmem_cache_id,
+                 log_server_accounting](size_t, httplib::DataSink &sink) {
+                    std::unique_lock<std::mutex> gen_lk(gen_mu, std::defer_lock);
+                    if (!g.continuous_batching) gen_lk.lock();
+                    std::string acc;
+                    std::string utf8_pending;
+                    ReasoningStreamSplitter reasoning_splitter(enable_thinking);
+                    size_t completion_tokens = 0;
+                    bool stopped = false;
+                    bool client_closed = false;
+                    auto engine_start = std::chrono::steady_clock::now();
+                    auto engine_end = engine_start;
+                    ServerTtftTracker ttft(server_request_start);
+                    auto last_stream_write = std::chrono::steady_clock::now();
+                    auto send_raw = [&](const std::string &s) {
+                        if (client_closed) return false;
+                        if (sink.is_writable && !sink.is_writable()) {
+                            client_closed = true;
+                            stopped = true;
+                            return false;
+                        }
+                        if (!sink.write(s.data(), s.size())) {
+                            client_closed = true;
+                            stopped = true;
+                            return false;
+                        }
+                        last_stream_write = std::chrono::steady_clock::now();
+                        return true;
+                    };
+                    auto send_delta = [&](const json &delta) {
+                        json chunk = {
+                            {"id", id}, {"object", "chat.completion.chunk"},
+                            {"created", created}, {"model", model_id},
+                            {"choices", json::array({json{
+                                {"index", 0},
+                                {"delta", delta},
+                                {"finish_reason", nullptr}}})}};
+                        const std::string s = "data: " + dump_json(chunk) + "\n\n";
+                        const bool sent = send_raw(s);
+                        if (sent && visible_stream_delta(delta)) {
+                            ttft.observe_visible_output();
+                        }
+                        return sent;
+                    };
+                    auto send_role = [&]() {
+                        json chunk = {
+                            {"id", id}, {"object", "chat.completion.chunk"},
+                            {"created", created}, {"model", model_id},
+                            {"choices", json::array({json{
+                                {"index", 0},
+                                {"delta", json{{"role", "assistant"}}},
+                                {"finish_reason", nullptr}}})}};
+                        const std::string s = "data: " + dump_json(chunk) + "\n\n";
+                        send_raw(s);
+                    };
+                    auto send_done = [&](const std::string &finish_reason) {
+                        if (client_closed) return;
+                        json done = {
+                            {"id", id}, {"object", "chat.completion.chunk"},
+                            {"created", created}, {"model", model_id},
+                            {"choices", json::array({json{
+                                {"index", 0}, {"delta", json::object()},
+                                {"finish_reason", finish_reason}}})}};
+                        if (kvmem_session_request) {
+                            const KvMemSessionInfo info =
+                                eng.kvmem_session_info(g.kvmem_session_id);
+                            if (info.found) {
+                                done["kvmem_session"] =
+                                    kvmem_session_info_json(info);
+                            }
+                        }
+                        if (kvmem_cache_request) {
+                            const KvMemLocalCacheInfo info =
+                                eng.kvmem_local_cache_info(kvmem_cache_id);
+                            if (info.found) {
+                                done["kvmem_cache"] =
+                                    kvmem_cache_info_json(info);
+                            }
+                        }
+                        if (engine.kvmem_enabled) {
+                            done["kvmem"] = {
+                                {"profile", engine.kvmem_profile},
+                                {"state_coherence", engine.kvmem_state_coherence},
+                                {"logical_prompt_tokens", prompt_token_count},
+                                {"selection_budget_tokens", std::max(0, engine.kvmem_budget)},
+                                {"generation_budget_tokens", std::max(0, engine.kvmem_gen_budget)},
+                                {"requested_retrieval_method", engine.kvmem_retrieval_method},
+                                {"semantic_expansion", engine.kvmem_semantic_expansion},
+                                {"query_conditioned", engine.kvmem_query_conditioned},
+                                {"query_replay", cfg.kvmem_query_replay && !cfg.continuous_batching},
+                                {"strict_retrieval", engine.kvmem_strict_retrieval},
+                                {"retrieval_fallback_permitted", !engine.kvmem_strict_retrieval},
+                                {"hybrid_state_exact_for_request",
+                                    !above_selection_budget ||
+                                    (engine.kvmem_state_coherence == "selected-replay" &&
+                                     g.max_tokens > 0)}
+                            };
+                        }
+                        done["timing"] =
+                            ttft.timing_json(std::chrono::steady_clock::now());
+                        const std::string ds = "data: " + dump_json(done) + "\n\n";
+                        send_raw(ds);
+                        if (stream_include_usage) {
+                            json usage = {
+                                {"id", id},
+                                {"object", "chat.completion.chunk"},
+                                {"created", created},
+                                {"model", model_id},
+                                {"choices", json::array()},
+                                {"usage", usage_json(prompt_token_count,
+                                                     completion_tokens)}};
+                            const std::string us =
+                                "data: " + dump_json(usage) + "\n\n";
+                            send_raw(us);
+                        }
+                        const std::string fin = "data: [DONE]\n\n";
+                        send_raw(fin);
+                        sink.done();
+                    };
+                    try {
+                        auto generate_request =
+                            [&](const CancellableTokenCallback &callback) {
+                            engine_start = std::chrono::steady_clock::now();
+                            ttft.start_engine(engine_start);
+                            auto tracked_callback =
+                                [&](const std::string &piece) {
+                                    ttft.observe_model_piece(piece);
+                                    return callback(piece);
+                                };
+                            if (kvmem_session_request) {
+                                eng.generate_session_stream(
+                                    prompt, g,
+                                    [&](const std::string &piece) {
+                                        (void)tracked_callback(piece);
+                                    },
+                                    kvmem_session_reset);
+                            } else {
+                                eng.generate_stream_cancellable(
+                                    prompt, g, tracked_callback);
+                            }
+                            engine_end = std::chrono::steady_clock::now();
+                        };
+                        send_role();
+                        if (enable_thinking && g.max_tokens > 0) {
+                            send_delta(json{{"reasoning_content", ""}});
+                        }
+                        auto emit_text = [&](const std::string &text) {
+                            if (text.empty()) return;
+                            for (const auto &part : reasoning_splitter.push(text)) {
+                                if (part.second.empty()) continue;
+                                if (part.first == StreamPart::Reasoning) {
+                                    send_delta(json{{"reasoning_content", part.second}});
+                                } else {
+                                    send_delta(json{{"content", part.second}});
+                                }
+                            }
+                        };
+                        auto finish_text_stream = [&]() {
+                            const std::string tail = flush_utf8_pending(utf8_pending, false);
+                            if (!tail.empty()) emit_text(tail);
+                            for (const auto &part : reasoning_splitter.finish()) {
+                                if (part.second.empty()) continue;
+                                if (part.first == StreamPart::Reasoning) {
+                                    send_delta(json{{"reasoning_content", part.second}});
+                                } else {
+                                    send_delta(json{{"content", part.second}});
+                                }
+                            }
+                        };
+                        if (tool_request) {
+                            // The model may stream natural-language reasoning
+                            // before a <tool_call> block (the Hermes prompt
+                            // explicitly allows this). Once a canonical call for
+                            // a string-only schema appears, transcode its XML
+                            // parameters into standard OpenAI argument deltas.
+                            // Recovery syntaxes stay on the full-buffer parser.
+                            bool buffering_tool = false;
+                            bool streamed_content = false;
+                            std::string content_pending;
+                            std::string forced_prefix;
+                            const json *stream_tools =
+                                tools_schema.is_array() ? &tools_schema : nullptr;
+                            IncrementalToolCallStream incremental(stream_tools);
+                            auto last_tool_delta =
+                                std::chrono::steady_clock::now();
+                            size_t next_progress_tokens = 1024;
+                            constexpr size_t kArgumentFlushBytes = 1024;
+                            constexpr auto kArgumentFlushInterval =
+                                std::chrono::milliseconds(500);
+                            constexpr auto kToolHeartbeatInterval =
+                                std::chrono::seconds(2);
+
+                            auto flush_incremental = [&](bool force) {
+                                if (!incremental.streaming() || client_closed) return;
+                                if (incremental.start_pending()) {
+                                    send_delta(incremental.take_start_delta());
+                                    last_tool_delta =
+                                        std::chrono::steady_clock::now();
+                                }
+                                const auto now = std::chrono::steady_clock::now();
+                                if (incremental.pending_size() > 0 &&
+                                    (force ||
+                                     incremental.pending_size() >=
+                                         kArgumentFlushBytes ||
+                                     now - last_tool_delta >=
+                                         kArgumentFlushInterval)) {
+                                    send_delta(incremental.take_arguments_delta());
+                                    last_tool_delta = now;
+                                }
+                            };
+                            auto service_tool_stream = [&]() {
+                                flush_incremental(false);
+                                const auto now = std::chrono::steady_clock::now();
+                                if (!client_closed &&
+                                    now - last_stream_write >=
+                                        kToolHeartbeatInterval) {
+                                    // Empty OpenAI deltas are protocol-safe and
+                                    // keep read-idle timers alive even when the
+                                    // full tool call must remain buffered.
+                                    send_delta(json::object());
+                                }
+                                if (completion_tokens >= next_progress_tokens) {
+                                    const double elapsed =
+                                        std::chrono::duration<double>(
+                                            now - t0).count();
+                                    std::cerr << "[qw3-serve] #" << rid
+                                              << " tool_buffer_progress tokens="
+                                              << completion_tokens
+                                              << " chars=" << acc.size()
+                                              << " elapsed=" << elapsed << "s"
+                                              << " incremental="
+                                              << (incremental.streaming()
+                                                      ? "true" : "false")
+                                              << "\n";
+                                    do {
+                                        next_progress_tokens += 1024;
+                                    } while (completion_tokens >=
+                                             next_progress_tokens);
+                                }
+                            };
+
+                            generate_request([&](const std::string &piece) {
+                                if (stopped || client_closed) return false;
+                                ++completion_tokens;
+                                acc += piece;
+                                std::string emit = take_complete_utf8(utf8_pending, piece);
+                                if (!stops.empty()) {
+                                    std::string probe = acc;
+                                    if (apply_stops(probe, stops)) {
+                                        stopped = true;
+                                        utf8_pending.clear();
+                                        const size_t previous_size = acc.size() - piece.size();
+                                        emit = probe.size() > previous_size
+                                                   ? probe.substr(previous_size)
+                                                   : "";
+                                        acc = std::move(probe);
+                                        emit = take_complete_utf8(utf8_pending, emit);
+                                    }
+                                }
+                                if (buffering_tool) {
+                                    if (!emit.empty()) incremental.feed(emit);
+                                } else if (!emit.empty()) {
+                                    content_pending += emit;
+                                    bool marker_found = false;
+                                    const size_t safe =
+                                        tool_call_safe_emit_len(
+                                            content_pending, marker_found);
+                                    if (safe > 0) {
+                                        const std::string prefix =
+                                            content_pending.substr(0, safe);
+                                        if (forced_tool_request) {
+                                            forced_prefix += prefix;
+                                        } else {
+                                            emit_text(prefix);
+                                            streamed_content = true;
+                                        }
+                                        content_pending.erase(0, safe);
+                                    }
+                                    if (marker_found) {
+                                        if (forced_tool_request &&
+                                            !forced_prefix.empty()) {
+                                            emit_text(forced_prefix);
+                                            forced_prefix.clear();
+                                            streamed_content = true;
+                                        }
+                                        buffering_tool = true;
+                                        // content_pending begins with the marker
+                                        // and may already include part of the
+                                        // function/first parameter.
+                                        incremental.feed(content_pending);
+                                        content_pending.clear();
+                                    }
+                                }
+                                if (incremental.fatal()) {
+                                    stopped = true;
+                                }
+                                if (buffering_tool &&
+                                    !incremental.fatal()) {
+                                    service_tool_stream();
+                                }
+                                return !stopped && !client_closed;
+                            });
+
+                            if (client_closed) {
+                                const auto request_end =
+                                    std::chrono::steady_clock::now();
+                                ttft.log(rid, route, true, request_end);
+                                log_server_accounting(
+                                    engine_start, engine_end,
+                                    request_end, true,
+                                    /*stream_completed=*/false,
+                                    /*terminal_error=*/"");
+                                std::cerr << "[qw3-serve] #" << rid
+                                          << " chat(stream tools) chars="
+                                          << acc.size()
+                                          << " completion_tokens="
+                                          << completion_tokens
+                                          << " prompt_tokens="
+                                          << prompt_token_count
+                                          << " route=" << route
+                                          << " buffered_tool="
+                                          << (buffering_tool ? "true" : "false")
+                                          << " client_closed=true\n";
+                                return true;
+                            }
+
+                            if (buffering_tool) {
+                                incremental.finish();
+                                if (incremental.fatal()) {
+                                    throw std::runtime_error(
+                                        "incremental tool stream failed: " +
+                                        incremental.error());
+                                }
+                                std::string text =
+                                    take_complete_utf8(utf8_pending, acc);
+                                text += flush_utf8_pending(utf8_pending, false);
+                                const std::string framed =
+                                    enable_thinking ? ("<think>\n" + text) : text;
+                                const std::vector<json> tool_calls =
+                                    parse_tool_calls_xml(
+                                        framed,
+                                        tools_schema.is_array() ? &tools_schema
+                                                                : nullptr);
+                                const ReasoningSplit split =
+                                    split_reasoning(framed);
+                                // Prefix reasoning/content was already emitted
+                                // before the first tool delta whenever present.
+                                if (!streamed_content &&
+                                    !split.reasoning.empty()) {
+                                    send_delta(json{
+                                        {"reasoning_content", split.reasoning}});
+                                }
+                                if (!tool_calls.empty()) {
+                                    if (incremental.streaming()) {
+                                        std::string validation_error;
+                                        if (!incremental.validate(
+                                                tool_calls,
+                                                validation_error)) {
+                                            throw std::runtime_error(
+                                                "incremental tool validation "
+                                                "failed: " +
+                                                validation_error);
+                                        }
+                                        // Delay the final closing fragment until
+                                        // the full parser confirms that the
+                                        // streamed arguments are equivalent.
+                                        flush_incremental(true);
+                                        // The first call has already streamed.
+                                        // Preserve the existing multi-call
+                                        // behavior for any later calls.
+                                        if (tool_calls.size() > 1) {
+                                            send_delta(
+                                                tool_call_delta(tool_calls, 1));
+                                        }
+                                    } else {
+                                        send_delta(
+                                            tool_call_delta(tool_calls));
+                                    }
+                                    std::cerr << "[qw3-serve] #" << rid
+                                              << " tool_calls="
+                                              << tool_calls_debug_summary(
+                                                     tool_calls)
+                                              << " incremental="
+                                              << (incremental.streaming()
+                                                      ? "true" : "false")
+                                              << "\n";
+                                    send_done("tool_calls");
+                                } else {
+                                    std::string preview = split.content.empty()
+                                        ? framed : split.content;
+                                    if (preview.size() > 240) {
+                                        preview.resize(240);
+                                    }
+                                    std::replace(preview.begin(), preview.end(),
+                                                 '\n', ' ');
+                                    std::cerr << "[qw3-serve] #" << rid
+                                              << " tool_parse_empty preview="
+                                              << dump_json(preview) << "\n";
+                                    if (incremental.streaming()) {
+                                        throw std::runtime_error(
+                                            "incremental tool stream produced "
+                                            "no complete tool call");
+                                    }
+                                    if (!streamed_content &&
+                                        !split.content.empty()) {
+                                        send_delta(
+                                            json{{"content", split.content}});
+                                    }
+                                    send_done(generation_finish_reason(
+                                        stopped, completion_tokens, g.max_tokens));
+                                }
+                            } else {
+                                if (forced_tool_request) {
+                                    forced_prefix += content_pending;
+                                    if (!forced_prefix.empty()) {
+                                        emit_text(forced_prefix);
+                                    }
+                                } else if (!content_pending.empty()) {
+                                    emit_text(content_pending);
+                                }
+                                finish_text_stream();
+                                send_done(generation_finish_reason(
+                                    stopped, completion_tokens, g.max_tokens));
+                            }
+                            std::cerr << "[qw3-serve] #" << rid
+                                      << " chat(stream tools) chars=" << acc.size()
+                                      << " completion_tokens=" << completion_tokens
+                                      << " prompt_tokens=" << prompt_token_count
+                                      << " route=" << route
+                                      << " buffered_tool=" << (buffering_tool ? "true" : "false")
+                                      << " incremental_tool="
+                                      << (incremental.streaming() ? "true" : "false")
+                                      << "\n";
+                            const auto request_end =
+                                std::chrono::steady_clock::now();
+                            ttft.log(rid, route, true, request_end);
+                            log_server_accounting(
+                                engine_start, engine_end,
+                                request_end, true,
+                                /*stream_completed=*/true,
+                                /*terminal_error=*/"");
+                            return true;
+                        }
+                        generate_request([&](const std::string &piece) {
+                            if (stopped || client_closed) return false;
+                            ++completion_tokens;
+                            acc += piece;
+                            std::string emit = take_complete_utf8(utf8_pending, piece);
+                            if (!stops.empty()) {
+                                std::string probe = acc;
+                                if (apply_stops(probe, stops)) {
+                                    stopped = true;
+                                    utf8_pending.clear();
+                                    const size_t previous_size = acc.size() - piece.size();
+                                    emit = probe.size() > previous_size
+                                               ? probe.substr(previous_size)
+                                               : "";
+                                    emit = take_complete_utf8(utf8_pending, emit);
+                                }
+                            }
+                            if (!emit.empty()) {
+                                emit_text(emit);
+                            }
+                            return !stopped && !client_closed;
+                        });
+                        finish_text_stream();
+                        send_done(generation_finish_reason(
+                            stopped, completion_tokens, g.max_tokens));
+                        std::cerr << "[qw3-serve] #" << rid
+                                  << " chat(stream) completion_tokens="
+                                  << completion_tokens
+                                  << " prompt_tokens=" << prompt_token_count
+                                  << " route=" << route
+                                  << (client_closed ? " client_closed=true" : "")
+                                  << "\n";
+                        const auto request_end =
+                            std::chrono::steady_clock::now();
+                        ttft.log(rid, route, true, request_end);
+                        log_server_accounting(
+                            engine_start, engine_end,
+                            request_end, true,
+                            /*stream_completed=*/true,
+                            /*terminal_error=*/"");
+                        return true;
+                    } catch (const std::exception &e) {
+                        json chunk = {
+                            {"id", id}, {"object", "chat.completion.chunk"},
+                            {"created", created}, {"model", model_id},
+                            {"choices", json::array({json{
+                                {"index", 0},
+                                {"delta", json::object()},
+                                {"finish_reason", "error"}}})},
+                            {"error", e.what()}};
+                        const std::string s = "data: " + dump_json(chunk) + "\n\n";
+                        send_raw(s);
+                        // Do not append [DONE]: for protocol adapters an error
+                        // is terminal and must not be followed by a synthetic
+                        // successful message_stop.
+                        sink.done();
+                        std::cerr << "[qw3-serve] #" << rid
+                                  << " chat(stream) error=" << e.what() << "\n";
+                        const auto request_end =
+                            std::chrono::steady_clock::now();
+                        if (engine_end == engine_start) {
+                            engine_end = request_end;
+                        }
+                        ttft.log(rid, route, true, request_end);
+                        log_server_accounting(
+                            engine_start, engine_end, request_end, true,
+                            /*stream_completed=*/false, e.what());
+                        return false;
+                    }
+                });
+            return;
+        }
+
+        std::string text;
+        size_t completion_tokens = 0;
+        auto engine_start = std::chrono::steady_clock::now();
+        auto engine_end = engine_start;
+        ServerTtftTracker ttft(server_request_start);
+        auto consume_piece = [&](const std::string &piece) {
+            ttft.observe_model_piece(piece);
+            ++completion_tokens;
+            text += piece;
+        };
+        try {
+            if (kvmem_session_request) {
+                std::lock_guard<std::mutex> lk(gen_mu);
+                engine_start = std::chrono::steady_clock::now();
+                ttft.start_engine(engine_start);
+                eng.generate_session_stream(
+                    prompt, g, [&](const std::string &piece) {
+                        consume_piece(piece);
+                    }, kvmem_session_reset);
+            } else if (g.continuous_batching) {
+                engine_start = std::chrono::steady_clock::now();
+                ttft.start_engine(engine_start);
+                eng.generate_stream_cancellable(prompt, g, [&](const std::string &piece) {
+                    consume_piece(piece);
+                    return true;
+                });
+            } else {
+                std::lock_guard<std::mutex> lk(gen_mu);
+                engine_start = std::chrono::steady_clock::now();
+                ttft.start_engine(engine_start);
+                eng.generate_stream_cancellable(prompt, g, [&](const std::string &piece) {
+                    consume_piece(piece);
+                    return true;
+                });
+            }
+            engine_end = std::chrono::steady_clock::now();
+        } catch (const std::exception &e) {
+            std::cerr << "[qw3-serve] #" << rid << " chat error="
+                      << e.what() << "\n";
+            set_error_response(res, status_for_exception(e), e.what());
+            return;
+        }
+        if (enable_thinking && g.max_tokens > 0) text = "<think>\n" + text;
+        std::string utf8_pending;
+        text = take_complete_utf8(utf8_pending, text);
+        text += flush_utf8_pending(utf8_pending, false);
+        const bool stopped = apply_stops(text, stops);
+        const double ms =
+            std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - t0)
+                .count();
+        std::cerr << "[qw3-serve] #" << rid << " chat chars=" << text.size()
+                  << " completion_tokens=" << completion_tokens
+                  << " prompt_tokens=" << prompt_token_count
+                  << " route=" << route;
+        if (!fallback_reason.empty()) {
+            std::cerr << " fallback_reason=" << fallback_reason;
+        }
+        std::cerr << " " << ms << "ms\n";
+        const std::vector<json> tool_calls = parse_tool_calls_xml(text, tools);
+        const ReasoningSplit split = split_reasoning(text);
+        json message = json{{"role", "assistant"},
+                            {"content", tool_calls.empty() ? split.content : ""}};
+        if (!split.reasoning.empty()) {
+            message["reasoning_content"] = split.reasoning;
+        }
+        std::string finish = generation_finish_reason(
+            stopped, completion_tokens, g.max_tokens);
+        if (!tool_calls.empty()) {
+            std::cerr << "[qw3-serve] #" << rid
+                      << " tool_calls=" << tool_calls_debug_summary(tool_calls)
+                      << "\n";
+            message["tool_calls"] = tool_calls;
+            finish = "tool_calls";
+        }
+        json out = {
+            {"id", id}, {"object", "chat.completion"}, {"created", created},
+            {"model", model_id},
+            {"choices", json::array({json{
+                {"index", 0},
+                {"message", message},
+                {"finish_reason", finish}}})},
+            {"usage", usage_json(prompt_token_count, completion_tokens)},
+            {"timing", ttft.timing_json(std::chrono::steady_clock::now())}};
+        if (engine.kvmem_enabled) {
+            out["kvmem"] = {
+                {"profile", engine.kvmem_profile},
+                {"state_coherence", engine.kvmem_state_coherence},
+                {"logical_prompt_tokens", prompt_token_count},
+                {"selection_budget_tokens", std::max(0, engine.kvmem_budget)},
+                {"generation_budget_tokens", std::max(0, engine.kvmem_gen_budget)},
+                {"requested_retrieval_method", engine.kvmem_retrieval_method},
+                {"semantic_expansion", engine.kvmem_semantic_expansion},
+                {"query_conditioned", engine.kvmem_query_conditioned},
+                {"query_replay", cfg.kvmem_query_replay && !cfg.continuous_batching},
+                {"strict_retrieval", engine.kvmem_strict_retrieval},
+                {"retrieval_fallback_permitted", !engine.kvmem_strict_retrieval},
+                {"hybrid_state_exact_for_request",
+                    !above_selection_budget ||
+                    (engine.kvmem_state_coherence == "selected-replay" &&
+                     g.max_tokens > 0)}
+            };
+        }
+        if (kvmem_session_request) {
+            const KvMemSessionInfo info =
+                eng.kvmem_session_info(g.kvmem_session_id);
+            if (!info.found) {
+                set_error_response(
+                    res, 500,
+                    "KVMem session operation completed without metadata");
+                return;
+            }
+            out["kvmem_session"] = kvmem_session_info_json(info);
+        }
+        if (kvmem_cache_request) {
+            const KvMemLocalCacheInfo info =
+                eng.kvmem_local_cache_info(kvmem_cache_id);
+            if (!info.found) {
+                set_error_response(
+                    res, 500,
+                    "KVMem local cache operation completed without metadata");
+                return;
+            }
+            out["kvmem_cache"] = kvmem_cache_info_json(info);
+        }
+        res.set_content(dump_json(out), "application/json");
+        const auto request_end = std::chrono::steady_clock::now();
+        ttft.log(rid, route, false, request_end);
+        log_server_accounting(
+            engine_start, engine_end, request_end, false,
+            /*stream_completed=*/true,
+            /*terminal_error=*/"");
+    };
+    svr.Post("/v1/chat/completions",
+             [&](const httplib::Request &hreq,
+                 httplib::Response &res) {
+        handle_chat_completions(
+            hreq, res, detail::HarnessProtocol::OpenAIChat);
+    });
+
+    auto set_anthropic_error = [&](httplib::Response &res, int status,
+                                   const std::string &message,
+                                   const std::string &type =
+                                       "invalid_request_error") {
+        res.status = status;
+        res.set_content(
+            dump_json(detail::anthropic_error_body(message, type)),
+            "application/json");
+    };
+
+    auto anthropic_prompt_token_count = [&](const json &openai_req,
+                                             size_t &count,
+                                             std::string &error) {
+        if (!openai_req.contains("messages") ||
+            !openai_req["messages"].is_array()) {
+            error = "converted request is missing messages[]";
+            return false;
+        }
+        const bool enable_thinking = openai_req.value(
+            "enable_thinking", cfg.enable_thinking_default);
+        const json *raw_tools = openai_req.contains("tools")
+            ? &openai_req["tools"] : nullptr;
+        const bool tool_choice_none =
+            openai_req.contains("tool_choice") &&
+            openai_req["tool_choice"].is_string() &&
+            openai_req["tool_choice"].get<std::string>() == "none";
+        const bool tool_choice_required =
+            openai_req.contains("tool_choice") &&
+            openai_req["tool_choice"].is_string() &&
+            openai_req["tool_choice"].get<std::string>() == "required";
+        const json *tools = tool_choice_none ? nullptr : raw_tools;
+        std::string forced_tool_name;
+        if (openai_req.contains("tool_choice") &&
+            openai_req["tool_choice"].is_object()) {
+            const json &choice = openai_req["tool_choice"];
+            if (choice.contains("function") &&
+                choice["function"].is_object()) {
+                forced_tool_name =
+                    choice["function"].value("name", "");
+            }
+        }
+        json messages = openai_req["messages"];
+        PreparedVisionRequest prepared;
+        if (!prepare_vision_messages(messages, vision_encoder,
+                                     prepared, error)) {
+            return false;
+        }
+        const std::string prompt = render_messages(
+            messages, tools, enable_thinking,
+            forced_tool_name, /*message_spans=*/nullptr,
+            /*add_generation_prompt=*/true,
+            /*require_tool_call=*/tool_choice_required,
+            detail::HarnessKind::ClaudeCode,
+            engine.kvmem_enabled && cfg.kvmem_prefix_cache);
+        count = usage_tokenizer.encode(prompt).size();
+        return true;
+    };
+
+    svr.Post("/v1/messages/count_tokens",
+             [&](const httplib::Request &hreq,
+                 httplib::Response &res) {
+        json anthropic_req;
+        try {
+            anthropic_req = json::parse(hreq.body);
+        } catch (const std::exception &e) {
+            set_anthropic_error(
+                res, 400, std::string("invalid JSON: ") + e.what());
+            return;
+        }
+        json openai_req;
+        std::string error;
+        if (!detail::anthropic_request_to_openai(
+                anthropic_req, openai_req, error,
+                /*require_max_tokens=*/false)) {
+            set_anthropic_error(res, 400, error);
+            return;
+        }
+        size_t count = 0;
+        if (!anthropic_prompt_token_count(openai_req, count, error)) {
+            set_anthropic_error(res, 400, error);
+            return;
+        }
+        res.set_content(dump_json(json{{"input_tokens", count}}),
+                        "application/json");
+    });
+
+    svr.Post("/v1/messages",
+             [&](const httplib::Request &hreq,
+                 httplib::Response &res) {
+        json anthropic_req;
+        try {
+            anthropic_req = json::parse(hreq.body);
+        } catch (const std::exception &e) {
+            set_anthropic_error(
+                res, 400, std::string("invalid JSON: ") + e.what());
+            return;
+        }
+        json openai_req;
+        std::string error;
+        if (!detail::anthropic_request_to_openai(
+                anthropic_req, openai_req, error)) {
+            set_anthropic_error(res, 400, error);
+            return;
+        }
+        const bool stream = openai_req.value("stream", false);
+        const std::string requested_model =
+            anthropic_req.value("model", model_id);
+        size_t input_tokens = 0;
+        if (!anthropic_prompt_token_count(
+                openai_req, input_tokens, error)) {
+            set_anthropic_error(res, 400, error);
+            return;
+        }
+
+        httplib::Request internal_request;
+        internal_request.body = dump_json(openai_req);
+        httplib::Response internal_response;
+        handle_chat_completions(
+            internal_request, internal_response,
+            detail::HarnessProtocol::AnthropicMessages);
+        if (internal_response.status >= 400) {
+            std::string message = internal_response.body;
+            try {
+                const json body = json::parse(internal_response.body);
+                if (body.contains("error") && body["error"].is_string()) {
+                    message = body["error"].get<std::string>();
+                }
+            } catch (...) {
+            }
+            const std::string type = internal_response.status == 429
+                ? "rate_limit_error"
+                : (internal_response.status >= 500
+                       ? "api_error" : "invalid_request_error");
+            set_anthropic_error(
+                res, internal_response.status, message, type);
+            return;
+        }
+
+        if (!stream) {
+            try {
+                const json openai_response =
+                    json::parse(internal_response.body);
+                const json out = detail::anthropic_response_from_openai(
+                    openai_response, requested_model);
+                res.set_content(dump_json(out), "application/json");
+            } catch (const std::exception &e) {
+                set_anthropic_error(
+                    res, 500,
+                    std::string("could not translate model response: ") +
+                        e.what(),
+                    "api_error");
+            }
+            return;
+        }
+
+        if (!internal_response.content_provider_) {
+            set_anthropic_error(
+                res, 500,
+                "streaming chat handler did not create a content provider",
+                "api_error");
+            return;
+        }
+        auto inner_response = std::make_shared<httplib::Response>(
+            std::move(internal_response));
+        res.set_header("Cache-Control", "no-cache");
+        res.set_header("X-Accel-Buffering", "no");
+        res.set_chunked_content_provider(
+            "text/event-stream",
+            [inner_response, requested_model, input_tokens](
+                    size_t, httplib::DataSink &outer_sink) {
+                detail::AnthropicSseAdapter adapter(
+                    requested_model, input_tokens);
+                bool writable = true;
+                std::string adapter_error;
+                auto emit = [&](const std::string &wire) {
+                    if (!writable) return false;
+                    if (outer_sink.is_writable &&
+                        !outer_sink.is_writable()) {
+                        writable = false;
+                        return false;
+                    }
+                    writable = outer_sink.write(
+                        wire.data(), wire.size());
+                    return writable;
+                };
+
+                httplib::DataSink inner_sink;
+                inner_sink.is_writable = [&]() {
+                    return writable &&
+                        (!outer_sink.is_writable ||
+                         outer_sink.is_writable());
+                };
+                inner_sink.write = [&](const char *data, size_t size) {
+                    if (!adapter.feed(
+                            data, size, emit, adapter_error)) {
+                        writable = false;
+                        return false;
+                    }
+                    return writable;
+                };
+                inner_sink.done = []() {};
+                inner_sink.done_with_trailer =
+                    [](const httplib::Headers &) {};
+
+                bool ok = inner_response->content_provider_(
+                    0, 0, inner_sink);
+                if (writable &&
+                    !adapter.finish(emit, adapter_error)) {
+                    ok = false;
+                }
+                if (writable && !adapter_error.empty()) {
+                    const std::string wire =
+                        "event: error\ndata: " +
+                        dump_json(detail::anthropic_error_body(
+                            adapter_error, "api_error")) +
+                        "\n\n";
+                    (void)outer_sink.write(wire.data(), wire.size());
+                    ok = false;
+                }
+                inner_response->content_provider_success_ = ok;
+                outer_sink.done();
+                return ok;
+            });
+    });
+
+    svr.Post("/v1/completions", [&](const httplib::Request &hreq,
+                                    httplib::Response &res) {
+        const auto server_request_start = std::chrono::steady_clock::now();
+        json req;
+        try {
+            req = json::parse(hreq.body);
+        } catch (const std::exception &e) {
+            res.status = 400;
+            res.set_content(dump_json(json{{"error", std::string("invalid JSON: ") + e.what()}}),
+                            "application/json");
+            return;
+        }
+        std::string prompt;
+        std::vector<uint32_t> exact_prompt_tokens;
+        if (req.contains("prompt") && req["prompt"].is_string()) {
+            prompt = req["prompt"].get<std::string>();
+        } else if (req.contains("prompt") && req["prompt"].is_array() &&
+                   !req["prompt"].empty() && req["prompt"][0].is_string()) {
+            prompt = req["prompt"][0].get<std::string>();
+        } else if (req.contains("prompt") && req["prompt"].is_array() &&
+                   !req["prompt"].empty()) {
+            exact_prompt_tokens.reserve(req["prompt"].size());
+            for (const json &value : req["prompt"]) {
+                if (!value.is_number_integer()) {
+                    set_error_response(
+                        res, 400,
+                        "integer-array prompt must contain only token IDs");
+                    return;
+                }
+                const int64_t token = value.get<int64_t>();
+                if (token < 0 ||
+                    token > static_cast<int64_t>(
+                                std::numeric_limits<uint32_t>::max())) {
+                    set_error_response(
+                        res, 400,
+                        "integer-array prompt token ID is out of range");
+                    return;
+                }
+                exact_prompt_tokens.push_back(static_cast<uint32_t>(token));
+            }
+        } else {
+            res.status = 400;
+            res.set_content(dump_json(json{{"error", "missing prompt"}}),
+                            "application/json");
+            return;
+        }
+        bool explicit_max_tokens = false;
+        int requested_max_tokens = 0;
+        std::string max_tokens_error;
+        if (!parse_explicit_max_tokens(req, explicit_max_tokens,
+                                       requested_max_tokens,
+                                       max_tokens_error)) {
+            set_error_response(res, 400, max_tokens_error);
+            return;
+        }
+        (void)explicit_max_tokens;
+        (void)requested_max_tokens;
+        const size_t prompt_token_count = exact_prompt_tokens.empty()
+            ? usage_tokenizer.encode(prompt).size()
+            : exact_prompt_tokens.size();
+        if (archive_prefix_tokens + prompt_token_count >=
+            static_cast<uint64_t>(std::max(1, engine.ctx_size))) {
+            set_error_response(
+                res,
+                413,
+                "archive prefix plus prompt exceeds KV context: archive_tokens=" +
+                    std::to_string(archive_prefix_tokens) +
+                    " prompt_tokens=" +
+                    std::to_string(prompt_token_count) +
+                    " ctx=" + std::to_string(engine.ctx_size));
+            return;
+        }
+        const bool enable_thinking =
+            req.value("enable_thinking", cfg.enable_thinking_default);
+        GenerationOptions g;
+        try {
+            g = make_gen(req, prompt_token_count, enable_thinking);
+        } catch (const std::invalid_argument &e) {
+            set_error_response(res, 400, e.what());
+            return;
+        }
+        g.raw_prompt = true; // /v1/completions sends raw text, no chat template
+        // Raw completions receive an already-rendered prompt. The caller is
+        // responsible for including the assistant/<think> prefix; this flag
+        // only makes the ordinary thinking-token budget track that open span.
+        g.thinking_open = enable_thinking;
+        g.prompt_token_ids_override = std::move(exact_prompt_tokens);
+
+        // Raw-token persistent sessions are useful when a benchmark must freeze
+        // a byte/token-identical history and time only a later query fragment.
+        // Chat sessions cannot provide that guarantee when the split falls
+        // inside one message because rendering the two requests would insert an
+        // extra role boundary.  Keep the controls explicit and token based:
+        // callers may pass an integer-array prompt plus a fragment-local query
+        // span.  The native persistent-session layer translates that span to
+        // logical sequence coordinates using the current append base.
+        bool kvmem_session_request = false;
+        bool kvmem_session_reset = false;
+        std::string kvmem_session_op;
+        std::string kvmem_workspace_id;
+        if (req.contains("kvmem_session_id") ||
+            req.contains("kvmem_session_op")) {
+            if (!engine.kvmem_enabled) {
+                set_error_response(
+                    res, 400, "kvmem_session_* requires --kvmem");
+                return;
+            }
+            if (!req.contains("kvmem_session_id") ||
+                !req["kvmem_session_id"].is_string() ||
+                req["kvmem_session_id"].get<std::string>().empty() ||
+                !req.contains("kvmem_session_op") ||
+                !req["kvmem_session_op"].is_string()) {
+                set_error_response(
+                    res, 400,
+                    "raw completion sessions require a non-empty "
+                    "kvmem_session_id and kvmem_session_op=start|append|finish");
+                return;
+            }
+            g.kvmem_session_id =
+                req["kvmem_session_id"].get<std::string>();
+            kvmem_session_op =
+                req["kvmem_session_op"].get<std::string>();
+            if (kvmem_session_op != "start" &&
+                kvmem_session_op != "append" &&
+                kvmem_session_op != "finish") {
+                set_error_response(
+                    res, 400,
+                    "kvmem_session_op must be start|append|finish");
+                return;
+            }
+            if (kvmem_session_op != "finish" && g.max_tokens != 0) {
+                set_error_response(
+                    res, 400,
+                    "kvmem session start/append requires max_tokens=0");
+                return;
+            }
+            kvmem_session_request = true;
+            kvmem_session_reset = kvmem_session_op == "start";
+        }
+
+        if (req.contains("kvmem_workspace_id")) {
+            if (!kvmem_session_request || !req["kvmem_workspace_id"].is_string()) {
+                set_error_response(res, 400,
+                    "kvmem_workspace_id requires a KVMem session and must be a string");
+                return;
+            }
+            kvmem_workspace_id = req["kvmem_workspace_id"].get<std::string>();
+            if (kvmem_workspace_id.empty() || kvmem_workspace_id.size() > 256) {
+                set_error_response(res, 400,
+                    "kvmem_workspace_id must be 1..256 bytes");
+                return;
+            }
+            g.kvmem_workspace_id = kvmem_workspace_id;
+        }
+
+        bool kvmem_cache_request = false;
+        std::string kvmem_cache_id;
+        std::string kvmem_cache_operation;
+        KvMemLocalCacheMode kvmem_cache_mode =
+            KvMemLocalCacheMode::None;
+        uint64_t kvmem_cache_expected_version = 0;
+        bool kvmem_cache_expected_version_set = false;
+        uint64_t kvmem_cache_ttl_seconds = 0;
+        if (req.contains("kvmem_cache")) {
+            if (!engine.kvmem_enabled) {
+                set_error_response(res, 400,
+                                   "kvmem_cache requires --kvmem");
+                return;
+            }
+            if (kvmem_session_request) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_cache and kvmem_session_* are mutually exclusive");
+                return;
+            }
+            const json &cache = req["kvmem_cache"];
+            if (!cache.is_object()) {
+                set_error_response(res, 400,
+                                   "kvmem_cache must be an object");
+                return;
+            }
+            const bool save = cache.contains("save");
+            const bool load = cache.contains("load");
+            if (save == load) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_cache requires exactly one save or load object");
+                return;
+            }
+            const json &operation = cache[save ? "save" : "load"];
+            if (!operation.is_object() || !operation.contains("id") ||
+                !operation["id"].is_string()) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_cache save/load requires a string id");
+                return;
+            }
+            kvmem_cache_id = operation["id"].get<std::string>();
+            if (!valid_kvmem_cache_id(kvmem_cache_id)) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_cache id must be 1..128 characters using only "
+                    "letters, digits, '.', '_', '-', or ':'");
+                return;
+            }
+            if (save) {
+                kvmem_cache_operation = "save";
+                if (g.max_tokens != 0) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_cache save currently requires max_tokens=0");
+                    return;
+                }
+                const std::string scope = operation.value("scope", "local");
+                const std::string when =
+                    operation.value("when", "after_request");
+                if (scope != "local" || when != "after_request") {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_cache save supports only scope=local and "
+                        "when=after_request");
+                    return;
+                }
+                if (operation.contains("ttl_seconds") &&
+                    !parse_bounded_json_u64(
+                        operation["ttl_seconds"], 0, 31536000,
+                        kvmem_cache_ttl_seconds)) {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_cache ttl_seconds must be in [0,31536000]");
+                    return;
+                }
+                g.kvmem_cache_save_id = kvmem_cache_id;
+                g.kvmem_cache_ttl_seconds = kvmem_cache_ttl_seconds;
+            } else {
+                kvmem_cache_operation = "load";
+                const std::string mode = operation.value("mode", "frozen");
+                if (mode == "frozen") {
+                    kvmem_cache_mode = KvMemLocalCacheMode::Frozen;
+                } else if (mode == "append") {
+                    kvmem_cache_mode = KvMemLocalCacheMode::Append;
+                } else {
+                    set_error_response(
+                        res, 400,
+                        "kvmem_cache load mode must be frozen|append");
+                    return;
+                }
+                if (operation.contains("required") &&
+                    (!operation["required"].is_boolean() ||
+                     !operation["required"].get<bool>())) {
+                    set_error_response(
+                        res, 400,
+                        "process-local cache loads require required=true; "
+                        "missing caches never silently trigger full prefill");
+                    return;
+                }
+                if (operation.contains("expected_version")) {
+                    if (!parse_bounded_json_u64(
+                            operation["expected_version"], 1,
+                            std::numeric_limits<uint64_t>::max(),
+                            kvmem_cache_expected_version)) {
+                        set_error_response(
+                            res, 400,
+                            "kvmem_cache expected_version must be a positive "
+                            "integer");
+                        return;
+                    }
+                    kvmem_cache_expected_version_set = true;
+                }
+                if (kvmem_cache_mode == KvMemLocalCacheMode::Append) {
+                    if (g.max_tokens != 0) {
+                        set_error_response(
+                            res, 400,
+                            "kvmem_cache append currently requires "
+                            "max_tokens=0");
+                        return;
+                    }
+                    if (!kvmem_cache_expected_version_set) {
+                        set_error_response(
+                            res, 400,
+                            "kvmem_cache append requires expected_version");
+                        return;
+                    }
+                }
+                g.kvmem_cache_load_id = kvmem_cache_id;
+                g.kvmem_cache_load_mode = kvmem_cache_mode;
+                g.kvmem_cache_expected_version =
+                    kvmem_cache_expected_version;
+                g.kvmem_cache_expected_version_set =
+                    kvmem_cache_expected_version_set;
+            }
+            kvmem_cache_request = true;
+        }
+
+        if (req.contains("kvmem_reselect")) {
+            if (!req["kvmem_reselect"].is_string()) {
+                set_error_response(
+                    res, 400, "kvmem_reselect must be auto|force|off");
+                return;
+            }
+            const std::string mode =
+                req["kvmem_reselect"].get<std::string>();
+            if (mode == "auto") {
+                g.kvmem_reselect_mode = KvMemReselectMode::Auto;
+            } else if (mode == "force") {
+                g.kvmem_reselect_mode = KvMemReselectMode::Force;
+            } else if (mode == "off") {
+                g.kvmem_reselect_mode = KvMemReselectMode::Off;
+            } else {
+                set_error_response(
+                    res, 400, "kvmem_reselect must be auto|force|off");
+                return;
+            }
+        }
+        if (req.contains("kvmem_query_token_span")) {
+            const json &span = req["kvmem_query_token_span"];
+            uint64_t begin = 0;
+            uint64_t end = 0;
+            if (!span.is_object() || !span.contains("begin") ||
+                !span.contains("end") ||
+                !parse_bounded_json_u64(
+                    span["begin"], 0,
+                    std::numeric_limits<uint32_t>::max(), begin) ||
+                !parse_bounded_json_u64(
+                    span["end"], 1,
+                    std::numeric_limits<uint32_t>::max(), end) ||
+                end <= begin) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_query_token_span requires uint32 begin < end");
+                return;
+            }
+            if (!engine.kvmem_enabled ||
+                !engine.kvmem_query_conditioned) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_query_token_span requires --kvmem and "
+                    "--kvmem-query-conditioned");
+                return;
+            }
+            g.kvmem_query_begin = static_cast<uint32_t>(begin);
+            g.kvmem_query_end = static_cast<uint32_t>(end);
+        }
+        if (g.kvmem_reselect_mode == KvMemReselectMode::Force &&
+            g.kvmem_query_end <= g.kvmem_query_begin) {
+            set_error_response(
+                res, 400,
+                "kvmem_reselect=force requires kvmem_query_token_span");
+            return;
+        }
+        if (req.contains("kvmem_trace_tag")) {
+            if (!req["kvmem_trace_tag"].is_string()) {
+                set_error_response(res, 400,
+                                   "kvmem_trace_tag must be a string");
+                return;
+            }
+            const std::string tag =
+                req["kvmem_trace_tag"].get<std::string>();
+            if (tag.empty() || tag.size() > 128 ||
+                !std::all_of(tag.begin(), tag.end(), [](unsigned char c) {
+                    return std::isalnum(c) || c == '.' || c == '_' ||
+                           c == '-' || c == ':';
+                })) {
+                set_error_response(
+                    res, 400,
+                    "kvmem_trace_tag must be 1..128 characters from "
+                    "[A-Za-z0-9_.:-]");
+                return;
+            }
+            g.kvmem_trace_tag = tag;
+        }
+        g.continuous_batching =
+            !kvmem_session_request && !kvmem_cache_request &&
+            serve_continuous_batching_enabled() &&
+            serve_continuous_batch_request_supported(g);
+        const std::string route = kvmem_cache_request
+            ? ("cache-" + kvmem_cache_operation)
+            : (kvmem_session_request
+                   ? ("session-" + kvmem_session_op)
+                   : (g.continuous_batching ? "continuous" : "plain"));
+        const std::string fallback_reason =
+            g.continuous_batching ? "" :
+            (serve_continuous_batching_enabled() ? "request_unsupported" : "disabled");
+        const std::vector<std::string> stops = parse_stops(req);
+        const std::string id = gen_id("cmpl-");
+        const int64_t created = unix_now();
+        const uint64_t rid = ++req_counter;
+
+        std::string text;
+        size_t completion_tokens = 0;
+        auto generation_start = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point first_token_at{};
+        bool first_token_seen = false;
+        ServerTtftTracker ttft(server_request_start);
+        auto consume_piece = [&](const std::string &piece) {
+            ++completion_tokens;
+            ttft.observe_model_piece(piece);
+            if (!first_token_seen && !piece.empty()) {
+                first_token_seen = true;
+                first_token_at = std::chrono::steady_clock::now();
+            }
+            text += piece;
+        };
+        try {
+            if (kvmem_session_request) {
+                std::lock_guard<std::mutex> lk(gen_mu);
+                generation_start = std::chrono::steady_clock::now();
+                ttft.start_engine(generation_start);
+                eng.generate_session_stream(
+                    prompt, g, consume_piece, kvmem_session_reset);
+            } else if (g.continuous_batching) {
+                generation_start = std::chrono::steady_clock::now();
+                ttft.start_engine(generation_start);
+                eng.generate_stream_cancellable(prompt, g, [&](const std::string &piece) {
+                    consume_piece(piece);
+                    return true;
+                });
+            } else {
+                std::lock_guard<std::mutex> lk(gen_mu);
+                generation_start = std::chrono::steady_clock::now();
+                ttft.start_engine(generation_start);
+                eng.generate_stream_cancellable(prompt, g, [&](const std::string &piece) {
+                    consume_piece(piece);
+                    return true;
+                });
+            }
+        } catch (const std::exception &e) {
+            std::cerr << "[qw3-serve] #" << rid << " completion error="
+                      << e.what() << "\n";
+            set_error_response(res, status_for_exception(e), e.what());
+            return;
+        }
+        std::string utf8_pending;
+        text = take_complete_utf8(utf8_pending, text);
+        text += flush_utf8_pending(utf8_pending, false);
+        const bool stopped = apply_stops(text, stops);
+        std::cerr << "[qw3-serve] #" << rid << " completion chars="
+                  << text.size()
+                  << " completion_tokens=" << completion_tokens
+                  << " prompt_tokens=" << prompt_token_count
+                  << " route=" << route;
+        if (!fallback_reason.empty()) {
+            std::cerr << " fallback_reason=" << fallback_reason;
+        }
+        std::cerr << "\n";
+        const auto response_build_at = std::chrono::steady_clock::now();
+        json timing = ttft.timing_json(response_build_at);
+        // Preserve the original engine-relative field for existing clients.
+        timing["first_token_sec"] = first_token_seen
+            ? json(std::chrono::duration<double>(
+                  first_token_at - generation_start).count())
+            : json(nullptr);
+        json out = {
+            {"id", id}, {"object", "text_completion"}, {"created", created},
+            {"model", model_id},
+            {"choices", json::array({json{
+                {"index", 0}, {"text", text}, {"logprobs", nullptr},
+                {"finish_reason", generation_finish_reason(
+                    stopped, completion_tokens, g.max_tokens)}}})},
+            {"usage", usage_json(prompt_token_count, completion_tokens)},
+            {"timing", std::move(timing)}};
+        if (kvmem_session_request) {
+            const KvMemSessionInfo info =
+                eng.kvmem_session_info(g.kvmem_session_id);
+            if (!info.found) {
+                set_error_response(
+                    res, 500,
+                    "KVMem session operation completed without metadata");
+                return;
+            }
+            out["kvmem_session"] = kvmem_session_info_json(info);
+        }
+        if (kvmem_cache_request) {
+            std::lock_guard<std::mutex> lk(gen_mu);
+            const KvMemLocalCacheInfo info =
+                eng.kvmem_local_cache_info(kvmem_cache_id);
+            if (!info.found) {
+                set_error_response(
+                    res, 500,
+                    "KVMem local cache operation completed without metadata");
+                return;
+            }
+            out["kvmem_cache"] = kvmem_cache_info_json(info);
+        }
+        res.set_content(dump_json(out), "application/json");
+        ttft.log(rid, route, false, std::chrono::steady_clock::now());
+    });
+
+    svr.set_logger([](const httplib::Request &req, const httplib::Response &res) {
+        if (req.path == "/health") return; // quiet the poll loop
+        std::cerr << "[qw3-serve] " << req.method << " " << req.path
+                  << " -> " << res.status << "\n";
+    });
+
+    std::cerr << "[qw3-serve] listening on http://" << cfg.host << ":"
+              << cfg.port << "  (model loaded once, continuous_batching="
+              << (serve_continuous_batching_enabled() ? "on" : "off") << ")\n";
+    if (!svr.listen(cfg.host, cfg.port)) {
+        std::cerr << "[qw3-serve] failed to bind " << cfg.host << ":"
+                  << cfg.port << "\n";
+        return 1;
+    }
+    return 0;
+}
+
+} // namespace qw3

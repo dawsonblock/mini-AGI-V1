@@ -1,0 +1,2 @@
+{"case_id":"f1","split":"future","input":"dog","expected":"god","task_kind":"reverse","procedure_hint":"","tags":[],"metadata":{}}
+{"case_id":"r1","split":"retention","input":"plain","expected":"UNKNOWN","task_kind":"other","procedure_hint":"","tags":[],"metadata":{}}

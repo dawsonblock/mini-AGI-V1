@@ -1,0 +1,70 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "name": "numpy",
+      "type": "library"
+    },
+    {
+      "name": "cryptography",
+      "type": "library"
+    },
+    {
+      "name": "fastapi",
+      "type": "library"
+    },
+    {
+      "name": "uvicorn",
+      "type": "library"
+    },
+    {
+      "name": "pydantic",
+      "type": "library"
+    },
+    {
+      "name": "httpx",
+      "type": "library"
+    },
+    {
+      "name": "PyYAML",
+      "type": "library"
+    },
+    {
+      "name": "torch",
+      "type": "library"
+    },
+    {
+      "name": "transformers",
+      "type": "library"
+    },
+    {
+      "name": "peft",
+      "type": "library"
+    },
+    {
+      "name": "accelerate",
+      "type": "library"
+    },
+    {
+      "name": "safetensors",
+      "type": "library"
+    },
+    {
+      "name": "huggingface-hub",
+      "type": "library"
+    },
+    {
+      "name": "bitsandbytes",
+      "type": "library"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "name": "mini-AGI Colab Converged",
+      "type": "application",
+      "version": "16.1.0"
+    }
+  },
+  "specVersion": "1.5",
+  "version": 1
+}

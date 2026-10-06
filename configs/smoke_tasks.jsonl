@@ -1,0 +1,5 @@
+{"id":"train-1","family":"copy-train-1","split":"train","prompt":"Repeat exactly: cobalt","expected":"cobalt","train_text":"Repeat exactly: cobalt cobalt"}
+{"id":"train-2","family":"copy-train-2","split":"train","prompt":"Repeat exactly: amber","expected":"amber","train_text":"Repeat exactly: amber amber"}
+{"id":"val-1","family":"copy-val-1","split":"validation","prompt":"Repeat exactly: jade","expected":"jade"}
+{"id":"hidden-1","family":"copy-hidden-1","split":"hidden","prompt":"Repeat exactly: silver","expected":"silver"}
+{"id":"hidden-2","family":"copy-hidden-2","split":"hidden","prompt":"Repeat exactly: violet","expected":"violet"}

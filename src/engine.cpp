@@ -1,0 +1,136 @@
+#include "backend.hpp"
+#include "qw3/qw3.hpp"
+
+#include <stdexcept>
+#include <utility>
+
+namespace qw3 {
+
+struct Engine::Impl {
+    EngineOptions options;
+    std::unique_ptr<Backend> backend;
+};
+
+Engine::Engine(EngineOptions options) : impl_(std::make_unique<Impl>()) {
+    impl_->options = std::move(options);
+    impl_->backend = make_qwen_native_backend();
+    impl_->backend->load(impl_->options);
+}
+
+Engine::~Engine() = default;
+
+const EngineOptions &Engine::options() const {
+    return impl_->options;
+}
+
+ModelInfo Engine::inspect_model() const {
+    if (impl_->options.model_path.empty()) {
+        return {};
+    }
+    return inspect_gguf(impl_->options.model_path);
+}
+
+NativePlanInfo Engine::native_plan() const {
+    if (impl_->options.model_path.empty()) return {};
+    return inspect_native_plan(impl_->options.model_path);
+}
+
+VisionEncoding Engine::encode_vision(const std::vector<VisionImage> &images) {
+    return impl_->backend->encode_vision(images);
+}
+
+std::string Engine::generate(const std::string &prompt, const GenerationOptions &options) {
+    return impl_->backend->generate(prompt, options, nullptr);
+}
+
+void Engine::generate_stream(const std::string &prompt,
+                             const GenerationOptions &options,
+                             const TokenCallback &on_text) {
+    impl_->backend->generate(
+        prompt, options,
+        on_text ? CancellableTokenCallback(
+                      [&on_text](const std::string &text) {
+                          on_text(text);
+                          return true;
+                      })
+                : CancellableTokenCallback{});
+}
+
+void Engine::generate_stream_cancellable(
+        const std::string &prompt,
+        const GenerationOptions &options,
+        const CancellableTokenCallback &on_text) {
+    impl_->backend->generate(prompt, options, on_text);
+}
+
+void Engine::generate_session_stream(const std::string &prompt_fragment,
+                                     const GenerationOptions &options,
+                                     const TokenCallback &on_text,
+                                     bool reset) {
+    impl_->backend->generate_session(prompt_fragment, options, on_text, reset);
+}
+
+KvMemLocalCacheInfo Engine::kvmem_local_cache_info(const std::string &id) {
+    return impl_->backend->kvmem_local_cache_info(id);
+}
+
+bool Engine::erase_kvmem_local_cache(const std::string &id) {
+    return impl_->backend->erase_kvmem_local_cache(id);
+}
+
+KvMemSessionInfo Engine::kvmem_session_info(const std::string &id) {
+    return impl_->backend->kvmem_session_info(id);
+}
+
+std::vector<KvMemSessionInfo> Engine::kvmem_session_infos() {
+    return impl_->backend->kvmem_session_infos();
+}
+
+KvMemExecutorSchedulerInfo Engine::kvmem_executor_scheduler_info() {
+    return impl_->backend->kvmem_executor_scheduler_info();
+}
+
+KvMemResourceAdmissionInfo Engine::kvmem_resource_admission_info() {
+    return impl_->backend->kvmem_resource_admission_info();
+}
+
+KvMemPhysicalExecutorPoolInfo Engine::kvmem_physical_executor_pool_info() {
+    return impl_->backend->kvmem_physical_executor_pool_info();
+}
+
+bool Engine::erase_kvmem_session(const std::string &id) {
+    return impl_->backend->erase_kvmem_session(id);
+}
+
+KvMemSessionSnapshotInfo Engine::snapshot_kvmem_session(const std::string &id) {
+    return impl_->backend->snapshot_kvmem_session(id);
+}
+
+KvMemSessionSnapshotInfo Engine::restore_kvmem_session_snapshot(const std::string &id) {
+    return impl_->backend->restore_kvmem_session_snapshot(id);
+}
+
+KvMemSessionSnapshotInfo Engine::kvmem_session_snapshot_info(const std::string &id) {
+    return impl_->backend->kvmem_session_snapshot_info(id);
+}
+
+std::string render_qwen3_chat_prompt(const std::string &system,
+                                     const std::string &user,
+                                     bool enable_thinking) {
+    std::string prompt;
+    if (!system.empty()) {
+        prompt += "<|im_start|>system\n";
+        prompt += system;
+        prompt += "<|im_end|>\n";
+    }
+    prompt += "<|im_start|>user\n";
+    prompt += user;
+    prompt += "<|im_end|>\n";
+    prompt += "<|im_start|>assistant\n";
+    if (!enable_thinking) {
+        prompt += "<think>\n\n</think>\n\n";
+    }
+    return prompt;
+}
+
+} // namespace qw3

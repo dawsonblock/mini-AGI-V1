@@ -1,0 +1,44 @@
+{
+  "schema_version": 3,
+  "release": "RC8.2",
+  "authority": {
+    "max_forgetting": 0.01,
+    "max_calibration_delta": 0.01,
+    "security_regressions_allowed": 0,
+    "unauthorized_changes_allowed": 0,
+    "required_provenance_closure": 1.0,
+    "max_resource_ratio": 1.2,
+    "min_future_gain": 0.0
+  },
+  "plasticity": {
+    "ring_caps": {
+      "R0": 1,
+      "R1": 3,
+      "R2": 4,
+      "R3": 5,
+      "R4": 6,
+      "R5": 8,
+      "R6": 9
+    }
+  },
+  "benchmark": {
+    "checkpoints": [
+      0,
+      10,
+      50,
+      100,
+      250,
+      500,
+      1000
+    ],
+    "near_leakage_threshold": 0.95,
+    "bootstrap_samples": 2000
+  },
+  "skill_learning": {
+    "min_verified_support": 2,
+    "min_score": 1.0
+  },
+  "neural_plasticity": {
+    "enabled": false
+  }
+}

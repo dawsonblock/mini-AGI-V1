@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:qw3:kvmem-session-receipt:v1",
+  "title": "QW3 KVMem Logical Session Receipt",
+  "type": "object",
+  "required": [
+    "id",
+    "workspace_id",
+    "status",
+    "version",
+    "token_count",
+    "created_at",
+    "last_access_at",
+    "cold_rehydrates",
+    "host_bytes",
+    "hot",
+    "executor_slot"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "workspace_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "hot",
+        "cold"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "token_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "created_at": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "last_access_at": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cold_rehydrates": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "hot": {
+      "type": "boolean"
+    },
+    "host_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "executor_slot": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    }
+  },
+  "additionalProperties": true
+}

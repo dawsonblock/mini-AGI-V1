@@ -1,0 +1,55 @@
+{
+  "backend_fingerprint": "unqualified-local-validation",
+  "checks": [
+    {
+      "detail": "Darwin required for hardware qualification",
+      "name": "darwin",
+      "passed": true
+    },
+    {
+      "detail": "machine=arm64",
+      "name": "apple_silicon",
+      "passed": true
+    },
+    {
+      "detail": "python=3.12.0",
+      "name": "native_arm64_python",
+      "passed": true
+    },
+    {
+      "detail": "PyTorch required",
+      "name": "torch",
+      "passed": true
+    },
+    {
+      "detail": "PyTorch must be built with MPS",
+      "name": "mps_built",
+      "passed": true
+    },
+    {
+      "detail": "MPS must be available on target host",
+      "name": "mps_available",
+      "passed": true
+    },
+    {
+      "detail": "clang++ required for native references",
+      "name": "clang",
+      "passed": true
+    },
+    {
+      "detail": "CMake required for native build",
+      "name": "cmake",
+      "passed": true
+    },
+    {
+      "detail": "Apple metal version 32023.883 (metalfe-32023.883)\nTarget: air64-apple-darwin25.2.0\nThread model: posix\nInstalledDir: /private/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.42.0.PlmAKh/Metal.xctoolchain/usr/metal/current/bin",
+      "name": "metal_toolchain",
+      "passed": true
+    }
+  ],
+  "created_at": "2026-10-05T22:06:56.701281+00:00",
+  "hardware_runtime_digest": "sha256:d68db2e8b60262d2fe532a61c2d0b5a3c3e7490dddfe6820f5cdf1140a30b35d",
+  "passed": true,
+  "report_digest": "sha256:253839c6e03d49c8f1845ecda896d15b08a12609d46219ec9dac0474269359de",
+  "version": 1
+}

@@ -1,0 +1,12 @@
+model:
+  backend: vllm
+  name: Qwen/Qwen3-8B
+  immutable_base: true
+  tokenizer: Qwen/Qwen3-8B
+  adapter_mode: routed_top1
+  endpoint: http://127.0.0.1:8000/v1
+
+cache_identity:
+  recurrence_impl: rc10-affine-v1
+  position_scheme: rope
+  layer_layout: default
