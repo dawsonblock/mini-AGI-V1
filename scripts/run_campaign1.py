@@ -256,7 +256,7 @@ def main() -> int:
             seed_receipts[arm_id] = r
             return r
 
-        def run_eval_block(arm, arm_id, state_digest):
+        def run_eval_block(arm, arm_id):
             h_em, h_out, h_tok, h_sec = evaluate(model, tokenizer, hidden, max_new, score_fn, arm)
             ret, ret_out, r_tok, r_sec = evaluate(model, tokenizer, retention_eval_rows,
                                                   max_new, retention_fn, arm)
@@ -292,7 +292,7 @@ def main() -> int:
             else:
                 arm = arm_instances[arm_id]
                 sd = sha256_path(arm_state_dirs[arm_id])
-            metrics, outputs = run_eval_block(arm, arm_id, sd)
+            metrics, outputs = run_eval_block(arm, arm_id)
             emit(arm_id, ZERO_DIGEST, sd, metrics, outputs)
 
         free_model(model)
@@ -310,7 +310,7 @@ def main() -> int:
             adapter_digest = sha256_path(adir)
             free_model(model)
             model = load_causal_lm(spec, adapter_path=str(adir))
-            metrics, outputs = run_eval_block(None, arm_id, ZERO_DIGEST)
+            metrics, outputs = run_eval_block(None, arm_id)
             metrics["arm_state_bytes"] = dir_size_bytes(adir)
             emit(arm_id, adapter_digest, ZERO_DIGEST, metrics, outputs,
                  {"training": train_receipt})

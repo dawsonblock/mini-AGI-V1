@@ -75,6 +75,44 @@ def main() -> int:
     proof = json.loads((campaign_dir / "DATASET_PROOF.json").read_text())
     hidden_digest = proof["hidden_digest"]
 
+    # --- Rebuild the partition set from the committed corpus ---
+    # The proof document is runner output; do not trust it. The task
+    # corpus is part of the source tree, so the qualifier can
+    # independently recompute partition digests and compare them to
+    # both the proof and the signed plan.
+    dataset_cfg = root / "configs" / "campaign1_tasks.jsonl"
+    import yaml
+    campaign_cfg = yaml.safe_load((root / "configs" / "campaign1.yaml").read_text())
+    fam_disjoint = bool(campaign_cfg.get("require_family_disjoint_hidden", True))
+    from minagi.v161.dataset_manifest import (DatasetMember,
+                                              DatasetMembershipManifest,
+                                              DatasetPartitionSet)
+    from egai.common.canonical import sha256_bytes
+    rows = [json.loads(l) for l in dataset_cfg.read_text().splitlines()
+            if l.strip()]
+
+    def _member(row):
+        payload = json.dumps(row, sort_keys=True, separators=(",", ":"),
+                             ensure_ascii=False).encode()
+        return DatasetMember(str(row["id"]), str(row["family"]),
+                             sha256_bytes(payload),
+                             str(row.get("source", "local")),
+                             str(row.get("generator", "manual")))
+
+    by_split = {s: [r for r in rows if r["split"] == s]
+                for s in ("train", "validation", "hidden", "retention", "security")}
+    parts = DatasetPartitionSet(
+        DatasetMembershipManifest("train", tuple(_member(r) for r in by_split["train"])),
+        DatasetMembershipManifest("validation", tuple(_member(r) for r in by_split["validation"])),
+        DatasetMembershipManifest("hidden", tuple(_member(r) for r in by_split["hidden"])),
+        DatasetMembershipManifest("retention", tuple(_member(r) for r in by_split["retention"])),
+        DatasetMembershipManifest("security", tuple(_member(r) for r in by_split["security"])),
+        require_family_disjoint_hidden=fam_disjoint)
+    if parts.digest != plan.dataset_partition_digest:
+        fail("dataset", "recomputed partition digest != plan digest")
+    if parts.hidden.digest != hidden_digest:
+        fail("dataset", "recomputed hidden digest != DATASET_PROOF.json")
+
     # --- Arm x seed matrix ---
     matrix: dict[str, dict[str, str]] = {}
     receipts: dict[tuple[int, str], ExecutedRunReceiptV162] = {}
@@ -134,6 +172,12 @@ def main() -> int:
     envs = {r.environment_digest for r in receipts.values()}
     if len(envs) != 1:
         fail("environment", f"receipts span {len(envs)} environment digests")
+    models = {r.model_digest for r in receipts.values()}
+    if len(models) != 1:
+        fail("model", f"receipts span {len(models)} model digests")
+    toks = {r.tokenizer_digest for r in receipts.values()}
+    if len(toks) != 1:
+        fail("tokenizer", f"receipts span {len(toks)} tokenizer digests")
 
     # --- Reconstruct outcomes ---
     per_seed = []

@@ -236,12 +236,6 @@ ARMS = {"L1": FrozenArm, "L2": RetrievalArm, "L3": SemanticMemoryArm,
         "L4": SkillsArm, "L5": GroundedReplayArm}
 
 
-def make_arm(arm_id: str):
-    if arm_id not in ARMS:
-        raise ValueError(f"arm {arm_id} is parametric or unknown")
-    return ARMS[arm_id]()
-
-
 def shuffled_label_texts(rows: Sequence[Mapping], seed: int) -> list[str]:
     """NC negative control: same train texts, answers permuted within
     the train set — identical compute, corrupted supervision."""

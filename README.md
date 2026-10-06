@@ -117,6 +117,12 @@ see `CAMPAIGN1_REPORT.md` on the results branch.
   hidden answers/seed on 24 tasks) — a mechanism demonstration, not a
   capability claim.
 - Single model (Qwen2.5-0.5B), single GPU class (T4), one corpus.
+- Smoke configs (`smoke.yaml`, `qwen_smoke.yaml`) still pin
+  `revision: main` — a mutable upstream pointer; `campaign1.yaml`
+  resolves `auto` to the immutable commit at plan-signing time.
+- Resuming a campaign after a runtime restart produces receipts
+  spanning two environment digests — the qualifier refuses; resume is
+  only valid within one environment epoch.
 - Smoke evidence remains single-seed; smoke datasets are toy copy tasks.
 
 ## License
