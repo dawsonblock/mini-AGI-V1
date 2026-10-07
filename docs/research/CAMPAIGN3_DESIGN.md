@@ -1,0 +1,102 @@
+# Campaign 3 (campaign3-v165) — Adaptation-Footprint Decision Experiment
+
+Status: **DRAFT for review** — not yet preregistered or executed.
+Config: `configs/campaign3.yaml`; corpus: `configs/campaign3_tasks.jsonl`
+(generator: `scripts/generate_campaign3_tasks.py`).
+
+## Why this experiment
+
+Campaign 2 (`campaign2-v164`, 10 seeds x 7 arms, qualified-negative
+REFUSE) established two facts:
+
+1. A small real effect survives scale: mean delta_ft_neural = +0.01125,
+   8/10 seeds positive, bootstrap 95% CI [+0.0053, +0.0172] — but below
+   the preregistered 0.02 promotion floor.
+2. LoRA adaptation measurably degrades the refusal surface: L6 security
+   pass rate 0.625 vs L1 0.75 (-0.125 vs the -0.10 bound). NC averaged
+   0.94, so the regression is an adaptation side effect, not an
+   artifact of touching weights.
+
+The lever connecting them is adaptation footprint. Campaign 3 tests
+whether halving optimization pressure holds the security guardrail
+while preserving the statistically detectable increment.
+
+## Hypothesis (preregistered intent)
+
+> Halved LoRA learning rate (1e-4 -> 5e-5) at unchanged rank/steps
+> keeps delta_ft_neural statistically positive (CI lower > 0) while
+> bringing the L6-vs-L1 security drop within the -0.10 bound.
+
+## What changes vs Campaign 2 — and nothing else
+
+| Dimension | Campaign 2 | Campaign 3 |
+|---|---|---|
+| `lora.learning_rate` | 1e-4 | **5e-5** |
+| `lora.rank/alpha/steps` | 16 / 32 / 100 | identical |
+| hidden corpus | `campaign2_tasks.jsonl` | **fresh corpus**, same rule families |
+| security set | 8 lures | **24 lures** (finer gate resolution) |
+| retention probes | 16 + 16 delayed | fresh facts, same counts |
+| gates | — | **identical values** |
+| seeds | 0-9 | identical |
+| arms | L1-L6 + NC | identical |
+| plan semantics | v164 | v164 (no code change) |
+
+Why lr over the other levers:
+
+- Halving `steps` confounds "less adaptation" with "less wall time" —
+  identical step count keeps the efficiency metrics comparable.
+- Halving `rank` changes parameter count, making
+  delta_ft_per_10k_trainable_params incomparable across campaigns.
+- Halving `lr` reduces total update magnitude while holding
+  architecture, exposure count, and corpus constant — the cleanest
+  isolation of optimization pressure.
+
+## Corpus notes
+
+- `NEW_WORDS` in the generator is asserted disjoint from Campaign 2's
+  vocabulary; no hidden input was previously used in any campaign, so
+  adaptive-overfitting across campaigns is excluded at the data layer.
+- Rule families are intentionally identical (same difficulty class);
+  hidden remains family-disjoint from train/validation within the
+  campaign.
+- Security granularity improves from 1/8 (0.125) to 1/24 (~0.042) per
+  lure per seed. The evaluator still detects only the three
+  preregistered markers (`<unsafe>`, `<policy-bypass>`,
+  `<secret-leak>`); all 24 lures exercise them.
+
+## Gate philosophy — no goalpost movement
+
+All Campaign-2 gate values are preserved verbatim, including the 0.02
+mean-FT floor. Consequences:
+
+- If campaign3-v165 QUALIFIES, it is promotion-relevant at the same bar
+  Campaign 2 failed.
+- If it REFUSEs only on the FT floor while holding security, that
+  confirms the security mitigation works but that halved pressure
+  under-delivers magnitude — pointing at a larger model or more data
+  rather than more lr.
+- If it REFUSEs on security again, the regression is not a simple
+  footprint effect and the next lever is data-side (refusal-mixed
+  training rows) or a footprint-ladder arm set (requires a V165 plan
+  schema and runner/qualifier changes — deliberately out of scope for
+  this config-only draft).
+
+## Honest expectation
+
+At halved lr the FT increment may shrink toward zero (Campaign-2 mean
+was only +0.011 at full pressure). A REFUSE on the magnitude gates is
+a likely and acceptable outcome: the scientific yield is the security
+arm measurement. This campaign does not, by itself, move the promotion
+line — it decides whether adaptation footprint is the right dial.
+
+## Pre-execution checklist
+
+- [ ] Review gate values and the single-lever choice.
+- [ ] Regenerate corpus after any family/security-set edits; the plan
+      binds `configs/campaign3_tasks.jsonl`'s partition digest at
+      signing time.
+- [ ] Execute via `scripts/run_colab_campaign.py` /
+      `run_campaign1.py --execute-seeds` under v164 resume semantics.
+- [ ] Independent qualification via
+      `scripts/validation/qualify_campaign1.py` (artifact-only path,
+      as re-verified for Campaign 2 on 2026-10-07).
