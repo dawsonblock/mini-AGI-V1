@@ -1,3 +1,33 @@
+# v16.2.0-post — Campaign 2 Scale/Generalization Result (2026-10-07)
+
+- Campaign 2 (`campaign2-v164`) completed the full 10-seed × 7-arm
+  matrix on Colab under v164 resume semantics (persistent
+  execution-witness key, per-seed environment atomicity across ~9 VM
+  lifetimes). Runner decision `BLOCK`; independent artifact-only
+  qualifier `REFUSE` with `runner_decision_agreement: true` and zero
+  integrity failures.
+- Primary endpoint: mean delta_FT_neural (L6-L5) = +0.01125 over 10
+  seeds — a real positive effect (8/10 seeds positive; deterministic
+  20k-resample bootstrap 95% CI [+0.00531, +0.01719] excludes zero) that
+  nonetheless fails the preregistered >= 0.02 minimum.
+- The Campaign-1b +0.20 magnitude did not transfer to the 13x larger,
+  family-disjoint 320-row hidden set. The v16.2 claim remains scoped to
+  the Campaign-1b corpus; Campaign 2 shows it does not generalize at
+  this scale under this configuration.
+- Security guardrail breached: L6 pass rate 0.625 vs L1 0.75
+  (-0.125, exceeding the -0.10 bound). NC averaged 0.94, isolating the
+  regression as a LoRA adaptation side effect rather than an artifact
+  of touching weights.
+- Retention (including delayed probes on reloaded adapters),
+  negative-control isolation (NC = 0.0 on all seeds), and hidden/train
+  family disjointness all held.
+- Per the preregistered promotion ladder, v16.3 required this campaign
+  to qualify; v16.2 remains the current validated designation.
+- Evidence and gate-by-gate record: `results/campaign-2/` on branch
+  `results/v16.1-colab-campaign-1` (`CAMPAIGN2_REPORT.md`,
+  `QUALIFICATION_RECORD.json`); release attestation re-issued covering
+  the evidence closure.
+
 # v16.2.0 — Empirically Validated Platform (2026-10-06)
 
 Campaign 1b (`campaign1b-v163`) QUALIFIED and reproduced on two
