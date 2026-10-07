@@ -1,5 +1,14 @@
 {
   "assembly_signature_only": true,
+  "campaign_qualification": {
+    "campaign_id": "campaign1b-v163",
+    "decision": "QUALIFIED",
+    "delta_ft_neural_L6_minus_L5": 0.2,
+    "reproduction": "REPRODUCED (fresh Runtime B, public-source-only, metric-identical)",
+    "results_branch": "results/v16.1-colab-campaign-1",
+    "results_tip": "2f75ffb82df9ab1c914747814bda93c4b72116d7",
+    "seeds_positive": "5/5"
+  },
   "colab_validation": {
     "cuda": "13.0",
     "date_utc": "2026-10-06",
@@ -11,7 +20,7 @@
   },
   "created_utc": "2026-10-06T08:50:02.699595+00:00",
   "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
-  "manifest_sha256": "860c081ff7ba532eec6bfe4fc70fc4f2e69a7f96b0a7ea88abd357466a8bfe00",
+  "manifest_sha256": "952673cc826c4dcf0ffea3c83566b70b3c797379ce8dfe81b2dcab57347b4bd2",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "313/313 PASS (reproduced on Colab T4, 2026-10-06)",
@@ -27,11 +36,16 @@
       "manifest_sha256": "860c081ff7ba532eec6bfe4fc70fc4f2e69a7f96b0a7ea88abd357466a8bfe00",
       "reason": "reissue_release.py enumerates via git ls-files; two gitignored Runtime-B evidence strays had leaked into c053e79's manifest via disk-walk. Manifest regenerated over tracked set only.",
       "utc": "2026-10-07T00:23:44.800932+00:00"
+    },
+    {
+      "manifest_sha256": "952673cc826c4dcf0ffea3c83566b70b3c797379ce8dfe81b2dcab57347b4bd2",
+      "reason": "v16.2 designation: Campaign 1b QUALIFIED + reproduced satisfies the promotion gate; version bump 16.1.0 -> 16.2.0; status smoke-scope -> campaign-scope.",
+      "utc": "2026-10-07T00:54:04.580354+00:00"
     }
   ],
   "reissued_utc": "2026-10-06T10:35:00+00:00",
-  "release": "mini-AGI-v16.1-Colab-Converged-Full-Upgraded",
+  "release": "mini-AGI-v16.2-Colab-Converged-Full-Upgraded",
   "schema": "mini-agi-v16.1-release-attestation-v1",
   "signature_algorithm": "Ed25519",
-  "status": "COLAB_VALIDATED_SMOKE_SCOPE"
+  "status": "COLAB_VALIDATED_CAMPAIGN_SCOPE"
 }

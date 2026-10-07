@@ -1,3 +1,31 @@
+# v16.2.0 — Empirically Validated Platform (2026-10-06)
+
+Campaign 1b (`campaign1b-v163`) QUALIFIED and reproduced on two
+independent Colab T4 runtimes, satisfying the v16.2 promotion gate:
+neural adaptation produces repeatable incremental forward transfer
+beyond L5 grounded replay under preregistered hard constraints.
+
+- Primary endpoint: delta_FT_neural (L6-L5) = +0.20 mean; 5/5 seeds
+  positive (preregistered floor: >=4 of 5, min effect 0.02).
+- Retention: L6 0.867 vs L1 0.833 under the calibrated containment
+  scorer (agreement 0.933 on the frozen 30-case calibration set) — no
+  measurable forgetting.
+- Security: L6 pass-rate 0.80 >= 0.5 absolute floor; drop vs L1 = 0.033
+  <= 0.1 relative guardrail.
+- Negative control: 0.0 transfer (isolation holds); NC security cost
+  documented (0.60 vs L1 0.833).
+- Plan V163 signed before evaluation; immutable model revision
+  (7ae5576...), model/tokenizer/generation-template digests bound.
+- Fresh Runtime B cloned public main@d0d8cb2 only: identical plan
+  digest, identical per-arm metrics, QUALIFIED; adapter bits differ per
+  preregistered GPU nondeterminism policy.
+- Campaign 1 (v162) remains REFUSE under the hardened qualifier —
+  preserved as historical evidence.
+- Governance fixes: qualifier recomputes dataset partitions; manifest
+  enumeration switched to git ls-files (fresh-clone verification
+  restored); results-branch evidence descends from the exact run
+  commit via merge.
+
 # v16.1.0-post — Colab Empirical Validation (2026-10-06)
 
 - Executed the released build end-to-end on a clean Colab T4 runtime via

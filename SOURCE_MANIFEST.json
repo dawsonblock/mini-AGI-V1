@@ -3,7 +3,7 @@
     ".github/workflows/rc11-integrity.yml": "2494c88b90096de13a9f024621e8863bdbbefe0b9f0521e8a66214c21a9fd6d8",
     ".gitignore": "5d24f08a986562b2eb3ddbe5b5c7c3274f26e5b28ddd4dd3651e1a85b0aa37e8",
     "ALPHA5_ARCHITECTURE.md": "bc429e09b58757ea474fea4d7bcd3831b21fe5aaf0d0bdac31ee8a7295cdcf50",
-    "CHANGELOG.md": "26ab503947a3c022047a507963d575174bb13b4d39ba5821abf17c912e16e182",
+    "CHANGELOG.md": "bf3b29e39db670f88dad0c99c85e0a9b0862f7e76375c5fb487a0502bf1f5500",
     "CMakeLists.txt": "8a0269b4cd846157451cb7421f7031ff319564be20ac10f3dd95be908366fe76",
     "CONVERGENCE_BUILD.md": "a2e9436082cffb8c6e4290d246baddb7472de62d64faf724774b7d9105678840",
     "FULL_UPGRADED_BUILD_STATUS.md": "85d0d11ecd7bd1cdcaa6ef6bb7122628f4d386a7b76ed6ccc170fa5a127502dd",
@@ -13,7 +13,7 @@
     "LICENSES/llama.cpp.txt": "35e84111e4545e6fb51aa3fc47c9084d03877ae872b8b8c3a558056921ac7b48",
     "LICENSES/nlohmann-json.txt": "62176251affdda17bece4ddd44271d68019e2448ca721d2c1af4c650f29c9898",
     "MACOS_BUILD_STATUS.md": "cb4b7aa0da90f66de6e2a7bf2ce774a9a0abc3d58370fcbc1746bac1e4f6876d",
-    "README.md": "d5d4b75b7ecbd0f387b851797b47fb61d935c293e43eb1866efafe0740188824",
+    "README.md": "2347e1a15281f050980de01cdbf8022d8c5bdbf997c50e5c7f797328ce3d70c6",
     "README_COLAB.md": "f8f463e8ccc0387ae45ebbb296a53d72a41dad0e5e88f766d48ca9466c92daa4",
     "README_MACOS.md": "5cd37110fb06b01febe61ffb8f3bae8347ec8b018822c504e67cb99405c3d98c",
     "README_V0.md": "0f8bc21ac9f4d7a47ef46df653dda05ac5cd528e2008fda606bf215981b36c13",
@@ -24,7 +24,7 @@
     "UPGRADE_NOTES.md": "3c3d42815a595167a79d0385cb0db9ff340f9c63f446bcf7234fcfeef6241954",
     "VALIDATED_ENVIRONMENT.json": "8fc96c1797748950c4cc272552f56354236ffed67acd96983245528aaa3eed4a",
     "VALIDATION_SUMMARY.md": "2591b6f8ffa0852f71c557e149a45366924f06509164783bfe49b940684e216d",
-    "VERSION": "827d179b3d5014e4e5f0f51d26a638b16d25d7e838a422c75e427964c03f6678",
+    "VERSION": "4f40f4cf43804d03d1cfb335b68eb6cec58ce859f53a4e75f363cd05e24ea99a",
     "benchmark/baselines/lm_eval/.gitkeep": "27f3c0efea32bf251206d4396a9e5c3a89a574bd181cc88a1e7b598b4cf446bc",
     "benchmark/claude_deepswe_ab/durable_batch_supervisor.py": "f638024a6b89d934b6ddefb324e825b785847c432dc092090f276504fb2ea5bd",
     "benchmark/claude_deepswe_ab/tasks_requestplan_10_no_happy.json": "b77314f6776038842c22d9e232abca01dc9c14b20021c1d5ee9b32a0d8d53e7b",
@@ -234,7 +234,7 @@
     "provenance/DONOR_ARCHIVES.json": "8c62309346d1f9fd2059fddb9dd756e1f0f4ee8094a89843b617886259eb833b",
     "provenance/MERGE_PROVENANCE.json": "2a5c18e92a8f6d487884fc7035011882486e2a7ba2f6ff6a5b0450879569c622",
     "provenance/VALIDATION_RESULTS.json": "275cd0d5b0e5314ced7394e8235e248f1d8b156e180953e9d3fcd251a298741d",
-    "pyproject.toml": "86755c22bd8196fed3137dffc6c643be9d795af0756f52f5944b07a951a3a74d",
+    "pyproject.toml": "f6d7b098f1802ab33ea20b95a766c1a2db57ebc420f497c23f99c66bc5bf412c",
     "references/authority/LICENSE": "bfd0334947e62d1636ef4669bac7219f83aab033d6c361c426a1d7400aa5b1f2",
     "references/authority/README.md": "30f3a588837c3c16205d8d80f162385f89c88c89074d5cd5a9c8d34195c9e762",
     "references/authority/benchmarks/functional_smoke.jsonl": "a90d5348792673557bdccc32d984a3f88d76548d7186ad5e83dc39b160b7b572",
@@ -1399,6 +1399,6 @@
     "tools/verify_release.py": "f3dc2d0eb8afe25f81f09a07afaa958515aa32b5758745bc7c6b4c3aa2c7ae52"
   },
   "hash_algorithm": "sha256",
-  "release": "mini-AGI-v16.1-Colab-Converged-Full-Upgraded",
+  "release": "mini-AGI-v16.2-Colab-Converged-Full-Upgraded",
   "schema_version": 1
 }

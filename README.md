@@ -1,6 +1,6 @@
-# mini-AGI v16.1 — Converged Governed Continual-Learning Build
+# mini-AGI v16.2 — Converged Governed Continual-Learning Build
 
-mini-AGI v16.1 is an experimental governed continual-learning research
+mini-AGI v16.2 is an experimental governed continual-learning research
 platform. It integrates governed neural adaptation, evidence-backed
 qualification, grounded replay, runtime artifact closure, proposal-side
 Dream-RSI search, and a Google Colab PyTorch/PEFT execution backend.
@@ -41,8 +41,8 @@ Experimental evidence is kept off `main` on a dedicated branch:
 
 - **Branch:** [`results/v16.1-colab-campaign-1`](../../tree/results/v16.1-colab-campaign-1)
 - **Source commit (Commit A):** `db3f6e5bccc6dd8b76982015b684e54084776542`
-- **Results commits:** `364301035acaaac2557b3369cc577f904663c9c9` (Runtime A evidence), `7ebc488189a01727ec67ac7ba50d7d017ef5a3da` (Runtime B reproduction), `0ecee0bdd41be9a8aecef3c425c456df5c57b86d` (Campaign 1 six-arm evidence), `fbbe4d5571d2b4678405bd729b4cd047e8293fd1` (Campaign 1b Runtime A evidence — QUALIFIED), `8819896601aaaf9f563f3ebdb3649e42e255b843` (Campaign 1b Runtime B reproduction — REPRODUCED)
-- **Release asset:** [`v16.1.0-colab`](../../releases/tag/v16.1.0-colab) — signed release ZIP + validation pack
+- **Results commits:** `364301035acaaac2557b3369cc577f904663c9c9` (Runtime A evidence), `7ebc488189a01727ec67ac7ba50d7d017ef5a3da` (Runtime B reproduction), `0ecee0bdd41be9a8aecef3c425c456df5c57b86d` (Campaign 1 six-arm evidence), `fbbe4d5571d2b4678405bd729b4cd047e8293fd1` (Campaign 1b Runtime A evidence — QUALIFIED), `2f75ffb82df9ab1c914747814bda93c4b72116d7` (Campaign 1b Runtime B reproduction — REPRODUCED; evidence tip)
+- **Release asset:** [`v16.2.0-colab`](../../releases/tag/v16.2.0-colab) — signed release ZIP + validation pack (validated scope); [`v16.1.0-colab`](../../releases/tag/v16.1.0-colab) — original smoke-scope release
 - **Bundle:** `results/campaign-1/` and `results/campaign-1b/` — plans,
   signed run receipts, adapters (digest-sealed), qualification records,
   scorer calibration, reproduction records, campaign reports
