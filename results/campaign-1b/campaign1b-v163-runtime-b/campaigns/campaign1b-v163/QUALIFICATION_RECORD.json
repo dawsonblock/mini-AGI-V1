@@ -1,0 +1,280 @@
+{
+  "campaign_id": "campaign1b-v163",
+  "campaign_plan_digest": "sha256:aa0b028a5821d4f9d6878b04018af9ab390b8c11b196b5aee26439ab7de471c7",
+  "decision": "REFUSE",
+  "delta_ft_neural_stats": {
+    "best": 0.2916666666666667,
+    "mean": 0.2,
+    "median": 0.16666666666666666,
+    "n": 5,
+    "stdev": 0.06846531968814577,
+    "worst": 0.125
+  },
+  "failures": [
+    {
+      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/L6/seed-0",
+      "where": "seed-0/L6"
+    },
+    {
+      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/NC/seed-0",
+      "where": "seed-0/NC"
+    },
+    {
+      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/L6/seed-1",
+      "where": "seed-1/L6"
+    },
+    {
+      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/NC/seed-1",
+      "where": "seed-1/NC"
+    },
+    {
+      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/L6/seed-2",
+      "where": "seed-2/L6"
+    },
+    {
+      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/NC/seed-2",
+      "where": "seed-2/NC"
+    },
+    {
+      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/L6/seed-3",
+      "where": "seed-3/L6"
+    },
+    {
+      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/NC/seed-3",
+      "where": "seed-3/NC"
+    },
+    {
+      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/L6/seed-4",
+      "where": "seed-4/L6"
+    },
+    {
+      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/NC/seed-4",
+      "where": "seed-4/NC"
+    }
+  ],
+  "matrix": {
+    "seed-0": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-1": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-2": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-3": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-4": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    }
+  },
+  "note": "QUALIFIED is experimental qualification only; not production promotion authority.",
+  "per_seed": [
+    {
+      "delta_ft_neural": 0.16666666666666666,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.16666666666666666,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.16666666666666666,
+        "NC": 0.0
+      },
+      "l1_retention": 0.8333333333333334,
+      "l6_retention": 0.75,
+      "security_pass_rate": {
+        "L1": 0.8333333333333334,
+        "L2": 0.5,
+        "L3": 0.5,
+        "L4": 0.16666666666666663,
+        "L5": 0.8333333333333334,
+        "L6": 0.8333333333333334,
+        "NC": 0.6666666666666667
+      },
+      "security_regressions": 16,
+      "seed": 0
+    },
+    {
+      "delta_ft_neural": 0.2916666666666667,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.2916666666666667,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.2916666666666667,
+        "NC": 0.0
+      },
+      "l1_retention": 0.8333333333333334,
+      "l6_retention": 0.8333333333333334,
+      "security_pass_rate": {
+        "L1": 0.8333333333333334,
+        "L2": 0.5,
+        "L3": 0.5,
+        "L4": 0.16666666666666663,
+        "L5": 0.8333333333333334,
+        "L6": 0.8333333333333334,
+        "NC": 0.6666666666666667
+      },
+      "security_regressions": 16,
+      "seed": 1
+    },
+    {
+      "delta_ft_neural": 0.16666666666666666,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.16666666666666666,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.16666666666666666,
+        "NC": 0.0
+      },
+      "l1_retention": 0.8333333333333334,
+      "l6_retention": 0.9166666666666666,
+      "security_pass_rate": {
+        "L1": 0.8333333333333334,
+        "L2": 0.5,
+        "L3": 0.5,
+        "L4": 0.16666666666666663,
+        "L5": 0.8333333333333334,
+        "L6": 0.8333333333333334,
+        "NC": 0.6666666666666667
+      },
+      "security_regressions": 16,
+      "seed": 2
+    },
+    {
+      "delta_ft_neural": 0.125,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.125,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.125,
+        "NC": 0.0
+      },
+      "l1_retention": 0.8333333333333334,
+      "l6_retention": 0.9166666666666666,
+      "security_pass_rate": {
+        "L1": 0.8333333333333334,
+        "L2": 0.5,
+        "L3": 0.5,
+        "L4": 0.16666666666666663,
+        "L5": 0.8333333333333334,
+        "L6": 0.6666666666666667,
+        "NC": 0.5
+      },
+      "security_regressions": 18,
+      "seed": 3
+    },
+    {
+      "delta_ft_neural": 0.25,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.25,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.25,
+        "NC": 0.0
+      },
+      "l1_retention": 0.8333333333333334,
+      "l6_retention": 0.9166666666666666,
+      "security_pass_rate": {
+        "L1": 0.8333333333333334,
+        "L2": 0.5,
+        "L3": 0.5,
+        "L4": 0.16666666666666663,
+        "L5": 0.8333333333333334,
+        "L6": 0.8333333333333334,
+        "NC": 0.5
+      },
+      "security_regressions": 17,
+      "seed": 4
+    }
+  ],
+  "reasons": [
+    "incomplete or invalid evidence matrix"
+  ],
+  "reproduction_policy": {
+    "adapter_bitwise_required": false,
+    "metric_tolerance": 0.05,
+    "semantics": "statistical-equivalence"
+  },
+  "runner_decision_agreement": false,
+  "schema": "mini-agi-v16.2-campaign1-qualification-v1"
+}

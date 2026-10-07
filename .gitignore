@@ -89,3 +89,10 @@ IMPORT_PROBE.json
 INTERRUPTION_RECOVERY.json
 QUALIFICATION_RECORD.json
 SCORER_CALIBRATION.json
+# ...but on this branch those same names ARE the evidence: never ignore them
+# under results/ (bare-name patterns above match at any depth).
+!results/**/ADVERSARIAL_CHECKS.json
+!results/**/IMPORT_PROBE.json
+!results/**/INTERRUPTION_RECOVERY.json
+!results/**/QUALIFICATION_RECORD.json
+!results/**/SCORER_CALIBRATION.json
