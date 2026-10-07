@@ -1,0 +1,45 @@
+{
+  "entries": [
+    {
+      "exemplar": "Task: Append a period to the end of the input word.\nInput: diamond\nAnswer: diamond.",
+      "family": "tr-append-dot",
+      "support": 10
+    },
+    {
+      "exemplar": "Task: Output the number of consonants in the input word as a digit.\nInput: calm\nAnswer: 3",
+      "family": "tr-consonant-count",
+      "support": 10
+    },
+    {
+      "exemplar": "Task: Remove the last character of the input word.\nInput: dust\nAnswer: dus",
+      "family": "tr-drop-last",
+      "support": 10
+    },
+    {
+      "exemplar": "Task: Repeat the first character of the input word at the start.\nInput: rain\nAnswer: rrain",
+      "family": "tr-dup-first",
+      "support": 10
+    },
+    {
+      "exemplar": "Task: Output the alphabet position of the first letter as digits (a=1, z=26).\nInput: fjord\nAnswer: 6",
+      "family": "tr-first-alpha-pos",
+      "support": 10
+    },
+    {
+      "exemplar": "Task: Reverse the characters of the input word.\nInput: cobalt\nAnswer: tlaboc",
+      "family": "tr-reverse",
+      "support": 10
+    },
+    {
+      "exemplar": "Task: Convert the input word to uppercase.\nInput: marble\nAnswer: MARBLE",
+      "family": "tr-upper",
+      "support": 10
+    },
+    {
+      "exemplar": "Task: Replace every vowel in the input word with the letter x.\nInput: platinum\nAnswer: plxtxnxm",
+      "family": "tr-xvowels",
+      "support": 10
+    }
+  ],
+  "schema": "mini-agi-v16.2-semantic-memory-v1"
+}

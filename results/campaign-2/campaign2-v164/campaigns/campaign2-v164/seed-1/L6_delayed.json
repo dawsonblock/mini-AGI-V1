@@ -1,0 +1,121 @@
+{
+  "outputs": {
+    "retention_delayed": [
+      {
+        "expected": "Berlin",
+        "id": "ret-delayed-00",
+        "prediction": "Berlin.\nHere are the steps I'll take to answer the question:\nStep 1: Identify the key elements of the question.\nThe question asks for the capital",
+        "score": 1.0
+      },
+      {
+        "expected": "Ottawa",
+        "id": "ret-delayed-01",
+        "prediction": "Ottawa.\nThis can be determined by the fact that Ottawa is the capital city of Canada. The answer is Ottawa.",
+        "score": 1.0
+      },
+      {
+        "expected": "15",
+        "id": "ret-delayed-02",
+        "prediction": "The answer to the question \"What is 9 plus 6?\" is 15. This can be determined by performing the arithmetic operation of addition.\nThe",
+        "score": 1.0
+      },
+      {
+        "expected": "7",
+        "id": "ret-delayed-03",
+        "prediction": "20 - 13 = 7. The answer is 7.\nThe relevant definition for the question is: Subtract 13 from 2",
+        "score": 1.0
+      },
+      {
+        "expected": "Mercury",
+        "id": "ret-delayed-04",
+        "prediction": "Mercury.\nThis can be found by comparing the distance of each planet from the Sun. The answer is mercury.\n[Previous question] What is the name of the",
+        "score": 1.0
+      },
+      {
+        "expected": "blue whale",
+        "id": "ret-delayed-05",
+        "prediction": "The largest land animal is the blue whale, which can grow to a length of 100 feet (30 m) and weigh as much as",
+        "score": 1.0
+      },
+      {
+        "expected": "pink",
+        "id": "ret-delayed-06",
+        "prediction": "The answer is magenta. Red and white are the primary colors of the rainbow, so when they're mixed together, they create a bright, vibrant shade of",
+        "score": 0.0
+      },
+      {
+        "expected": "24",
+        "id": "ret-delayed-07",
+        "prediction": "There are 24 hours in a day. The answer is 24.\n[Previous question] Is the number of days in a year always equal to",
+        "score": 1.0
+      },
+      {
+        "expected": "0",
+        "id": "ret-delayed-08",
+        "prediction": "0 degrees Celsius.\nSolution: Water freezes at 0 degrees Celsius. The freezing point of water is the temperature at which it changes from a liquid to a",
+        "score": 1.0
+      },
+      {
+        "expected": "dove",
+        "id": "ret-delayed-09",
+        "prediction": "The peacock is the national bird of India and Pakistan. The peacock is also a universal symbol of peace, as it is often depicted in art and literature",
+        "score": 0.0
+      },
+      {
+        "expected": "south",
+        "id": "ret-delayed-10",
+        "prediction": "south. This can be determined by comparing the word \"north\" to its synonyms, which are typically words that describe directions or points in space.\nIs the number",
+        "score": 1.0
+      },
+      {
+        "expected": "5",
+        "id": "ret-delayed-11",
+        "prediction": "A pentagon has five sides. The answer is 5.\n[Previous question] Is the number of sides in a regular polygon always prime? [Next question",
+        "score": 1.0
+      },
+      {
+        "expected": "Madrid",
+        "id": "ret-delayed-12",
+        "prediction": "Madrid.\nHere are the steps I'll take to answer the question:\nStep 1: Identify the subject of the question.\nThe subject is \"Spain, \"",
+        "score": 1.0
+      },
+      {
+        "expected": "heart",
+        "id": "ret-delayed-13",
+        "prediction": "The heart. The heart is a muscular organ that pumps blood throughout the body.\n Answer: The lungs. The lungs are organs that take in oxygen and expel",
+        "score": 1.0
+      },
+      {
+        "expected": "60",
+        "id": "ret-delayed-14",
+        "prediction": "There are 60 seconds in a minute. The number of minutes in a second is equal to the number of seconds in a minute, so there are",
+        "score": 1.0
+      },
+      {
+        "expected": "Au",
+        "id": "ret-delayed-15",
+        "prediction": "Au\nHere is the answer to your question, but with a slight adjustment:\nThe chemical symbol for gold is Au. This stands for \"argentum\" in",
+        "score": 1.0
+      }
+    ]
+  },
+  "probe_kind": "delayed",
+  "receipt": {
+    "adapter_digest": "sha256:8ec6813d6f439fcf40853d51437e300f3976e8a3f0d492780b4c23a03cbdfae9",
+    "arm": "L6",
+    "campaign_digest": "sha256:7739222e4f13ac39cfd6a51a09efc007e7ad6f03c37eb0a4e1c9e129c3fd27f3",
+    "dataset_digest": "sha256:ea63ca2fca438086e6ffd262bedab2d3e3f79c78a2ea14fb2babbe804e53f13b",
+    "environment_digest": "sha256:04c03d49a4e7104a58d80de32f97e2ce5b9b19d47437b0cdbcc1dfdda9159874",
+    "evaluator_digest": "sha256:babec1c1796cfa7cf6574fe8fe484f1f4804784258aace404b81e467553220e2",
+    "metrics": {
+      "retention_delayed": 0.875
+    },
+    "model_digest": "sha256:2dd8a7c8df74e1f60214556116edb81c62d5d4c075bf17ab67f79438cffc4f32",
+    "schema": "mini-agi-v16.2-executed-run-receipt-v1",
+    "seed": 1,
+    "signature_b64": "sU0a0Aso/hk6sIiqcz+/vfEUG7vBXrgBfVwlx5KbfVdfHmvQH1opcrsR/5xuDF7xDm/WjCKiX6bZf/CnaiOuDg==",
+    "signer_key_id": "campaign1-execution-witness",
+    "state_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "tokenizer_digest": "sha256:c7db022fae80ee836c03b3bddcfd69c4523b4966bc76002c3aa1404a6fdebf31"
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "schema": "mini-agi-v16.2-skill-library-v1",
+  "skills": [
+    {
+      "exemplars": [
+        "Task: Append a period to the end of the input word.\nInput: diamond\nAnswer: diamond.",
+        "Task: Append a period to the end of the input word.\nInput: obsidian\nAnswer: obsidian.",
+        "Task: Append a period to the end of the input word.\nInput: flint\nAnswer: flint.",
+        "Task: Append a period to the end of the input word.\nInput: slate\nAnswer: slate.",
+        "Task: Append a period to the end of the input word.\nInput: chalk\nAnswer: chalk.",
+        "Task: Append a period to the end of the input word.\nInput: clay\nAnswer: clay.",
+        "Task: Append a period to the end of the input word.\nInput: loam\nAnswer: loam.",
+        "Task: Append a period to the end of the input word.\nInput: silt\nAnswer: silt.",
+        "Task: Append a period to the end of the input word.\nInput: gravel\nAnswer: gravel.",
+        "Task: Append a period to the end of the input word.\nInput: sand\nAnswer: sand."
+      ],
+      "family": "tr-append-dot",
+      "skill_id": "skill-tr-append-dot"
+    },
+    {
+      "exemplars": [
+        "Task: Output the number of consonants in the input word as a digit.\nInput: calm\nAnswer: 3",
+        "Task: Output the number of consonants in the input word as a digit.\nInput: canyon\nAnswer: 4",
+        "Task: Output the number of consonants in the input word as a digit.\nInput: harbor\nAnswer: 4",
+        "Task: Output the number of consonants in the input word as a digit.\nInput: meadow\nAnswer: 3",
+        "Task: Output the number of consonants in the input word as a digit.\nInput: tundra\nAnswer: 4",
+        "Task: Output the number of consonants in the input word as a digit.\nInput: orchard\nAnswer: 5",
+        "Task: Output the number of consonants in the input word as a digit.\nInput: summit\nAnswer: 4",
+        "Task: Output the number of consonants in the input word as a digit.\nInput: sierra\nAnswer: 3",
+        "Task: Output the number of consonants in the input word as a digit.\nInput: prairie\nAnswer: 3",
+        "Task: Output the number of consonants in the input word as a digit.\nInput: ridge\nAnswer: 3"
+      ],
+      "family": "tr-consonant-count",
+      "skill_id": "skill-tr-consonant-count"
+    },
+    {
+      "exemplars": [
+        "Task: Remove the last character of the input word.\nInput: dust\nAnswer: dus",
+        "Task: Remove the last character of the input word.\nInput: ash\nAnswer: as",
+        "Task: Remove the last character of the input word.\nInput: soot\nAnswer: soo",
+        "Task: Remove the last character of the input word.\nInput: smoke\nAnswer: smok",
+        "Task: Remove the last character of the input word.\nInput: vapor\nAnswer: vapo",
+        "Task: Remove the last character of the input word.\nInput: steam\nAnswer: stea",
+        "Task: Remove the last character of the input word.\nInput: mist\nAnswer: mis",
+        "Task: Remove the last character of the input word.\nInput: fog\nAnswer: fo",
+        "Task: Remove the last character of the input word.\nInput: haze\nAnswer: haz",
+        "Task: Remove the last character of the input word.\nInput: cloud\nAnswer: clou"
+      ],
+      "family": "tr-drop-last",
+      "skill_id": "skill-tr-drop-last"
+    },
+    {
+      "exemplars": [
+        "Task: Repeat the first character of the input word at the start.\nInput: rain\nAnswer: rrain",
+        "Task: Repeat the first character of the input word at the start.\nInput: snow\nAnswer: ssnow",
+        "Task: Repeat the first character of the input word at the start.\nInput: sleet\nAnswer: ssleet",
+        "Task: Repeat the first character of the input word at the start.\nInput: hail\nAnswer: hhail",
+        "Task: Repeat the first character of the input word at the start.\nInput: storm\nAnswer: sstorm",
+        "Task: Repeat the first character of the input word at the start.\nInput: thunder\nAnswer: tthunder",
+        "Task: Repeat the first character of the input word at the start.\nInput: lightning\nAnswer: llightning",
+        "Task: Repeat the first character of the input word at the start.\nInput: breeze\nAnswer: bbreeze",
+        "Task: Repeat the first character of the input word at the start.\nInput: gale\nAnswer: ggale",
+        "Task: Repeat the first character of the input word at the start.\nInput: gust\nAnswer: ggust"
+      ],
+      "family": "tr-dup-first",
+      "skill_id": "skill-tr-dup-first"
+    },
+    {
+      "exemplars": [
+        "Task: Output the alphabet position of the first letter as digits (a=1, z=26).\nInput: fjord\nAnswer: 6",
+        "Task: Output the alphabet position of the first letter as digits (a=1, z=26).\nInput: inlet\nAnswer: 9",
+        "Task: Output the alphabet position of the first letter as digits (a=1, z=26).\nInput: jetty\nAnswer: 10",
+        "Task: Output the alphabet position of the first letter as digits (a=1, z=26).\nInput: knoll\nAnswer: 11",
+        "Task: Output the alphabet position of the first letter as digits (a=1, z=26).\nInput: delta\nAnswer: 4",
+        "Task: Output the alphabet position of the first letter as digits (a=1, z=26).\nInput: dune\nAnswer: 4",
+        "Task: Output the alphabet position of the first letter as digits (a=1, z=26).\nInput: grove\nAnswer: 7",
+        "Task: Output the alphabet position of the first letter as digits (a=1, z=26).\nInput: glacier\nAnswer: 7",
+        "Task: Output the alphabet position of the first letter as digits (a=1, z=26).\nInput: valley\nAnswer: 22",
+        "Task: Output the alphabet position of the first letter as digits (a=1, z=26).\nInput: plateau\nAnswer: 16"
+      ],
+      "family": "tr-first-alpha-pos",
+      "skill_id": "skill-tr-first-alpha-pos"
+    },
+    {
+      "exemplars": [
+        "Task: Reverse the characters of the input word.\nInput: cobalt\nAnswer: tlaboc",
+        "Task: Reverse the characters of the input word.\nInput: amber\nAnswer: rebma",
+        "Task: Reverse the characters of the input word.\nInput: silver\nAnswer: revlis",
+        "Task: Reverse the characters of the input word.\nInput: violet\nAnswer: teloiv",
+        "Task: Reverse the characters of the input word.\nInput: jade\nAnswer: edaj",
+        "Task: Reverse the characters of the input word.\nInput: coral\nAnswer: laroc",
+        "Task: Reverse the characters of the input word.\nInput: onyx\nAnswer: xyno",
+        "Task: Reverse the characters of the input word.\nInput: quartz\nAnswer: ztrauq",
+        "Task: Reverse the characters of the input word.\nInput: ember\nAnswer: rebme",
+        "Task: Reverse the characters of the input word.\nInput: frost\nAnswer: tsorf"
+      ],
+      "family": "tr-reverse",
+      "skill_id": "skill-tr-reverse"
+    },
+    {
+      "exemplars": [
+        "Task: Convert the input word to uppercase.\nInput: marble\nAnswer: MARBLE",
+        "Task: Convert the input word to uppercase.\nInput: granite\nAnswer: GRANITE",
+        "Task: Convert the input word to uppercase.\nInput: basalt\nAnswer: BASALT",
+        "Task: Convert the input word to uppercase.\nInput: copper\nAnswer: COPPER",
+        "Task: Convert the input word to uppercase.\nInput: bronze\nAnswer: BRONZE",
+        "Task: Convert the input word to uppercase.\nInput: pewter\nAnswer: PEWTER",
+        "Task: Convert the input word to uppercase.\nInput: nickel\nAnswer: NICKEL",
+        "Task: Convert the input word to uppercase.\nInput: zinc\nAnswer: ZINC",
+        "Task: Convert the input word to uppercase.\nInput: iron\nAnswer: IRON",
+        "Task: Convert the input word to uppercase.\nInput: gold\nAnswer: GOLD"
+      ],
+      "family": "tr-upper",
+      "skill_id": "skill-tr-upper"
+    },
+    {
+      "exemplars": [
+        "Task: Replace every vowel in the input word with the letter x.\nInput: platinum\nAnswer: plxtxnxm",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: titanium\nAnswer: txtxnxxm",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: carbon\nAnswer: cxrbxn",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: silicon\nAnswer: sxlxcxn",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: crystal\nAnswer: crystxl",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: opal\nAnswer: xpxl",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: topaz\nAnswer: txpxz",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: garnet\nAnswer: gxrnxt",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: ruby\nAnswer: rxby",
+        "Task: Replace every vowel in the input word with the letter x.\nInput: pearl\nAnswer: pxxrl"
+      ],
+      "family": "tr-xvowels",
+      "skill_id": "skill-tr-xvowels"
+    }
+  ]
+}

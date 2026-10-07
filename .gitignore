@@ -96,3 +96,4 @@ SCORER_CALIBRATION.json
 !results/**/INTERRUPTION_RECOVERY.json
 !results/**/QUALIFICATION_RECORD.json
 !results/**/SCORER_CALIBRATION.json
+.keys/
