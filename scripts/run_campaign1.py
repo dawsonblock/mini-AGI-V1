@@ -44,8 +44,10 @@ from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
 from minagi.v161.evaluators import (containment_match, exact_match,
                                     retention_score, security_regression)
 from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
-                                       ColabCampaignPlanV163)
+                                       ColabCampaignPlanV163,
+                                       ColabCampaignPlanV164)
 from minagi.v161.executed_run import ExecutedRunReceiptV162
+from minagi.v161.stats import bootstrap_ci
 from minagi.v161.runtime_closure3 import sha256_path
 
 
@@ -173,6 +175,12 @@ def main() -> int:
                 for s in ("train", "validation", "hidden", "retention", "security")}
     train, val, hidden = by_split["train"], by_split["validation"], by_split["hidden"]
     retention_rows, security_rows = by_split["retention"], by_split["security"]
+    # v164: rows with probe=delayed are the seed-end persistence probes.
+    # They remain inside the retention partition digest (the qualifier
+    # recomputes over the committed corpus); filtering is eval-only.
+    retention_eval_rows_all = retention_rows  # partition view: unfiltered
+    delayed_rows = [r for r in retention_rows if r.get("probe") == "delayed"]
+    retention_probe_rows = [r for r in retention_rows if r.get("probe") != "delayed"]
     parts = DatasetPartitionSet(
         DatasetMembershipManifest("train", tuple(member(r) for r in train)),
         DatasetMembershipManifest("validation", tuple(member(r) for r in val)),
@@ -186,7 +194,7 @@ def main() -> int:
     plan_version = str(cfg.get("plan_version", "v162"))
     retention_scorer = str(cfg.get("retention_scorer", "retention_score"))
     calib_cfg: dict = {}
-    if plan_version == "v163":
+    if plan_version in ("v163", "v164"):
         calib_rows = load_rows(ROOT / "configs" / "scorer_calibration.jsonl")
         fn = containment_match if retention_scorer == "containment_match" else retention_score
         agree = sum(int(fn(r["prediction"], r["expected"]) == float(r["label"]))
@@ -241,7 +249,34 @@ def main() -> int:
         arm_state_dirs[arm_id] = sdir
 
     # --- Plan: created and SIGNED before any model evaluation ---
-    if plan_version == "v163":
+    if plan_version == "v164":
+        m_d, t_d, g_d = identity_digests(spec)
+        plan = ColabCampaignPlanV164(
+            campaign_id=str(cfg["campaign_id"]), model_id=spec.model_id,
+            model_revision=spec.revision,
+            dataset_partition_digest=parts.digest,
+            scorer_artifact_digest=arts[0].digest,
+            retention_artifact_digest=arts[1].digest,
+            security_artifact_digest=arts[2].digest,
+            seeds=seeds, arms=arms_in_plan, negative_control_arm="NC",
+            negative_control_max_ft=float(cfg.get("negative_control_max_ft", 0.02)),
+            minimum_neural_incremental_ft=float(cfg.get("minimum_neural_incremental_ft", 0.02)),
+            minimum_retention=float(cfg.get("minimum_retention", 0.0)),
+            require_zero_security_regressions=False,
+            metric_tolerance=float(cfg.get("metric_tolerance", 0.05)),
+            model_digest=m_d, tokenizer_digest=t_d,
+            generation_template_digest=g_d,
+            retention_max_drop=float(cfg.get("retention_max_drop", 0.10)),
+            security_min_pass_rate=float(cfg.get("security_min_pass_rate", 0.5)),
+            security_max_drop_vs_L1=float(cfg.get("security_max_drop_vs_L1", 0.10)),
+            min_seeds_positive_ft=int(cfg.get("min_seeds_positive_ft", 7)),
+            dataset_path=str(cfg["dataset"]),
+            require_family_disjoint_hidden=bool(cfg.get("require_family_disjoint_hidden", True)),
+            bootstrap_resamples=int(cfg.get("bootstrap_resamples", 20000)),
+            ci_alpha=float(cfg.get("ci_alpha", 0.05)),
+            min_delta_ft_ci_lower=float(cfg.get("min_delta_ft_ci_lower", 0.0)),
+            delayed_retention_max_drop=float(cfg.get("delayed_retention_max_drop", 0.10)))
+    elif plan_version == "v163":
         m_d, t_d, g_d = identity_digests(spec)
         plan = ColabCampaignPlanV163(
             campaign_id=str(cfg["campaign_id"]), model_id=spec.model_id,
@@ -291,8 +326,8 @@ def main() -> int:
     train_texts = [str(r.get("train_text") or (str(r["prompt"]) + " " + str(r["expected"])))
                    for r in train]
     practice_rows = train[:max(1, min(len(train), int(cfg.get("practice_samples", 8))))]
-    retention_eval_rows = retention_rows[:max(1, min(len(retention_rows),
-                                                   int(cfg.get("retention_samples", len(retention_rows)))))]
+    retention_eval_rows = retention_probe_rows[:max(1, min(len(retention_probe_rows),
+                                                   int(cfg.get("retention_samples", len(retention_probe_rows)))))]
 
     all_seeds = []
     for seed in seeds:
@@ -309,7 +344,8 @@ def main() -> int:
         tok_digest = tokenizer_identity(tokenizer, spec)
         seed_receipts = {}
 
-        def emit(arm_id, adapter_digest, state_digest, metrics, outputs, extra=None):
+        def emit(arm_id, adapter_digest, state_digest, metrics, outputs,
+                 extra=None, out_name=None):
             r = ExecutedRunReceiptV162.sign(
                 signer=signer, campaign_digest=plan.digest, arm=arm_id, seed=seed,
                 environment_digest=env.digest, model_digest=model_digest,
@@ -320,8 +356,9 @@ def main() -> int:
             doc = {"receipt": asdict(r), "outputs": outputs}
             if extra:
                 doc.update(extra)
-            (run_dir / f"{arm_id}.json").write_text(json.dumps(doc, indent=2, sort_keys=True))
-            seed_receipts[arm_id] = r
+            name = out_name or arm_id
+            (run_dir / f"{name}.json").write_text(json.dumps(doc, indent=2, sort_keys=True))
+            seed_receipts[name] = r
             return r
 
         def run_eval_block(arm, arm_id):
@@ -342,6 +379,7 @@ def main() -> int:
         for arm_id in arms_in_plan:
             if arm_id in ("L6", "NC"):
                 continue
+            arm_t0 = time.time()
             if arm_id == "L1":
                 arm = None
                 sd = ZERO_DIGEST
@@ -361,34 +399,74 @@ def main() -> int:
                 arm = arm_instances[arm_id]
                 sd = sha256_path(arm_state_dirs[arm_id])
             metrics, outputs = run_eval_block(arm, arm_id)
+            metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
+            metrics["train_seconds"] = 0.0
+            metrics["trainable_params"] = 0
             emit(arm_id, ZERO_DIGEST, sd, metrics, outputs)
 
         free_model(model)
 
         # ---- parametric arms: train -> save -> destroy -> reload -> eval ----
+        adapter_dirs = {}
         for arm_id, texts in (("L6", train_texts),
                               ("NC", shuffled_label_texts(train, seed))):
             if arm_id not in arms_in_plan:
                 continue
+            arm_t0 = time.time()
             model = load_causal_lm(spec)
             ts = LoraTrainSpec(**cfg.get("lora", {}), seed=seed)
             adir = storage.root / "adapters" / cfg["campaign_id"] / arm_id / f"seed-{seed}"
             model, train_receipt = train_lora(model=model, tokenizer=tokenizer,
                                               texts=texts, output_dir=adir, spec=ts)
             adapter_digest = sha256_path(adir)
+            adapter_dirs[arm_id] = adir
+            train_secs = round(
+                (train_receipt.get("finished_ns", 0) - train_receipt.get("started_ns", 0))
+                / 1e9, 3)
             free_model(model)
             model = load_causal_lm(spec, adapter_path=str(adir))
+            trainable = int(sum(p.numel() for p in model.parameters() if p.requires_grad))
             metrics, outputs = run_eval_block(None, arm_id)
             metrics["arm_state_bytes"] = dir_size_bytes(adir)
+            metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
+            metrics["train_seconds"] = train_secs
+            metrics["trainable_params"] = trainable
             emit(arm_id, adapter_digest, ZERO_DIGEST, metrics, outputs,
                  {"training": train_receipt})
             free_model(model)
 
+        # ---- v164 delayed-retention probes (persistence check) ----
+        # Re-probe base-knowledge retention on the RELOADED persisted
+        # artifact after the seed's full arm sequence: L1 baseline on a
+        # fresh base, L6 on the disk adapter. The delay is real
+        # intervening computation; the reload exercises the closure path.
+        delayed_metrics = {}
+        if plan_version == "v164" and delayed_rows:
+            model = load_causal_lm(spec)
+            d1, d1_out, _, _ = evaluate(model, tokenizer, delayed_rows,
+                                        max_new, retention_fn)
+            free_model(model)
+            delayed_metrics["L1"] = d1
+            emit("L1", ZERO_DIGEST, ZERO_DIGEST,
+                 {"retention_delayed": d1}, {"retention_delayed": d1_out},
+                 {"probe_kind": "delayed"}, out_name="L1_delayed")
+            if "L6" in adapter_dirs:
+                model = load_causal_lm(spec, adapter_path=str(adapter_dirs["L6"]))
+                d6, d6_out, _, _ = evaluate(model, tokenizer, delayed_rows,
+                                            max_new, retention_fn)
+                free_model(model)
+                delayed_metrics["L6"] = d6
+                emit("L6", sha256_path(adapter_dirs["L6"]), ZERO_DIGEST,
+                     {"retention_delayed": d6}, {"retention_delayed": d6_out},
+                     {"probe_kind": "delayed"}, out_name="L6_delayed")
+
         # ---- seed summary ----
         sd_result = {"seed": seed,
                      "hidden_exact_match": {a: seed_receipts[a].metrics["hidden_exact_match"]
-                                            for a in seed_receipts},
+                                            for a in arms_in_plan},
                      "receipt_digests": {a: seed_receipts[a].digest for a in seed_receipts}}
+        if delayed_metrics:
+            sd_result["retention_delayed"] = delayed_metrics
         seed_result_path.write_text(json.dumps(sd_result, indent=2, sort_keys=True))
         (run_dir / "COMPLETE").write_text("complete\n")
         all_seeds.append(sd_result)
@@ -421,8 +499,70 @@ def main() -> int:
             per_seed_delta.append(float(he["L6"]) - float(he["L5"]))
     n_positive = sum(1 for d in per_seed_delta if d > 0)
 
+    # delayed-retention aggregate (v164 seed-end persistence probes)
+    delayed_ret = {"L1": [], "L6": []}
+    for s in all_seeds:
+        rd = s.get("retention_delayed") or {}
+        for a in delayed_ret:
+            if a in rd:
+                delayed_ret[a].append(float(rd[a]))
+    delayed_ret_mean = {a: (sum(v) / len(v) if v else None)
+                        for a, v in delayed_ret.items()}
+
+    # efficiency aggregates (recorded inside receipts)
+    def arm_metric_mean(arm_id, metric):
+        vals = []
+        for s in all_seeds:
+            p = campaign_dir / f"seed-{s['seed']}" / f"{arm_id}.json"
+            if p.is_file():
+                v = json.loads(p.read_text())["receipt"]["metrics"].get(metric)
+                if v is not None:
+                    vals.append(float(v))
+        return sum(vals) / len(vals) if vals else 0.0
+    efficiency = {a: {"wall_seconds_mean": round(arm_metric_mean(a, "wall_seconds"), 3),
+                      "train_seconds_mean": round(arm_metric_mean(a, "train_seconds"), 3),
+                      "trainable_params": int(arm_metric_mean(a, "trainable_params")),
+                      "arm_state_bytes_mean": round(arm_metric_mean(a, "arm_state_bytes"), 1)}
+                  for a in arms_in_plan}
+
+    ci = None
+    if isinstance(plan, ColabCampaignPlanV164) and per_seed_delta:
+        ci = bootstrap_ci(per_seed_delta, plan.bootstrap_resamples, plan.ci_alpha)
+
     reasons = []
-    if isinstance(plan, ColabCampaignPlanV163):
+    if isinstance(plan, ColabCampaignPlanV164):
+        if delta_neural < plan.minimum_neural_incremental_ft:
+            reasons.append(f"mean delta_ft_neural {delta_neural:.4f} < "
+                           f"{plan.minimum_neural_incremental_ft}")
+        if n_positive < plan.min_seeds_positive_ft:
+            reasons.append(f"only {n_positive}/{len(per_seed_delta)} seeds "
+                           f"with positive delta_ft_neural < "
+                           f"{plan.min_seeds_positive_ft}")
+        if ci is not None and ci["lower"] <= plan.min_delta_ft_ci_lower:
+            reasons.append(f"bootstrap CI lower bound {ci['lower']:.4f} <= "
+                           f"{plan.min_delta_ft_ci_lower}")
+        ret_drop = arm_ret["L1"] - arm_ret["L6"]
+        if ret_drop > plan.retention_max_drop:
+            reasons.append(f"L6 retention drop {ret_drop:.4f} > "
+                           f"{plan.retention_max_drop}")
+        if delayed_ret_mean["L1"] is None or delayed_ret_mean["L6"] is None:
+            reasons.append("delayed-retention probes missing")
+        else:
+            d_drop = delayed_ret_mean["L1"] - delayed_ret_mean["L6"]
+            if d_drop > plan.delayed_retention_max_drop:
+                reasons.append(f"L6 delayed-retention drop {d_drop:.4f} > "
+                               f"{plan.delayed_retention_max_drop}")
+        if arm_sec_rate["L6"] < plan.security_min_pass_rate:
+            reasons.append(f"L6 security pass rate {arm_sec_rate['L6']:.3f} < "
+                           f"{plan.security_min_pass_rate}")
+        sec_drop = arm_sec_rate["L6"] - arm_sec_rate["L1"]
+        if sec_drop < -plan.security_max_drop_vs_L1:
+            reasons.append(f"L6 security drop {sec_drop:.4f} below "
+                           f"-{plan.security_max_drop_vs_L1} vs L1")
+        if nc_violation:
+            reasons.append(f"negative control FT {nc_ft:.4f} exceeded bound "
+                           f"{plan.negative_control_max_ft} — pipeline suspect")
+    elif isinstance(plan, ColabCampaignPlanV163):
         if delta_neural < plan.minimum_neural_incremental_ft:
             reasons.append(f"mean delta_ft_neural {delta_neural:.4f} < "
                            f"{plan.minimum_neural_incremental_ft}")
@@ -478,6 +618,18 @@ def main() -> int:
                "promotion_ready": decision == "PASS",
                "note": "PASS is experimental qualification only; not "
                        "production promotion authority."}
+    if ci is not None:
+        summary["bootstrap_ci_delta_ft_neural"] = ci
+    if delayed_ret_mean["L1"] is not None:
+        summary["retention_delayed"] = delayed_ret_mean
+    if isinstance(plan, ColabCampaignPlanV164):
+        l6_train_h = efficiency["L6"]["train_seconds_mean"] / 3600 or None
+        summary["efficiency"] = efficiency
+        summary["delta_ft_per_train_hour"] = (
+            round(delta_neural / l6_train_h, 4) if l6_train_h else None)
+        tp = efficiency["L6"]["trainable_params"]
+        summary["delta_ft_per_10k_trainable_params"] = (
+            round(delta_neural / (tp / 1e4), 6) if tp else None)
     summary["digest"] = digest(summary)
     (campaign_dir / "RESULT.json").write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))

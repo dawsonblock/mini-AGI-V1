@@ -44,9 +44,11 @@ def main() -> int:
 
     from egai.common.crypto import Ed25519Verifier, SignedEnvelope
     from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
-                                           ColabCampaignPlanV163)
+                                           ColabCampaignPlanV163,
+                                           ColabCampaignPlanV164)
     from minagi.v161.executed_run import ExecutedRunReceiptV162
     from minagi.v161.runtime_closure3 import sha256_path
+    from minagi.v161.stats import bootstrap_ci
 
     storage = Path(args.storage)
     campaign_dir = storage / "campaigns" / args.campaign_id
@@ -59,9 +61,10 @@ def main() -> int:
 
     # --- Plan: digest AND signature ---
     plan_doc = json.loads((campaign_dir / "CAMPAIGN_PLAN.json").read_text())
-    plan_cls = (ColabCampaignPlanV163
-                if plan_doc["value"].get("schema") == "mini-agi-v16.3-colab-campaign-plan-v1"
-                else ColabCampaignPlanV162)
+    schema = plan_doc["value"].get("schema")
+    plan_cls = {"mini-agi-v16.4-colab-campaign-plan-v1": ColabCampaignPlanV164,
+                "mini-agi-v16.3-colab-campaign-plan-v1": ColabCampaignPlanV163,
+                }.get(schema, ColabCampaignPlanV162)
     plan = plan_cls(**plan_doc["value"])
     if plan.digest != plan_doc["digest"]:
         fail("plan", "CAMPAIGN_PLAN.json digest field does not match recomputed plan digest")
@@ -84,10 +87,17 @@ def main() -> int:
     # corpus is part of the source tree, so the qualifier can
     # independently recompute partition digests and compare them to
     # both the proof and the signed plan.
-    dataset_cfg = root / "configs" / "campaign1_tasks.jsonl"
-    import yaml
-    campaign_cfg = yaml.safe_load((root / "configs" / "campaign1.yaml").read_text())
-    fam_disjoint = bool(campaign_cfg.get("require_family_disjoint_hidden", True))
+    # v164 plans bind the corpus path and disjointness flag into the
+    # signed plan; older plans fall back to the campaign1 conventions.
+    if isinstance(plan, ColabCampaignPlanV164):
+        dataset_cfg = root / plan.dataset_path
+        fam_disjoint = bool(plan.require_family_disjoint_hidden)
+    else:
+        dataset_cfg = root / "configs" / "campaign1_tasks.jsonl"
+        import yaml
+        campaign_cfg = yaml.safe_load(
+            (root / "configs" / "campaign1.yaml").read_text())
+        fam_disjoint = bool(campaign_cfg.get("require_family_disjoint_hidden", True))
     from minagi.v161.dataset_manifest import (DatasetMember,
                                               DatasetMembershipManifest,
                                               DatasetPartitionSet)
@@ -151,6 +161,46 @@ def main() -> int:
             if not receipt.verify(verifier):
                 fail(f"seed-{seed}/{arm}", "signature verification failed")
             receipts[(seed, arm)] = receipt
+
+    # --- v164: delayed-retention persistence cells ---
+    delayed: dict[tuple[int, str], float] = {}
+    if isinstance(plan, ColabCampaignPlanV164):
+        for seed in plan.seeds:
+            run_dir = campaign_dir / f"seed-{seed}"
+            for cell_name, arm_id in (("L1_delayed", "L1"), ("L6_delayed", "L6")):
+                cell_path = run_dir / f"{cell_name}.json"
+                if not cell_path.is_file():
+                    fail(f"seed-{seed}/{cell_name}", "delayed cell missing")
+                    continue
+                doc = json.loads(cell_path.read_text())
+                try:
+                    rec = ExecutedRunReceiptV162(**doc["receipt"])
+                except Exception as exc:  # noqa: BLE001
+                    fail(f"seed-{seed}/{cell_name}",
+                         f"receipt parse: {type(exc).__name__}: {exc}")
+                    continue
+                if rec.arm != arm_id or int(rec.seed) != seed:
+                    fail(f"seed-{seed}/{cell_name}", "arm/seed field mismatch")
+                if rec.campaign_digest != plan.digest:
+                    fail(f"seed-{seed}/{cell_name}", "receipt campaign_digest != plan")
+                if rec.evaluator_digest != plan.scorer_artifact_digest:
+                    fail(f"seed-{seed}/{cell_name}", "receipt evaluator_digest != scorer")
+                if rec.dataset_digest != hidden_digest:
+                    fail(f"seed-{seed}/{cell_name}", "receipt dataset_digest != hidden")
+                if rec.signer_key_id != key_id or not rec.verify(verifier):
+                    fail(f"seed-{seed}/{cell_name}", "signature verification failed")
+                if doc.get("probe_kind") != "delayed":
+                    fail(f"seed-{seed}/{cell_name}", "probe_kind marker missing")
+                if "retention_delayed" not in rec.metrics:
+                    fail(f"seed-{seed}/{cell_name}", "retention_delayed metric missing")
+                delayed[(seed, arm_id)] = float(rec.metrics.get("retention_delayed", 0.0))
+                # L6 delayed cell re-verifies the persisted adapter bytes
+                if arm_id == "L6":
+                    adir = storage / "adapters" / args.campaign_id / "L6" / f"seed-{seed}"
+                    if not adir.is_dir():
+                        fail(f"seed-{seed}/{cell_name}", "L6 adapter dir missing for delayed probe")
+                    elif sha256_path(adir) != rec.adapter_digest:
+                        fail(f"seed-{seed}/{cell_name}", "L6 delayed adapter digest mismatch")
 
     # --- Physical closure: adapters (L6/NC) and arm states (L2-L5) ---
     for (seed, arm), receipt in receipts.items():
@@ -225,7 +275,42 @@ def main() -> int:
         nc_mean = statistics.fmean(nc_fts)
         if statistics.fmean(deltas) < plan.minimum_neural_incremental_ft:
             reasons.append("mean neural incremental FT (L6-L5) below preregistered minimum")
-        if isinstance(plan, ColabCampaignPlanV163):
+        if isinstance(plan, ColabCampaignPlanV164):
+            n_pos = sum(1 for x in per_seed if x["delta_ft_neural"] > 0)
+            if n_pos < plan.min_seeds_positive_ft:
+                reasons.append(f"only {n_pos}/{len(per_seed)} seeds positive "
+                               f"< {plan.min_seeds_positive_ft}")
+            ci = bootstrap_ci(deltas, plan.bootstrap_resamples, plan.ci_alpha)
+            stats["bootstrap_ci"] = ci
+            if ci["lower"] <= plan.min_delta_ft_ci_lower:
+                reasons.append(f"bootstrap CI lower bound {ci['lower']:.4f} <= "
+                               f"{plan.min_delta_ft_ci_lower}")
+            l1_ret = statistics.fmean([x["l1_retention"] for x in per_seed])
+            l6_ret = statistics.fmean([x["l6_retention"] for x in per_seed])
+            if l1_ret - l6_ret > plan.retention_max_drop:
+                reasons.append(f"L6 retention drop {l1_ret - l6_ret:.4f} > "
+                               f"{plan.retention_max_drop}")
+            d_l1 = [delayed.get((s, "L1")) for s in plan.seeds]
+            d_l6 = [delayed.get((s, "L6")) for s in plan.seeds]
+            if any(v is None for v in d_l1 + d_l6):
+                reasons.append("delayed-retention probes missing")
+            else:
+                d_drop = statistics.fmean(d_l1) - statistics.fmean(d_l6)
+                stats["retention_delayed"] = {"L1": statistics.fmean(d_l1),
+                                              "L6": statistics.fmean(d_l6),
+                                              "drop": d_drop}
+                if d_drop > plan.delayed_retention_max_drop:
+                    reasons.append(f"L6 delayed-retention drop {d_drop:.4f} > "
+                                   f"{plan.delayed_retention_max_drop}")
+            l1_sec = statistics.fmean([x["security_pass_rate"]["L1"] for x in per_seed])
+            l6_sec = statistics.fmean([x["security_pass_rate"]["L6"] for x in per_seed])
+            if l6_sec < plan.security_min_pass_rate:
+                reasons.append(f"L6 security pass rate {l6_sec:.3f} < "
+                               f"{plan.security_min_pass_rate}")
+            if l6_sec - l1_sec < -plan.security_max_drop_vs_L1:
+                reasons.append(f"L6 security drop {l6_sec - l1_sec:.4f} below "
+                               f"-{plan.security_max_drop_vs_L1} vs L1")
+        elif isinstance(plan, ColabCampaignPlanV163):
             n_pos = sum(1 for x in per_seed if x["delta_ft_neural"] > 0)
             if n_pos < plan.min_seeds_positive_ft:
                 reasons.append(f"only {n_pos}/{len(per_seed)} seeds positive "

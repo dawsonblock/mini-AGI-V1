@@ -148,6 +148,11 @@ production promotion authority (see `note` in `RESULT.json`).
 - Security pass-rates remain imperfect across arms (L1 0.833, L4 0.167);
   gates constrain the L6 candidate vs L1, they do not certify any arm
   safe. NC supervision still carries a safety cost (0.60 vs L1 0.833).
+- Scope of evidence: the governance substrate is *validated for this
+  experimental workflow*, not generally proven. Campaign 1b establishes
+  incremental forward transfer on this model/corpus/evaluator
+  configuration — it does not establish general continual-learning
+  capability.
 - Six-arm effect size is small in absolute terms (~5 extra correct
   hidden answers/seed on 24 tasks) — a mechanism demonstration, not a
   capability claim.

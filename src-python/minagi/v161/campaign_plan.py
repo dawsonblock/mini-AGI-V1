@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from pathlib import Path
 from egai.common.canonical import digest, validate_digest
 
 
@@ -149,6 +150,50 @@ class ColabCampaignPlanV163(ColabCampaignPlanV162):
             raise ValueError("regression bounds must be non-negative")
         if not 0 < self.min_seeds_positive_ft <= len(self.seeds):
             raise ValueError("min_seeds_positive_ft must be in (0, n_seeds]")
+
+    @property
+    def digest(self) -> str:
+        return digest(self)
+
+
+@dataclass(frozen=True)
+class ColabCampaignPlanV164(ColabCampaignPlanV163):
+    """Campaign 2 plan — scale/generalization falsification.
+
+    Beyond V163:
+      * dataset_path + require_family_disjoint_hidden are bound into the
+        signed plan so the qualifier knows which committed corpus to
+        recompute the partition from (no filename convention coupling).
+      * The primary endpoint adds a distributional criterion: a
+        deterministic percentile bootstrap CI over per-seed
+        delta_ft_neural whose lower bound must exceed
+        min_delta_ft_ci_lower — not just same-sign seeds.
+      * delayed_retention_max_drop constrains the seed-end persistence
+        probes (L1_delayed/L6_delayed cells): retention re-measured on
+        the reloaded persisted artifact after the seed's full arm
+        sequence.
+      * Efficiency reporting is preregistered (train/eval seconds and
+        trainable-parameter counts travel inside receipts; derived
+        transfer-per-hour / transfer-per-parameter appear in RESULT).
+    """
+    dataset_path: str = "configs/campaign2_tasks.jsonl"
+    require_family_disjoint_hidden: bool = True
+    bootstrap_resamples: int = 20000
+    ci_alpha: float = 0.05
+    min_delta_ft_ci_lower: float = 0.0
+    delayed_retention_max_drop: float = 0.10
+    schema: str = "mini-agi-v16.4-colab-campaign-plan-v1"
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.dataset_path or ".." in Path(self.dataset_path).parts:
+            raise ValueError("dataset_path must be a repo-relative path")
+        if self.bootstrap_resamples < 1000:
+            raise ValueError("bootstrap_resamples must be >= 1000")
+        if not 0 < self.ci_alpha < 0.5:
+            raise ValueError("ci_alpha must be in (0, 0.5)")
+        if self.delayed_retention_max_drop < 0:
+            raise ValueError("delayed_retention_max_drop must be non-negative")
 
     @property
     def digest(self) -> str:

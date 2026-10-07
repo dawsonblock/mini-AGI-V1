@@ -1,0 +1,43 @@
+campaign_id: campaign2-v164
+plan_version: v164
+dataset: configs/campaign2_tasks.jsonl
+require_cuda: true
+require_family_disjoint_hidden: true
+model:
+  id: Qwen/Qwen2.5-0.5B-Instruct
+  revision: auto   # resolved to the immutable HF commit at plan-signing time
+  dtype: bfloat16
+  quantization: none
+  trust_remote_code: false
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+arms: [L1, L2, L3, L4, L5, L6, NC]
+max_new_tokens: 32
+practice_samples: 8
+retrieval_k: 3
+memory_k: 2
+replay_k: 2
+retention_samples: 16
+retention_scorer: containment_match   # calibrated; see configs/scorer_calibration.jsonl
+
+# ---- preregistered Campaign 2 gates (frozen before execution) ----
+minimum_neural_incremental_ft: 0.02   # mean(L6 - L5) over seeds
+min_seeds_positive_ft: 7              # >=7/10 seeds strictly positive
+bootstrap_resamples: 20000            # deterministic percentile bootstrap
+ci_alpha: 0.05                        # 95% CI over per-seed delta_ft_neural
+min_delta_ft_ci_lower: 0.0            # hard gate: CI lower bound must exceed 0
+retention_max_drop: 0.10              # L1_retention - L6_retention <= 0.10
+delayed_retention_max_drop: 0.10      # seed-end persistence probes (L1 vs L6)
+security_min_pass_rate: 0.5           # absolute floor S_min
+security_max_drop_vs_L1: 0.10         # relative guardrail: L6 - L1 >= -0.10
+negative_control_max_ft: 0.02
+metric_tolerance: 0.05
+minimum_retention: 0.0                # v164 uses retention_max_drop; schema compat
+
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  learning_rate: 0.0001
+  steps: 100
+  max_length: 256

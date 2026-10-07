@@ -8,7 +8,8 @@ from minagi.v161.arms import (FrozenArm, GroundedReplayArm, RetrievalArm,
                               SemanticMemoryArm, SkillsArm,
                               shuffled_label_texts)
 from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
-                                       ColabCampaignPlanV163)
+                                       ColabCampaignPlanV163,
+                                       ColabCampaignPlanV164)
 from minagi.v161.evaluators import containment_match
 from minagi.v161.executed_run import (ExecutedRunReceiptV161,
                                       ExecutedRunReceiptV162)
@@ -227,3 +228,58 @@ def test_plan_v163_rejects_bad_bounds():
 def test_plan_v163_fields_change_digest():
     # identity binding is part of the signed surface
     assert _plan163().digest != _plan163(tokenizer_digest=digest({"y": 2})).digest
+
+
+def _plan164(**kw):
+    base = dict(campaign_id="c2", model_id="m", model_revision="r",
+                dataset_partition_digest=D, scorer_artifact_digest=D,
+                retention_artifact_digest=D, security_artifact_digest=D,
+                seeds=tuple(range(10)),
+                model_digest=D, tokenizer_digest=D,
+                generation_template_digest=D)
+    base.update(kw)
+    return ColabCampaignPlanV164(**base)
+
+
+def test_plan_v164_defaults_and_schema():
+    p = _plan164()
+    assert p.schema == "mini-agi-v16.4-colab-campaign-plan-v1"
+    assert p.bootstrap_resamples == 20000
+    assert p.ci_alpha == 0.05
+    assert p.min_delta_ft_ci_lower == 0.0
+    assert p.delayed_retention_max_drop == 0.10
+    assert p.dataset_path == "configs/campaign2_tasks.jsonl"
+    assert p.require_family_disjoint_hidden is True
+    assert p.digest == _plan164().digest
+
+
+def test_plan_v164_rejects_bad_bootstrap():
+    with pytest.raises(ValueError):
+        _plan164(bootstrap_resamples=100)
+    with pytest.raises(ValueError):
+        _plan164(ci_alpha=0.9)
+    with pytest.raises(ValueError):
+        _plan164(delayed_retention_max_drop=-0.1)
+    with pytest.raises(ValueError):
+        _plan164(dataset_path="../escape.jsonl")
+
+
+def test_plan_v164_binds_dataset_path():
+    assert _plan164().digest != _plan164(dataset_path="configs/other.jsonl").digest
+    assert _plan164().digest != _plan164(bootstrap_resamples=10000).digest
+
+
+def test_bootstrap_ci_deterministic_and_sane():
+    from minagi.v161.stats import bootstrap_ci
+    xs = [0.05, 0.12, 0.08, 0.2, 0.15, 0.09, 0.11, 0.18, 0.07, 0.14]
+    a = bootstrap_ci(xs, 5000, 0.05)
+    b = bootstrap_ci(xs, 5000, 0.05)
+    assert a == b  # deterministic
+    assert a["lower"] > 0.0 and a["upper"] < 1.0
+    assert a["mean"] == pytest.approx(sum(xs) / len(xs))
+    # a vector straddling zero must NOT clear a >0 lower-bound gate
+    mixed = bootstrap_ci([-0.3, 0.4, -0.2, 0.5, 0.1, -0.1, 0.3, -0.4, 0.2, 0.0],
+                         5000, 0.05)
+    assert mixed["lower"] < 0.0
+    with pytest.raises(ValueError):
+        bootstrap_ci([], 1000, 0.05)
