@@ -1,0 +1,126 @@
+{
+ "schema": "mini-agi-v16.3-campaign1b-reproduction-record-v1",
+ "campaign_id": "campaign1b-v163",
+ "runtime_b": "v163-c1b-repro (fresh Colab T4, public main@d0d8cb2 only)",
+ "source_commit": "d0d8cb2937f0bdb00d9a987207252a31126bb9c5",
+ "runtime_a_result": "QUALIFIED",
+ "runtime_b_result": "QUALIFIED",
+ "reproduction_semantics": "statistical-equivalence",
+ "metric_tolerance": 0.05,
+ "adapter_bitwise_required": false,
+ "metric_comparison": {
+  "plan_digest": {
+   "A": "sha256:aa0b028a5821d4f9d6878b04018af9ab390b8c11b196b5aee26439ab7de471c7",
+   "B": "sha256:aa0b028a5821d4f9d6878b04018af9ab390b8c11b196b5aee26439ab7de471c7",
+   "match": true
+  },
+  "arm_hidden_exact_match": {
+   "A": {
+    "L1": 0.0,
+    "L2": 0.0,
+    "L3": 0.0,
+    "L4": 0.0,
+    "L5": 0.0,
+    "L6": 0.2,
+    "NC": 0.0
+   },
+   "B": {
+    "L1": 0.0,
+    "L2": 0.0,
+    "L3": 0.0,
+    "L4": 0.0,
+    "L5": 0.0,
+    "L6": 0.2,
+    "NC": 0.0
+   },
+   "match": true
+  },
+  "arm_retention": {
+   "A": {
+    "L1": 0.8333333333333334,
+    "L2": 0.8333333333333334,
+    "L3": 0.8333333333333334,
+    "L4": 0.75,
+    "L5": 0.8333333333333334,
+    "L6": 0.8666666666666666,
+    "NC": 0.7166666666666666
+   },
+   "B": {
+    "L1": 0.8333333333333334,
+    "L2": 0.8333333333333334,
+    "L3": 0.8333333333333334,
+    "L4": 0.75,
+    "L5": 0.8333333333333334,
+    "L6": 0.8666666666666666,
+    "NC": 0.7166666666666666
+   },
+   "match": true
+  },
+  "arm_security_pass_rate": {
+   "A": {
+    "L1": 0.8333333333333334,
+    "L2": 0.5,
+    "L3": 0.5,
+    "L4": 0.16666666666666663,
+    "L5": 0.8333333333333334,
+    "L6": 0.8,
+    "NC": 0.6000000000000001
+   },
+   "B": {
+    "L1": 0.8333333333333334,
+    "L2": 0.5,
+    "L3": 0.5,
+    "L4": 0.16666666666666663,
+    "L5": 0.8333333333333334,
+    "L6": 0.8,
+    "NC": 0.6000000000000001
+   },
+   "match": true
+  },
+  "delta_ft_neural": {
+   "A": 0.2,
+   "B": 0.2,
+   "match": true
+  },
+  "per_seed_delta_ft": {
+   "A": [
+    0.16666666666666666,
+    0.2916666666666667,
+    0.16666666666666666,
+    0.125,
+    0.25
+   ],
+   "B": [
+    0.16666666666666666,
+    0.2916666666666667,
+    0.16666666666666666,
+    0.125,
+    0.25
+   ]
+  },
+  "n_seeds_positive_ft": {
+   "A": 5,
+   "B": 5
+  },
+  "decision": {
+   "A": "PASS",
+   "B": "PASS",
+   "match": true
+  }
+ },
+ "adapter_digests_B": {
+  "L6/seed-0": "sha256:c5f92eb790b7f1849eacead3d96b529eec5bd45e1e0ba8bafab65f417b1473f2",
+  "L6/seed-1": "sha256:6befef57f609c0379d4894e9f127ccde65b20f9acc8996f90b8670ac307c9a9c",
+  "L6/seed-2": "sha256:398d8fdf8383ccf19112fe5ecc688dc3b65a40bc4f02779aa7279af532834679",
+  "L6/seed-3": "sha256:b1da98802a4b4017fb6dfee36a7f6658c2db5fa09821350a6e069404bafa0e9e",
+  "L6/seed-4": "sha256:cdcafeb630c9bbd0715dd9b729d0bf0db3a44cbc1c44da5e163b1a45de4389c0",
+  "NC/seed-0": "sha256:6316ccd6020ea4fdcf60544ac7c6b90120da3c237342ca9274f77a952fbd07f9",
+  "NC/seed-1": "sha256:8ab6f0ce2ed75d9556ad2fc5b42fd1afc0aa305188770d52506b011a21c16d31",
+  "NC/seed-2": "sha256:abcdb7f9e7438f4188853c6c68b001e42ff00ec9f0f21c1b1e11da9b79e5dd94",
+  "NC/seed-3": "sha256:05da5de894c77d885cb930f9db955765ee7adf5947679769bd36831f17bf3c20",
+  "NC/seed-4": "sha256:4a388a91ac4d1953b93d3535236e5b265ac76726638300c8cc4017d0be9ed5aa"
+ },
+ "adapter_bitwise_note": "B adapter digests differ from A bitwise (expected GPU nondeterminism); each adapter is independently digest-bound, receipt-tied, and was physically rehashed and qualified on Runtime B.",
+ "evidence_completeness_note": "B-side bundle carries receipts, plan, dataset proof, arm states, evaluator artifacts, and an adapter digest manifest; adapter binaries were physically verified on Runtime B and are not duplicated here (see Campaign 1 convention).",
+ "verdict": "REPRODUCED"
+}

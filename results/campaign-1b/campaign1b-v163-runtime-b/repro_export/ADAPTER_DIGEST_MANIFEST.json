@@ -1,0 +1,17 @@
+{
+ "schema": "mini-agi-v16.3-adapter-digest-manifest-v1",
+ "campaign_id": "campaign1b-v163",
+ "runtime": "B",
+ "adapters": {
+  "L6/seed-0": "sha256:c5f92eb790b7f1849eacead3d96b529eec5bd45e1e0ba8bafab65f417b1473f2",
+  "L6/seed-1": "sha256:6befef57f609c0379d4894e9f127ccde65b20f9acc8996f90b8670ac307c9a9c",
+  "L6/seed-2": "sha256:398d8fdf8383ccf19112fe5ecc688dc3b65a40bc4f02779aa7279af532834679",
+  "L6/seed-3": "sha256:b1da98802a4b4017fb6dfee36a7f6658c2db5fa09821350a6e069404bafa0e9e",
+  "L6/seed-4": "sha256:cdcafeb630c9bbd0715dd9b729d0bf0db3a44cbc1c44da5e163b1a45de4389c0",
+  "NC/seed-0": "sha256:6316ccd6020ea4fdcf60544ac7c6b90120da3c237342ca9274f77a952fbd07f9",
+  "NC/seed-1": "sha256:8ab6f0ce2ed75d9556ad2fc5b42fd1afc0aa305188770d52506b011a21c16d31",
+  "NC/seed-2": "sha256:abcdb7f9e7438f4188853c6c68b001e42ff00ec9f0f21c1b1e11da9b79e5dd94",
+  "NC/seed-3": "sha256:05da5de894c77d885cb930f9db955765ee7adf5947679769bd36831f17bf3c20",
+  "NC/seed-4": "sha256:4a388a91ac4d1953b93d3535236e5b265ac76726638300c8cc4017d0be9ed5aa"
+ }
+}

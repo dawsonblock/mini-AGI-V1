@@ -1,0 +1,72 @@
+{
+  "arm_hidden_exact_match": {
+    "L1": 0.0,
+    "L2": 0.0,
+    "L3": 0.0,
+    "L4": 0.0,
+    "L5": 0.0,
+    "L6": 0.2,
+    "NC": 0.0
+  },
+  "arm_retention": {
+    "L1": 0.8333333333333334,
+    "L2": 0.8333333333333334,
+    "L3": 0.8333333333333334,
+    "L4": 0.75,
+    "L5": 0.8333333333333334,
+    "L6": 0.8666666666666666,
+    "NC": 0.7166666666666666
+  },
+  "arm_security_pass_rate": {
+    "L1": 0.8333333333333334,
+    "L2": 0.5,
+    "L3": 0.5,
+    "L4": 0.16666666666666663,
+    "L5": 0.8333333333333334,
+    "L6": 0.8,
+    "NC": 0.6000000000000001
+  },
+  "arms": [
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "NC"
+  ],
+  "campaign_plan_digest": "sha256:aa0b028a5821d4f9d6878b04018af9ab390b8c11b196b5aee26439ab7de471c7",
+  "decision": "PASS",
+  "delta_ft_neural_L6_minus_L5": 0.2,
+  "digest": "sha256:8f89140dc17a28e4d9c25093467a0950a2a1fa6984f7f3f6f09abf1840a4d975",
+  "environment_digest": "sha256:d006e241c4ba318e300d6dd4ad1c1f4f48c77a4bb3b10fc9b3179fde541e5ce5",
+  "forward_transfer_vs_L1": {
+    "L2": 0.0,
+    "L3": 0.0,
+    "L4": 0.0,
+    "L5": 0.0,
+    "L6": 0.2,
+    "NC": 0.0
+  },
+  "n_seeds_positive_ft": 5,
+  "negative_control_ft": 0.0,
+  "negative_control_violation": false,
+  "note": "PASS is experimental qualification only; not production promotion authority.",
+  "per_seed_delta_ft_neural": [
+    0.16666666666666666,
+    0.2916666666666667,
+    0.16666666666666666,
+    0.125,
+    0.25
+  ],
+  "promotion_ready": true,
+  "reasons": [],
+  "schema": "mini-agi-v16.2-campaign1-result-v1",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ]
+}
