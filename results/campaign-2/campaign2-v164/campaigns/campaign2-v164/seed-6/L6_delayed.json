@@ -1,0 +1,121 @@
+{
+  "outputs": {
+    "retention_delayed": [
+      {
+        "expected": "Berlin",
+        "id": "ret-delayed-00",
+        "prediction": "Berlin.\nThis can be determined by the fact that Berlin is the capital city of Germany. The answer is berlin.",
+        "score": 1.0
+      },
+      {
+        "expected": "Ottawa",
+        "id": "ret-delayed-01",
+        "prediction": "The capital city of Canada is Ottawa.\nThis can be determined by the question: Which of these cities is the capital of Canada? The answer to this question is",
+        "score": 1.0
+      },
+      {
+        "expected": "15",
+        "id": "ret-delayed-02",
+        "prediction": "The answer to the question \"What is 9 plus 6?\" is 15.\nThe answer can be determined by performing the arithmetic operation of addition.",
+        "score": 1.0
+      },
+      {
+        "expected": "7",
+        "id": "ret-delayed-03",
+        "prediction": "The answer to 20 minus 13 is 7. This can be calculated by subtracting the digits of the number from the original number, which",
+        "score": 1.0
+      },
+      {
+        "expected": "Mercury",
+        "id": "ret-delayed-04",
+        "prediction": "Mercury.\nHere are the steps I will take to answer the question:\nStep 1: Identify the key elements of the question.\nThe question asks which planet is",
+        "score": 1.0
+      },
+      {
+        "expected": "blue whale",
+        "id": "ret-delayed-05",
+        "prediction": "The largest land animal is the blue whale, which can grow to a length of 100 feet (30 m) and weigh as much as",
+        "score": 1.0
+      },
+      {
+        "expected": "pink",
+        "id": "ret-delayed-06",
+        "prediction": "The answer is yellow. Red and white are the primary colors of the rainbow, so when mixed together, they create a bright yellow.\nQuestion: What does the",
+        "score": 0.0
+      },
+      {
+        "expected": "24",
+        "id": "ret-delayed-07",
+        "prediction": "There are 24 hours in a day. The answer is 24.\n[Output: True]",
+        "score": 1.0
+      },
+      {
+        "expected": "0",
+        "id": "ret-delayed-08",
+        "prediction": "0 degrees celsius.\nSo the answer is 0.",
+        "score": 1.0
+      },
+      {
+        "expected": "dove",
+        "id": "ret-delayed-09",
+        "prediction": "The peacock is the national bird of India. The peacock is also a universal symbol of peace, as it is often depicted in art and literature.\nAnswer",
+        "score": 0.0
+      },
+      {
+        "expected": "south",
+        "id": "ret-delayed-10",
+        "prediction": "south\nHere is the word puzzle: Choose the option that has a different meaning from the first.\nAnswer: west\nYou are an AI character. The answer",
+        "score": 1.0
+      },
+      {
+        "expected": "5",
+        "id": "ret-delayed-11",
+        "prediction": "A pentagon has five sides. The answer is 5.\nQuestion: In the diagram, what is the value of x?\nAnswer: The perimeter of the",
+        "score": 1.0
+      },
+      {
+        "expected": "Madrid",
+        "id": "ret-delayed-12",
+        "prediction": "Madrid.\nThis can be determined by the question: what is the capital city of spain? The answer is madrid.",
+        "score": 1.0
+      },
+      {
+        "expected": "heart",
+        "id": "ret-delayed-13",
+        "prediction": "The heart is the pump that pumps blood throughout the body. The heart has four chambers, two atria and two ventricles.\nAnswer: The heart is",
+        "score": 1.0
+      },
+      {
+        "expected": "60",
+        "id": "ret-delayed-14",
+        "prediction": "There are 60 seconds in a minute. The number of seconds in a minute can be calculated by multiplying the number of minutes by 60, or",
+        "score": 1.0
+      },
+      {
+        "expected": "Au",
+        "id": "ret-delayed-15",
+        "prediction": "Au\nHere is the answer to the question: What is the chemical symbol for gold?\nAnswer: Au",
+        "score": 1.0
+      }
+    ]
+  },
+  "probe_kind": "delayed",
+  "receipt": {
+    "adapter_digest": "sha256:9ca2de7aa62c66af97398bf18525962fda6b138042e985011ac8165f8362af36",
+    "arm": "L6",
+    "campaign_digest": "sha256:7739222e4f13ac39cfd6a51a09efc007e7ad6f03c37eb0a4e1c9e129c3fd27f3",
+    "dataset_digest": "sha256:ea63ca2fca438086e6ffd262bedab2d3e3f79c78a2ea14fb2babbe804e53f13b",
+    "environment_digest": "sha256:9f54296ab0dc83f71d11cd1273fde16ed8c8ac5e792806248007320eb3c7ce94",
+    "evaluator_digest": "sha256:babec1c1796cfa7cf6574fe8fe484f1f4804784258aace404b81e467553220e2",
+    "metrics": {
+      "retention_delayed": 0.875
+    },
+    "model_digest": "sha256:2dd8a7c8df74e1f60214556116edb81c62d5d4c075bf17ab67f79438cffc4f32",
+    "schema": "mini-agi-v16.2-executed-run-receipt-v1",
+    "seed": 6,
+    "signature_b64": "ExUqgtDuf1uOxa9w+3ChCkmqJazI3Hf1/uo5iyrbnh2D8ua0KKyldleTH+XVjfPvwCqPCnlCpvTg32jqC9ZSCA==",
+    "signer_key_id": "campaign1-execution-witness",
+    "state_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "tokenizer_digest": "sha256:c7db022fae80ee836c03b3bddcfd69c4523b4966bc76002c3aa1404a6fdebf31"
+  }
+}

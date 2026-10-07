@@ -1,17 +1,24 @@
 {
   "created_utc": "2026-10-06T08:50:02.699595+00:00",
-  "reissued_utc": "2026-10-06T10:35:00+00:00",
+  "reissued_utc": "2026-10-07T13:51:05.233969+00:00",
   "release": "mini-AGI-v16.1-Colab-Converged-Full-Upgraded",
   "schema": "mini-agi-v16.1-release-attestation-v1",
   "signature_algorithm": "Ed25519",
-  "manifest_sha256": "c537f7f9c21fdb5fd9f90823f4dc35f9574db3f615c209bf0d7ec4245979205d",
+  "manifest_sha256": "cc90ff4adac36f9e42cbf29a26806efa5ddf99e5b390d6614aa94bb4ba5ba93c",
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
-  "reissue": {
-    "reason": "post-assembly source updates: scripts/validation harness, status documents with actual Colab results, verify_release install-artifact exclusions, colab_install torchao floor",
-    "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
-    "original_assembly_public_key_sha256": "c55e4d202697ad48c520d538e9300da86de26e3fe97929e2135e9ea7bb9befcf",
-    "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)"
-  },
+  "reissue": [
+    {
+      "reason": "post-assembly source updates: scripts/validation harness, status documents with actual Colab results, verify_release install-artifact exclusions, colab_install torchao floor",
+      "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
+      "original_assembly_public_key_sha256": "c55e4d202697ad48c520d538e9300da86de26e3fe97929e2135e9ea7bb9befcf",
+      "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)"
+    },
+    {
+      "reason": "campaign-2 evidence closure: complete 10-seed v164 matrix + RESULT.json + QUALIFICATION_RECORD.json + CAMPAIGN2_REPORT.md (decision REFUSE on preregistered gates)",
+      "manifest_sha256": "cc90ff4adac36f9e42cbf29a26806efa5ddf99e5b390d6614aa94bb4ba5ba93c",
+      "utc": "2026-10-07T13:51:05.233969+00:00"
+    }
+  ],
   "python_validation": "313/313 PASS (reproduced on Colab T4, 2026-10-06)",
   "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
   "colab_validation": {

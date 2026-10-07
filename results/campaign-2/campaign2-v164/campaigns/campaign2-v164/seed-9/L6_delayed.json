@@ -1,0 +1,121 @@
+{
+  "outputs": {
+    "retention_delayed": [
+      {
+        "expected": "Berlin",
+        "id": "ret-delayed-00",
+        "prediction": "Berlin\nSequence: state, capital, city\nIs answer (introduced as a personal name) correct?\nYes or no. To determine if the answer is",
+        "score": 1.0
+      },
+      {
+        "expected": "Ottawa",
+        "id": "ret-delayed-01",
+        "prediction": "Ottawa\nThis can be determined by checking a map or using a geographic information system. The capital city of Canada is Ottawa, which is located in the province of",
+        "score": 1.0
+      },
+      {
+        "expected": "15",
+        "id": "ret-delayed-02",
+        "prediction": "The answer to the question \"What is 9 plus 6?\" is 15.\nSolution:9 + 6 = 15\nTherefore,",
+        "score": 1.0
+      },
+      {
+        "expected": "7",
+        "id": "ret-delayed-03",
+        "prediction": "The answer to 20 minus 13 is 7.\nTherefore, the answer is 7.",
+        "score": 1.0
+      },
+      {
+        "expected": "Mercury",
+        "id": "ret-delayed-04",
+        "prediction": "Mercury.\nThis can be found by looking at the position of the planet in the sky. The sun is located directly above the horizon for most of the year,",
+        "score": 1.0
+      },
+      {
+        "expected": "blue whale",
+        "id": "ret-delayed-05",
+        "prediction": "The largest land mammal is the blue whale, which can grow to a length of 100 feet (30 m) and weigh as much as",
+        "score": 1.0
+      },
+      {
+        "expected": "pink",
+        "id": "ret-delayed-06",
+        "prediction": "Red and white are the primary colors of the rainbow. The other three colors in the rainbow are blue, orange, and violet.\nTherefore, the answer is red",
+        "score": 0.0
+      },
+      {
+        "expected": "24",
+        "id": "ret-delayed-07",
+        "prediction": "There are 24 hours in a day. The answer is 24.\n[as previously stated].\nThe output shows that there are 24 hours",
+        "score": 1.0
+      },
+      {
+        "expected": "0",
+        "id": "ret-delayed-08",
+        "prediction": "0 degrees celsius.\nReverse engineering: To determine the freezing point of water, we need to convert it from its standard temperature scale. The freezing point of",
+        "score": 1.0
+      },
+      {
+        "expected": "dove",
+        "id": "ret-delayed-09",
+        "prediction": "The peacock is the national bird of India and Pakistan. The peacock is also a universal symbol of peace, as it is often depicted in art and literature",
+        "score": 0.0
+      },
+      {
+        "expected": "south",
+        "id": "ret-delayed-10",
+        "prediction": "south\nThis can be determined by comparing the options provided. The word \"north\" refers to the direction from east to west, while \"south\" refers to",
+        "score": 1.0
+      },
+      {
+        "expected": "5",
+        "id": "ret-delayed-11",
+        "prediction": "A pentagon has five sides. The answer is five.\n[Previous question] What is the perimeter of a square with side length 10 cm? [",
+        "score": 0.0
+      },
+      {
+        "expected": "Madrid",
+        "id": "ret-delayed-12",
+        "prediction": "Madrid\nSequence: city, country\nIs answer correct? Yes, it's a correct answer to the question \"What is the capital city of Spain?\" The",
+        "score": 1.0
+      },
+      {
+        "expected": "heart",
+        "id": "ret-delayed-13",
+        "prediction": "The heart.\nExplanation: The heart is the pump that moves blood throughout the body. It has four chambers, two of which are atria and two of which",
+        "score": 1.0
+      },
+      {
+        "expected": "60",
+        "id": "ret-delayed-14",
+        "prediction": "There are 60 seconds in a minute. The answer is 60.\n[as previously stated]",
+        "score": 1.0
+      },
+      {
+        "expected": "Au",
+        "id": "ret-delayed-15",
+        "prediction": "Au\nThis can be determined by looking at the periodic table. Gold has a symbol of Au.\nTherefore, the answer is Au.",
+        "score": 1.0
+      }
+    ]
+  },
+  "probe_kind": "delayed",
+  "receipt": {
+    "adapter_digest": "sha256:28b80f134aec65bddb8f3ad1f80fe5467ebdbefc73c02e7c0ef6c1d747aa1f4b",
+    "arm": "L6",
+    "campaign_digest": "sha256:7739222e4f13ac39cfd6a51a09efc007e7ad6f03c37eb0a4e1c9e129c3fd27f3",
+    "dataset_digest": "sha256:ea63ca2fca438086e6ffd262bedab2d3e3f79c78a2ea14fb2babbe804e53f13b",
+    "environment_digest": "sha256:39b9f7b7d9d455ce889030b2e4f4fca4e54fd4ca6825ea7cb28cb39d0afd9e0f",
+    "evaluator_digest": "sha256:babec1c1796cfa7cf6574fe8fe484f1f4804784258aace404b81e467553220e2",
+    "metrics": {
+      "retention_delayed": 0.8125
+    },
+    "model_digest": "sha256:2dd8a7c8df74e1f60214556116edb81c62d5d4c075bf17ab67f79438cffc4f32",
+    "schema": "mini-agi-v16.2-executed-run-receipt-v1",
+    "seed": 9,
+    "signature_b64": "rP2UTsGlLclY3AXm168iJSwOq79aimDDa+P7RRASoSHDOIDYlatIenFETgDLrHG8NSGVuOiLEfwr8BVjYKwsAg==",
+    "signer_key_id": "campaign1-execution-witness",
+    "state_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "tokenizer_digest": "sha256:c7db022fae80ee836c03b3bddcfd69c4523b4966bc76002c3aa1404a6fdebf31"
+  }
+}

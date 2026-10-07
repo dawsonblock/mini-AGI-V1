@@ -1,0 +1,121 @@
+{
+  "outputs": {
+    "retention_delayed": [
+      {
+        "expected": "Berlin",
+        "id": "ret-delayed-00",
+        "prediction": "Berlin.\nThis can be determined by the information in the first sentence of the answer, which states that Berlin is the capital city of Germany. The other options (",
+        "score": 1.0
+      },
+      {
+        "expected": "Ottawa",
+        "id": "ret-delayed-01",
+        "prediction": "Toronto.\nThis can be determined from the first letter of the word \"Toronto\".\nTherefore, the answer is Toronto.",
+        "score": 0.0
+      },
+      {
+        "expected": "15",
+        "id": "ret-delayed-02",
+        "prediction": "The answer to the question \"What is 9 plus 6?\" is 15.\nTo determine this, I looked at the digits of the numbers being",
+        "score": 1.0
+      },
+      {
+        "expected": "7",
+        "id": "ret-delayed-03",
+        "prediction": "The answer is 7.\nSolution:\nTo subtract a number from another, you can add the opposite of that number to the first number. In this case,",
+        "score": 1.0
+      },
+      {
+        "expected": "Mercury",
+        "id": "ret-delayed-04",
+        "prediction": "Mercury.\nExplanation: Mercury orbits the Sun in an elliptical path, with its perihelion (closest point) at 57.9 million miles",
+        "score": 1.0
+      },
+      {
+        "expected": "blue whale",
+        "id": "ret-delayed-05",
+        "prediction": "The largest land animal is the blue whale, which can grow to a length of 100 feet (30 m) and weigh as much as",
+        "score": 1.0
+      },
+      {
+        "expected": "pink",
+        "id": "ret-delayed-06",
+        "prediction": "Red and white are the same color. The answer is red.\n[Previous question] Is it possible to make a rainbow with just water? [Next question]",
+        "score": 0.0
+      },
+      {
+        "expected": "24",
+        "id": "ret-delayed-07",
+        "prediction": "There are 24 hours in a day. The answer is 24.\n[as of January 1, 2023].\nQuestion:",
+        "score": 1.0
+      },
+      {
+        "expected": "0",
+        "id": "ret-delayed-08",
+        "prediction": "0 degrees Celsius.\nExplanation: Water freezes at 0 degrees Celsius. The freezing point of water is the temperature at which it changes from a liquid to a",
+        "score": 1.0
+      },
+      {
+        "expected": "dove",
+        "id": "ret-delayed-09",
+        "prediction": "The peacock is the national bird of India. The peacock is also known as the king of birds and is one of the most beautiful birds in the world",
+        "score": 0.0
+      },
+      {
+        "expected": "south",
+        "id": "ret-delayed-10",
+        "prediction": "south.\nThis question and answer pair are incorrect because they do not consider the geographical context. The correct answer to \"What is the opposite of north? \" would",
+        "score": 1.0
+      },
+      {
+        "expected": "5",
+        "id": "ret-delayed-11",
+        "prediction": "A pentagon has 5 sides. The sum of the interior angles of any polygon is (n-2) x 180 degrees, where n",
+        "score": 1.0
+      },
+      {
+        "expected": "Madrid",
+        "id": "ret-delayed-12",
+        "prediction": "Madrid.\nThis can be determined by the information provided in the question. The capital city of Spain is Madrid.\nTherefore, the answer is Madrid.",
+        "score": 1.0
+      },
+      {
+        "expected": "heart",
+        "id": "ret-delayed-13",
+        "prediction": "The heart.\nExplanation: The heart is the pump that moves blood throughout the body. It contracts and relaxes to push blood forward, pumping it out of the",
+        "score": 1.0
+      },
+      {
+        "expected": "60",
+        "id": "ret-delayed-14",
+        "prediction": "There are 60 seconds in a minute. The answer is 60.\n[as of January 21, 2023]",
+        "score": 1.0
+      },
+      {
+        "expected": "Au",
+        "id": "ret-delayed-15",
+        "prediction": "Au\nThis can be determined by looking at the position of the element in the periodic table. Gold is located on the right side of the chart, and it",
+        "score": 1.0
+      }
+    ]
+  },
+  "probe_kind": "delayed",
+  "receipt": {
+    "adapter_digest": "sha256:0db8bb80ec0f19f8c5f0d16c3c005eea4c2e37653a499b485ea66364199518c5",
+    "arm": "L6",
+    "campaign_digest": "sha256:7739222e4f13ac39cfd6a51a09efc007e7ad6f03c37eb0a4e1c9e129c3fd27f3",
+    "dataset_digest": "sha256:ea63ca2fca438086e6ffd262bedab2d3e3f79c78a2ea14fb2babbe804e53f13b",
+    "environment_digest": "sha256:3d14ba958e7fc49a9423efffd4feea9a30e0af3b7d0773c241160815eba60273",
+    "evaluator_digest": "sha256:babec1c1796cfa7cf6574fe8fe484f1f4804784258aace404b81e467553220e2",
+    "metrics": {
+      "retention_delayed": 0.8125
+    },
+    "model_digest": "sha256:2dd8a7c8df74e1f60214556116edb81c62d5d4c075bf17ab67f79438cffc4f32",
+    "schema": "mini-agi-v16.2-executed-run-receipt-v1",
+    "seed": 8,
+    "signature_b64": "McVYZqmc4fdQn8vE8YkowbsJr4mTmu872pJpMWL3xWMcLtdO5hi9owJCkn4/KjQHmwwpOzYju57q/ayJO6kTAg==",
+    "signer_key_id": "campaign1-execution-witness",
+    "state_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "tokenizer_digest": "sha256:c7db022fae80ee836c03b3bddcfd69c4523b4966bc76002c3aa1404a6fdebf31"
+  }
+}

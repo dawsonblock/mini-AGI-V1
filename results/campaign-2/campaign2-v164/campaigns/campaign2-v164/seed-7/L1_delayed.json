@@ -1,0 +1,121 @@
+{
+  "outputs": {
+    "retention_delayed": [
+      {
+        "expected": "Berlin",
+        "id": "ret-delayed-00",
+        "prediction": "The capital city of Germany is Berlin.\nThis justifies what answer for what question? Q & A:\n\nQ: Where is the capital city of Germany?\n\nA",
+        "score": 1.0
+      },
+      {
+        "expected": "Ottawa",
+        "id": "ret-delayed-01",
+        "prediction": "The capital city of Canada is Ottawa.\nThis justifies what answer for what question? Q & A:\n\nQ: Where is the capital city of Canada located?",
+        "score": 1.0
+      },
+      {
+        "expected": "15",
+        "id": "ret-delayed-02",
+        "prediction": "The answer to \"What is 9 plus 6?\" is 15.\nQuestion: What is the sum of 3 and 4?\nAnswer:",
+        "score": 1.0
+      },
+      {
+        "expected": "7",
+        "id": "ret-delayed-03",
+        "prediction": "The answer to the question \"What is 20 minus 13?\" is 7.\nChain of reasoning: To find the difference between two numbers,",
+        "score": 1.0
+      },
+      {
+        "expected": "Mercury",
+        "id": "ret-delayed-04",
+        "prediction": "Mercury is the closest planet to the Sun, with a distance of about 57.9 million kilometers (36 million miles) from the Sun.\n Has",
+        "score": 1.0
+      },
+      {
+        "expected": "blue whale",
+        "id": "ret-delayed-05",
+        "prediction": "The largest land animal, the blue whale, can grow to be up to 100 feet long and weigh as much as 250 tons.",
+        "score": 1.0
+      },
+      {
+        "expected": "pink",
+        "id": "ret-delayed-06",
+        "prediction": "The answer is pink. Mixing red and white produces a pink hue.\nQuestion: Is it possible to make a rainbow with just water?\nAnswer: No, it",
+        "score": 1.0
+      },
+      {
+        "expected": "24",
+        "id": "ret-delayed-07",
+        "prediction": "A standard 24-hour clock is divided into 12 equal parts, each of which is called an hour. Each hour has 60 minutes.",
+        "score": 1.0
+      },
+      {
+        "expected": "0",
+        "id": "ret-delayed-08",
+        "prediction": "Water freezes at 0 degrees Celsius. This is the freezing point of water, which is a specific temperature that defines the state of matter for water.\nTherefore,",
+        "score": 1.0
+      },
+      {
+        "expected": "dove",
+        "id": "ret-delayed-09",
+        "prediction": "The peacock is a universal symbol of peace. It has been used as a symbol of peace for thousands of years, and it is also associated with the concept",
+        "score": 0.0
+      },
+      {
+        "expected": "south",
+        "id": "ret-delayed-10",
+        "prediction": "The opposite of north is south. This can be determined by understanding that the compass points are always in a clockwise direction, with the North pole pointing towards the top",
+        "score": 1.0
+      },
+      {
+        "expected": "5",
+        "id": "ret-delayed-11",
+        "prediction": "A pentagon has five sides. The definition of a polygon is a closed plane figure formed by straight line segments joining together at vertices, called points, so that",
+        "score": 0.0
+      },
+      {
+        "expected": "Madrid",
+        "id": "ret-delayed-12",
+        "prediction": "The capital city of Spain is Madrid.\nThis is the relevant information to answer the question correctly: Madrid is the capital city of Spain.",
+        "score": 1.0
+      },
+      {
+        "expected": "heart",
+        "id": "ret-delayed-13",
+        "prediction": "The heart is the pump that pumps blood throughout the body. It has four chambers, two of which are called atria and two of which are called ventric",
+        "score": 1.0
+      },
+      {
+        "expected": "60",
+        "id": "ret-delayed-14",
+        "prediction": "There are 60 seconds in one minute. To find this, we can use the fact that there are 60 minutes in an hour and 2",
+        "score": 1.0
+      },
+      {
+        "expected": "Au",
+        "id": "ret-delayed-15",
+        "prediction": "The chemical symbol for gold is Au. To answer this question, we need to understand that the chemical symbol of a substance is a shorthand way of representing its composition",
+        "score": 1.0
+      }
+    ]
+  },
+  "probe_kind": "delayed",
+  "receipt": {
+    "adapter_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "arm": "L1",
+    "campaign_digest": "sha256:7739222e4f13ac39cfd6a51a09efc007e7ad6f03c37eb0a4e1c9e129c3fd27f3",
+    "dataset_digest": "sha256:ea63ca2fca438086e6ffd262bedab2d3e3f79c78a2ea14fb2babbe804e53f13b",
+    "environment_digest": "sha256:30d19025fcf4bd76eaa8470336708eca689201d67be467459e088828509746fa",
+    "evaluator_digest": "sha256:babec1c1796cfa7cf6574fe8fe484f1f4804784258aace404b81e467553220e2",
+    "metrics": {
+      "retention_delayed": 0.875
+    },
+    "model_digest": "sha256:2dd8a7c8df74e1f60214556116edb81c62d5d4c075bf17ab67f79438cffc4f32",
+    "schema": "mini-agi-v16.2-executed-run-receipt-v1",
+    "seed": 7,
+    "signature_b64": "pP85M8kLixQNc83koY87pGUQkQ1ei1FVJMGSUbp4BNvP1/z4n53Ge47a3K+CAfPFGYzUUTamggjJi/2pFfcJAg==",
+    "signer_key_id": "campaign1-execution-witness",
+    "state_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "tokenizer_digest": "sha256:c7db022fae80ee836c03b3bddcfd69c4523b4966bc76002c3aa1404a6fdebf31"
+  }
+}

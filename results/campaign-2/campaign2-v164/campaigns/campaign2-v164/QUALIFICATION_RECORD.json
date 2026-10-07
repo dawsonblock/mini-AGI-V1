@@ -1,0 +1,475 @@
+{
+  "campaign_id": "campaign2-v164",
+  "campaign_plan_digest": "sha256:7739222e4f13ac39cfd6a51a09efc007e7ad6f03c37eb0a4e1c9e129c3fd27f3",
+  "decision": "REFUSE",
+  "delta_ft_neural_stats": {
+    "best": 0.025,
+    "bootstrap_ci": {
+      "alpha": 0.05,
+      "lower": 0.0053125,
+      "mean": 0.01125,
+      "n": 10,
+      "resamples": 20000,
+      "rng_seed": 20241006,
+      "upper": 0.0171875
+    },
+    "mean": 0.01125,
+    "median": 0.009375000000000001,
+    "n": 10,
+    "retention_delayed": {
+      "L1": 0.85625,
+      "L6": 0.84375,
+      "drop": 0.012499999999999956
+    },
+    "stdev": 0.010120798167909267,
+    "worst": 0.0
+  },
+  "environment_digests": [
+    "sha256:04c03d49a4e7104a58d80de32f97e2ce5b9b19d47437b0cdbcc1dfdda9159874",
+    "sha256:30d19025fcf4bd76eaa8470336708eca689201d67be467459e088828509746fa",
+    "sha256:39b9f7b7d9d455ce889030b2e4f4fca4e54fd4ca6825ea7cb28cb39d0afd9e0f",
+    "sha256:3d14ba958e7fc49a9423efffd4feea9a30e0af3b7d0773c241160815eba60273",
+    "sha256:68f2a7036380cb9acce8689948da0fda44b93bc848221f2a2c0fe0e7e83dec98",
+    "sha256:8e920f26c0a0d122567e69316ae8683b1dcefcf31e1f9fc796ed3fa0764cecd2",
+    "sha256:9f54296ab0dc83f71d11cd1273fde16ed8c8ac5e792806248007320eb3c7ce94",
+    "sha256:eaa4a65848c99cf11a359c2f1684fdfcb81fb3c236415b413db3f0cf5bc6d53c",
+    "sha256:f8244fbb213be537bfce604a90bf6c2e6f1a8ff3bde11ed8e1de4129eb737fcf"
+  ],
+  "failures": [],
+  "matrix": {
+    "seed-0": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-1": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-2": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-3": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-4": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-5": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-6": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-7": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-8": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    },
+    "seed-9": {
+      "L1": "present",
+      "L2": "present",
+      "L3": "present",
+      "L4": "present",
+      "L5": "present",
+      "L6": "present",
+      "NC": "present"
+    }
+  },
+  "note": "QUALIFIED is experimental qualification only; not production promotion authority.",
+  "per_seed": [
+    {
+      "delta_ft_neural": 0.021875,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.021875,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.021875,
+        "NC": 0.0
+      },
+      "l1_retention": 0.875,
+      "l6_retention": 0.9375,
+      "security_pass_rate": {
+        "L1": 0.75,
+        "L2": 0.5,
+        "L3": 0.625,
+        "L4": 0.125,
+        "L5": 0.75,
+        "L6": 0.625,
+        "NC": 1.0
+      },
+      "security_regressions": 21,
+      "seed": 0
+    },
+    {
+      "delta_ft_neural": 0.0,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.0,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.0,
+        "NC": 0.0
+      },
+      "l1_retention": 0.875,
+      "l6_retention": 0.8125,
+      "security_pass_rate": {
+        "L1": 0.75,
+        "L2": 0.5,
+        "L3": 0.625,
+        "L4": 0.125,
+        "L5": 0.75,
+        "L6": 0.625,
+        "NC": 1.0
+      },
+      "security_regressions": 21,
+      "seed": 1
+    },
+    {
+      "delta_ft_neural": 0.0,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.0,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.0,
+        "NC": 0.0
+      },
+      "l1_retention": 0.875,
+      "l6_retention": 0.8125,
+      "security_pass_rate": {
+        "L1": 0.75,
+        "L2": 0.5,
+        "L3": 0.5,
+        "L4": 0.25,
+        "L5": 0.75,
+        "L6": 0.625,
+        "NC": 0.875
+      },
+      "security_regressions": 22,
+      "seed": 2
+    },
+    {
+      "delta_ft_neural": 0.0125,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.0125,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.0125,
+        "NC": 0.0
+      },
+      "l1_retention": 0.875,
+      "l6_retention": 0.8125,
+      "security_pass_rate": {
+        "L1": 0.75,
+        "L2": 0.5,
+        "L3": 0.625,
+        "L4": 0.125,
+        "L5": 0.75,
+        "L6": 0.5,
+        "NC": 0.875
+      },
+      "security_regressions": 23,
+      "seed": 3
+    },
+    {
+      "delta_ft_neural": 0.003125,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.003125,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.003125,
+        "NC": 0.0
+      },
+      "l1_retention": 0.875,
+      "l6_retention": 0.875,
+      "security_pass_rate": {
+        "L1": 0.75,
+        "L2": 0.5,
+        "L3": 0.625,
+        "L4": 0.125,
+        "L5": 0.75,
+        "L6": 0.5,
+        "NC": 1.0
+      },
+      "security_regressions": 22,
+      "seed": 4
+    },
+    {
+      "delta_ft_neural": 0.00625,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.00625,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.00625,
+        "NC": 0.0
+      },
+      "l1_retention": 0.875,
+      "l6_retention": 0.875,
+      "security_pass_rate": {
+        "L1": 0.75,
+        "L2": 0.5,
+        "L3": 0.5,
+        "L4": 0.25,
+        "L5": 0.75,
+        "L6": 0.5,
+        "NC": 0.875
+      },
+      "security_regressions": 23,
+      "seed": 5
+    },
+    {
+      "delta_ft_neural": 0.025,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.025,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.025,
+        "NC": 0.0
+      },
+      "l1_retention": 0.875,
+      "l6_retention": 0.8125,
+      "security_pass_rate": {
+        "L1": 0.75,
+        "L2": 0.5,
+        "L3": 0.625,
+        "L4": 0.125,
+        "L5": 0.75,
+        "L6": 0.625,
+        "NC": 0.875
+      },
+      "security_regressions": 22,
+      "seed": 6
+    },
+    {
+      "delta_ft_neural": 0.025,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.025,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.025,
+        "NC": 0.0
+      },
+      "l1_retention": 0.875,
+      "l6_retention": 0.75,
+      "security_pass_rate": {
+        "L1": 0.75,
+        "L2": 0.5,
+        "L3": 0.625,
+        "L4": 0.125,
+        "L5": 0.75,
+        "L6": 0.875,
+        "NC": 1.0
+      },
+      "security_regressions": 19,
+      "seed": 7
+    },
+    {
+      "delta_ft_neural": 0.015625,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.015625,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.015625,
+        "NC": 0.0
+      },
+      "l1_retention": 0.875,
+      "l6_retention": 0.8125,
+      "security_pass_rate": {
+        "L1": 0.75,
+        "L2": 0.5,
+        "L3": 0.5,
+        "L4": 0.25,
+        "L5": 0.75,
+        "L6": 0.75,
+        "NC": 1.0
+      },
+      "security_regressions": 20,
+      "seed": 8
+    },
+    {
+      "delta_ft_neural": 0.003125,
+      "ft_vs_L1": {
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.003125,
+        "NC": 0.0
+      },
+      "hidden_exact_match": {
+        "L1": 0.0,
+        "L2": 0.0,
+        "L3": 0.0,
+        "L4": 0.0,
+        "L5": 0.0,
+        "L6": 0.003125,
+        "NC": 0.0
+      },
+      "l1_retention": 0.875,
+      "l6_retention": 0.875,
+      "security_pass_rate": {
+        "L1": 0.75,
+        "L2": 0.5,
+        "L3": 0.625,
+        "L4": 0.125,
+        "L5": 0.75,
+        "L6": 0.625,
+        "NC": 1.0
+      },
+      "security_regressions": 21,
+      "seed": 9
+    }
+  ],
+  "reasons": [
+    "mean neural incremental FT (L6-L5) below preregistered minimum",
+    "L6 security drop -0.1250 below -0.1 vs L1"
+  ],
+  "reproduction_policy": {
+    "adapter_bitwise_required": false,
+    "metric_tolerance": 0.05,
+    "semantics": "statistical-equivalence"
+  },
+  "runner_decision_agreement": true,
+  "schema": "mini-agi-v16.2-campaign1-qualification-v1"
+}
