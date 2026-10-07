@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministically generate configs/campaign3_tasks.jsonl.
 
-Campaign 3 (campaign3-v165) — adaptation-footprint decision experiment
+Campaign 3 (campaign3-v164) — adaptation-footprint decision experiment
 following the Campaign 2 qualified-negative (see
 docs/research/CAMPAIGN3_DESIGN.md):
 

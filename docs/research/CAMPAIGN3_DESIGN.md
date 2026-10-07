@@ -1,5 +1,6 @@
-# Campaign 3 (campaign3-v165) — Adaptation-Footprint Decision Experiment
+# Campaign 3 (campaign3-v164) — Adaptation-Footprint Decision Experiment
 
+Naming: campaign id suffix follows the plan schema version in use (v164 semantics; no new plan class), not the campaign ordinal.
 Status: **DRAFT for review** — not yet preregistered or executed.
 Config: `configs/campaign3.yaml`; corpus: `configs/campaign3_tasks.jsonl`
 (generator: `scripts/generate_campaign3_tasks.py`).
@@ -69,7 +70,7 @@ Why lr over the other levers:
 All Campaign-2 gate values are preserved verbatim, including the 0.02
 mean-FT floor. Consequences:
 
-- If campaign3-v165 QUALIFIES, it is promotion-relevant at the same bar
+- If campaign3-v164 QUALIFIES, it is promotion-relevant at the same bar
   Campaign 2 failed.
 - If it REFUSEs only on the FT floor while holding security, that
   confirms the security mitigation works but that halved pressure

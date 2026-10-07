@@ -1,4 +1,4 @@
-campaign_id: campaign3-v165
+campaign_id: campaign3-v164
 plan_version: v164
 dataset: configs/campaign3_tasks.jsonl
 require_cuda: true
