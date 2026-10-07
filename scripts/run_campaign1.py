@@ -310,7 +310,19 @@ def main() -> int:
 
     campaign_dir = storage.root / "campaigns" / cfg["campaign_id"]
     campaign_dir.mkdir(parents=True, exist_ok=True)
-    signer = Ed25519Signer.generate("campaign1-execution-witness")
+    # Witness-key persistence enables resume across reclaimed runtimes:
+    # the private key lives at storage/.keys/ — OUTSIDE the campaign
+    # evidence tree — so a restarted process re-signs the identical
+    # plan and prior receipts stay verifiable. Never publish it.
+    key_dir = storage.root / ".keys"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    key_path = key_dir / f"{cfg['campaign_id']}-execution-private-key.bin"
+    if key_path.is_file():
+        signer = Ed25519Signer.from_private_bytes(
+            key_path.read_bytes(), "campaign1-execution-witness")
+    else:
+        signer = Ed25519Signer.generate("campaign1-execution-witness")
+        key_path.write_bytes(signer.private_bytes())
     verifier = Ed25519Verifier()
     verifier.register(signer.key_id, signer.public_bytes())
     plan_sig = signer.sign(asdict(plan))
@@ -337,6 +349,10 @@ def main() -> int:
         if (run_dir / "COMPLETE").is_file() and seed_result_path.is_file():
             all_seeds.append(json.loads(seed_result_path.read_text()))
             continue
+        # Resume semantics: a seed dir without COMPLETE is a torn run —
+        # wipe it so stale cells from a reclaimed runtime can't linger.
+        for stale in run_dir.iterdir():
+            stale.unlink()
         random.seed(seed)
         tokenizer = load_tokenizer(spec)
         model = load_causal_lm(spec)
@@ -599,9 +615,17 @@ def main() -> int:
                            f"{plan.negative_control_max_ft} — pipeline suspect")
 
     decision = "PASS" if not reasons else "BLOCK"
+    envs_seen = set()
+    for s in all_seeds:
+        for a in arms_in_plan:
+            p = campaign_dir / f"seed-{s['seed']}" / f"{a}.json"
+            if p.is_file():
+                envs_seen.add(json.loads(p.read_text())
+                              ["receipt"]["environment_digest"])
     summary = {"schema": "mini-agi-v16.2-campaign1-result-v1",
                "campaign_plan_digest": plan.digest,
                "environment_digest": env.digest,
+               "environment_digests": sorted(envs_seen),
                "arms": list(arms_in_plan),
                "seeds": list(seeds),
                "arm_hidden_exact_match": arm_hidden,

@@ -20,7 +20,7 @@
   },
   "created_utc": "2026-10-06T08:50:02.699595+00:00",
   "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
-  "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
+  "manifest_sha256": "1446b7510ba87c9ac1c027ce7eaed249528636192bb7a634b151301e722b2ae8",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "313/313 PASS (reproduced on Colab T4, 2026-10-06)",
@@ -48,6 +48,10 @@
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
       "reason": "Campaign 2 (v164) harness added: corpus generator + 464-row corpus, V164 plan schema, bootstrap CI, delayed-retention probes, efficiency metrics, qualifier extensions"
+    },
+    {
+      "manifest_sha256": "1446b7510ba87c9ac1c027ce7eaed249528636192bb7a634b151301e722b2ae8",
+      "reason": "v164 resume semantics: persisted witness key + per-seed env atomicity for reclaimed-runtime survival"
     }
   ],
   "release": "mini-AGI-v16.2-Colab-Converged-Full-Upgraded",

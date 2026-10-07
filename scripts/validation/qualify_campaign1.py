@@ -223,9 +223,38 @@ def main() -> int:
         if arm == "L1" and (receipt.adapter_digest != ZERO or receipt.state_digest != ZERO):
             fail(f"seed-{seed}/L1", "frozen arm carries non-zero digests")
 
-    envs = {r.environment_digest for r in receipts.values()}
-    if len(envs) != 1:
-        fail("environment", f"receipts span {len(envs)} environment digests")
+    if isinstance(plan, ColabCampaignPlanV164):
+        # Per-seed atomicity (resume-tolerant): every cell of a seed —
+        # arms + delayed probes — must share ONE environment digest, so
+        # within-seed comparisons are single-environment. Different
+        # seeds may come from different runtimes (the runner's resume
+        # semantics redo a seed entirely in one environment); this is
+        # the multi-site-trial analogue, and env provenance is still
+        # bound into every receipt.
+        delayed_receipts = {}
+        for seed in plan.seeds:
+            cell_path = campaign_dir / f"seed-{seed}"
+            for nm in ("L1_delayed", "L6_delayed"):
+                p = cell_path / f"{nm}.json"
+                if p.is_file():
+                    try:
+                        delayed_receipts[(seed, nm)] = ExecutedRunReceiptV162(
+                            **json.loads(p.read_text())["receipt"])
+                    except Exception:
+                        pass
+        for seed in plan.seeds:
+            seed_envs = {receipts[(seed, a)].environment_digest
+                         for a in plan.arms if (seed, a) in receipts}
+            seed_envs |= {r.environment_digest for (s, _), r in
+                          delayed_receipts.items() if s == seed}
+            if len(seed_envs) != 1:
+                fail("environment", f"seed-{seed} spans "
+                                    f"{len(seed_envs)} environment digests")
+    else:
+        envs = {r.environment_digest for r in receipts.values()}
+        if len(envs) != 1:
+            fail("environment",
+                 f"receipts span {len(envs)} environment digests")
     models = {r.model_digest for r in receipts.values()}
     if len(models) != 1:
         fail("model", f"receipts span {len(models)} model digests")
@@ -354,6 +383,8 @@ def main() -> int:
         "schema": "mini-agi-v16.2-campaign1-qualification-v1",
         "campaign_id": args.campaign_id,
         "campaign_plan_digest": plan.digest,
+        "environment_digests": sorted({r.environment_digest
+                                       for r in receipts.values()}),
         "matrix": matrix,
         "per_seed": per_seed,
         "delta_ft_neural_stats": stats,
