@@ -451,9 +451,11 @@ def main() -> int:
             train_secs = round(
                 (train_receipt.get("finished_ns", 0) - train_receipt.get("started_ns", 0))
                 / 1e9, 3)
+            # Count on the training instance: the inference-reloaded adapter is
+            # fully frozen (requires_grad=False), which would report 0.
+            trainable = int(sum(p.numel() for p in model.parameters() if p.requires_grad))
             free_model(model)
             model = load_causal_lm(spec, adapter_path=str(adir))
-            trainable = int(sum(p.numel() for p in model.parameters() if p.requires_grad))
             metrics, outputs = run_eval_block(None, arm_id)
             metrics["arm_state_bytes"] = dir_size_bytes(adir)
             metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
