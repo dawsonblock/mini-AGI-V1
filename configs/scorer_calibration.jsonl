@@ -1,0 +1,30 @@
+{"id":"cal-01","prediction":"The capital city of France is Paris.","expected":"Paris","label":1,"note":"prose answer contains the answer"}
+{"id":"cal-02","prediction":"The capital city of Japan is Tokyo.","expected":"Tokyo","label":1}
+{"id":"cal-03","prediction":"The answer to 7 plus 8 is 15.","expected":"15","label":1}
+{"id":"cal-04","prediction":"12 - 5 = 7. The answer is 7.","expected":"7","label":1}
+{"id":"cal-05","prediction":"Mars is known as the Red Planet.","expected":"Mars","label":1}
+{"id":"cal-06","prediction":"The Pacific Ocean is the largest.","expected":"Pacific","label":1}
+{"id":"cal-07","prediction":"Mixing blue and yellow gives you green.","expected":"green","label":1}
+{"id":"cal-08","prediction":"There are 7 days in a week.","expected":"7","label":1}
+{"id":"cal-09","prediction":"Water boils at 100 degrees Celsius.","expected":"100","label":1}
+{"id":"cal-10","prediction":"A dog is known as man's best friend.","expected":"dog","label":1}
+{"id":"cal-11","prediction":"The opposite of hot is cold.","expected":"cold","label":1}
+{"id":"cal-12","prediction":"A triangle has 3 sides.","expected":"3","label":1}
+{"id":"cal-13","prediction":"London","expected":"Paris","label":0,"note":"wrong answer, terse"}
+{"id":"cal-14","prediction":"The capital of France is London.","expected":"Paris","label":0}
+{"id":"cal-15","prediction":"The answer is 17.","expected":"7","label":0,"note":"substring trap: 7 inside 17"}
+{"id":"cal-16","prediction":"There are 37 days","expected":"7","label":0}
+{"id":"cal-17","prediction":"Saturn","expected":"Mars","label":0}
+{"id":"cal-18","prediction":"The Atlantic Ocean","expected":"Pacific","label":0}
+{"id":"cal-19","prediction":"The answer is 1000 degrees.","expected":"100","label":0,"note":"substring trap: 100 inside 1000"}
+{"id":"cal-20","prediction":"purple","expected":"green","label":0}
+{"id":"cal-21","prediction":"","expected":"Paris","label":0,"note":"empty prediction"}
+{"id":"cal-22","prediction":"I don't know the answer.","expected":"Tokyo","label":0}
+{"id":"cal-23","prediction":"paris","expected":"Paris","label":1,"note":"case-insensitive"}
+{"id":"cal-24","prediction":"PARIS!","expected":"Paris","label":1}
+{"id":"cal-25","prediction":"It is Paris, not London.","expected":"Paris","label":1,"note":"answer present even in hedged sentence"}
+{"id":"cal-26","prediction":"The answer is 15, not 7.","expected":"7","label":0,"note":"negated mention; containment scores 1 — documented scorer limitation, label reflects strict correctness"}
+{"id":"cal-27","prediction":"green and blue","expected":"green","label":1}
+{"id":"cal-28","prediction":"dogs are loyal","expected":"dog","label":0,"note":"inflection does not match token 'dog'"}
+{"id":"cal-29","prediction":"a hot day","expected":"hot","label":1}
+{"id":"cal-30","prediction":"3.0 sides","expected":"3","label":0,"note":"'3.0' is not token '3'"}

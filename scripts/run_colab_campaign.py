@@ -72,7 +72,12 @@ def main():
     arts=[EvaluatorArtifact.from_callable("exact-match-v1",exact_match),EvaluatorArtifact.from_callable("retention-v1",retention_score),EvaluatorArtifact.from_callable("security-v1",security_regression)]
     for a in arts: registry.register(a)
     score_fn=registry.resolve(arts[0].digest); retention_fn=registry.resolve(arts[1].digest); security_fn=registry.resolve(arts[2].digest)
-    model_cfg=cfg["model"]; spec=HFLoadSpec(model_cfg["id"],str(model_cfg.get("revision","main")),str(model_cfg.get("dtype","auto")),str(model_cfg.get("quantization","none")),bool(model_cfg.get("trust_remote_code",False)))
+    model_cfg=cfg["model"]
+    rev=str(model_cfg.get("revision","auto"))
+    if rev=="auto":
+        from huggingface_hub import HfApi
+        rev=str(HfApi().model_info(model_cfg["id"]).sha)
+    spec=HFLoadSpec(model_cfg["id"],rev,str(model_cfg.get("dtype","auto")),str(model_cfg.get("quantization","none")),bool(model_cfg.get("trust_remote_code",False)))
     seeds=tuple(int(x) for x in cfg.get("seeds",[0]))
     plan=ColabCampaignPlanV161(str(cfg["campaign_id"]),spec.model_id,spec.revision,parts.digest,arts[0].digest,arts[1].digest,arts[2].digest,seeds,float(cfg.get("minimum_forward_transfer",0.0)),float(cfg.get("minimum_retention",0.0)),True)
     campaign_dir=storage.root/"campaigns"/cfg["campaign_id"]; campaign_dir.mkdir(parents=True,exist_ok=True)

@@ -4,7 +4,7 @@ require_cuda: true
 require_family_disjoint_hidden: false
 model:
   id: Qwen/Qwen2.5-0.5B-Instruct
-  revision: main
+  revision: auto   # resolved to immutable HF commit at plan time
   dtype: bfloat16
   quantization: none
   trust_remote_code: false

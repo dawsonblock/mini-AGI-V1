@@ -81,3 +81,11 @@ third_party/openhands-benchmarks/
 # External OSWorld V2 harness/services and their large local VM/assets.
 third_party/OSWorld-V2/
 third_party/OSWorld-GitLab/
+
+# Validation harness run outputs (regenerated locally; evidence lives on
+# the results branch, not in source history)
+ADVERSARIAL_CHECKS.json
+IMPORT_PROBE.json
+INTERRUPTION_RECOVERY.json
+QUALIFICATION_RECORD.json
+SCORER_CALIBRATION.json

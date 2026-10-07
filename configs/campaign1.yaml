@@ -1,18 +1,25 @@
-campaign_id: campaign1-v161
+campaign_id: campaign1-v162
 dataset: configs/campaign1_tasks.jsonl
 require_cuda: true
 require_family_disjoint_hidden: true
 model:
   id: Qwen/Qwen2.5-0.5B-Instruct
-  revision: REPLACE_WITH_IMMUTABLE_HUGGINGFACE_COMMIT
+  revision: auto   # resolved to the immutable HF commit at plan-signing time
   dtype: bfloat16
   quantization: none
   trust_remote_code: false
 seeds: [0, 1, 2, 3, 4]
+arms: [L1, L2, L3, L4, L5, L6, NC]
 max_new_tokens: 32
-minimum_forward_transfer: 0.02
+practice_samples: 8           # L5 labeled practice phase (train rows only)
+retrieval_k: 3                # L2 exemplars
+memory_k: 2                   # L3 memory entries
+replay_k: 2                   # L5 verified traces
+retention_samples: 12
+minimum_neural_incremental_ft: 0.02   # primary: mean(L6 - L5) over seeds
+negative_control_max_ft: 0.02         # NC (L6 - L1) ceiling before REFUSE
 minimum_retention: 0.95
-retention_samples: 8
+metric_tolerance: 0.05
 lora:
   rank: 16
   alpha: 32
