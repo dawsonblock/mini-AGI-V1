@@ -6,14 +6,18 @@ source updates. The signing key lives OUTSIDE the repository
 (~/.config/miniagi/release-ed25519.pem by default) and is generated on first
 use. Never commit the private key.
 
-Enumeration matches scripts/verify_release.py exactly: the four release
-metadata files, .git, __pycache__, .pytest_cache, *.egg-info and *.pyc are
-excluded; everything else is hashed.
+Enumeration is `git ls-files` intersected with files on disk — i.e. exactly
+the set a fresh clone receives. This matters because scripts/verify_release.py
+requires manifest == every on-disk file (minus .git, caches and the envelope):
+walking the raw filesystem would sweep in gitignored strays that a clone never
+contains, breaking fresh-clone verification. (.git, __pycache__, .pytest_cache,
+*.egg-info and *.pyc are still excluded defensively.)
 """
 from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -53,11 +57,14 @@ def main() -> int:
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-    files = {
-        p.relative_to(ROOT).as_posix(): sha256_file(p)
-        for p in sorted(ROOT.rglob("*"))
-        if p.is_file() and not p.is_symlink() and not skip(p.relative_to(ROOT).as_posix(), p)
-    }
+    tracked = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "-z"],
+        check=True, capture_output=True).stdout.decode().split("\0")
+    files = {}
+    for rel in sorted(t for t in tracked if t):
+        p = ROOT / rel
+        if p.is_file() and not p.is_symlink() and not skip(rel, p):
+            files[rel] = sha256_file(p)
     doc = {"schema_version": 1, "hash_algorithm": "sha256",
            "release": args.release, "files": files}
     body = canonical(doc)
