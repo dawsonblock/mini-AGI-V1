@@ -1,7 +1,7 @@
 {
   "campaign_id": "campaign1b-v163",
   "campaign_plan_digest": "sha256:aa0b028a5821d4f9d6878b04018af9ab390b8c11b196b5aee26439ab7de471c7",
-  "decision": "REFUSE",
+  "decision": "QUALIFIED",
   "delta_ft_neural_stats": {
     "best": 0.2916666666666667,
     "mean": 0.2,
@@ -10,48 +10,7 @@
     "stdev": 0.06846531968814577,
     "worst": 0.125
   },
-  "failures": [
-    {
-      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/L6/seed-0",
-      "where": "seed-0/L6"
-    },
-    {
-      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/NC/seed-0",
-      "where": "seed-0/NC"
-    },
-    {
-      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/L6/seed-1",
-      "where": "seed-1/L6"
-    },
-    {
-      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/NC/seed-1",
-      "where": "seed-1/NC"
-    },
-    {
-      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/L6/seed-2",
-      "where": "seed-2/L6"
-    },
-    {
-      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/NC/seed-2",
-      "where": "seed-2/NC"
-    },
-    {
-      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/L6/seed-3",
-      "where": "seed-3/L6"
-    },
-    {
-      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/NC/seed-3",
-      "where": "seed-3/NC"
-    },
-    {
-      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/L6/seed-4",
-      "where": "seed-4/L6"
-    },
-    {
-      "detail": "adapter dir missing: /tmp/v162-colab/c1b-repro/campaign1b/adapters/campaign1b-v163/NC/seed-4",
-      "where": "seed-4/NC"
-    }
-  ],
+  "failures": [],
   "matrix": {
     "seed-0": {
       "L1": "present",
@@ -267,14 +226,12 @@
       "seed": 4
     }
   ],
-  "reasons": [
-    "incomplete or invalid evidence matrix"
-  ],
+  "reasons": [],
   "reproduction_policy": {
     "adapter_bitwise_required": false,
     "metric_tolerance": 0.05,
     "semantics": "statistical-equivalence"
   },
-  "runner_decision_agreement": false,
+  "runner_decision_agreement": true,
   "schema": "mini-agi-v16.2-campaign1-qualification-v1"
 }

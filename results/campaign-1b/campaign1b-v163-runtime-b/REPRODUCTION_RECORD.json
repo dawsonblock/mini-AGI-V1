@@ -122,5 +122,6 @@
  },
  "adapter_bitwise_note": "B adapter digests differ from A bitwise (expected GPU nondeterminism); each adapter is independently digest-bound, receipt-tied, and was physically rehashed and qualified on Runtime B.",
  "evidence_completeness_note": "B-side bundle carries receipts, plan, dataset proof, arm states, evaluator artifacts, and an adapter digest manifest; adapter binaries were physically verified on Runtime B and are not duplicated here (see Campaign 1 convention).",
- "verdict": "REPRODUCED"
+ "verdict": "REPRODUCED",
+ "evidence_integrity_note": "Initial commit 8819896 of this bundle carried a QUALIFICATION_RECORD.json overwritten by a local requalification of the partial (digest-manifest) bundle, which correctly REFUSEd for missing adapter bytes. That stale record was replaced by the runtime-produced record (QUALIFIED) in a follow-up commit. Lesson: qualify downloaded bundles with --output to a scratch path; never let the qualifier write into an evidence tree."
 }
