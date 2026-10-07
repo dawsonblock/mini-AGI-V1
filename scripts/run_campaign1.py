@@ -162,6 +162,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/campaign1.yaml")
     ap.add_argument("--storage", default="/content/minagi_campaign1")
+    ap.add_argument("--execute-seeds", default=None,
+                    help="comma-separated subset of plan seeds to execute "
+                         "this run (parallel-VM campaign execution); the "
+                         "signed plan still binds the full seed list")
     args = ap.parse_args()
     cfg = yaml.safe_load((ROOT / args.config).read_text())
 
@@ -341,6 +345,8 @@ def main() -> int:
     retention_eval_rows = retention_probe_rows[:max(1, min(len(retention_probe_rows),
                                                    int(cfg.get("retention_samples", len(retention_probe_rows)))))]
 
+    execute_subset = (set(int(x) for x in args.execute_seeds.split(","))
+                      if args.execute_seeds else None)
     all_seeds = []
     for seed in seeds:
         run_dir = campaign_dir / f"seed-{seed}"
@@ -349,6 +355,12 @@ def main() -> int:
         if (run_dir / "COMPLETE").is_file() and seed_result_path.is_file():
             all_seeds.append(json.loads(seed_result_path.read_text()))
             continue
+        if execute_subset is not None and seed not in execute_subset:
+            continue  # executed on a different VM under the same plan
+        # Resume semantics: a seed dir without COMPLETE is a torn run —
+        # wipe it so stale cells from a reclaimed runtime can't linger.
+        for stale in run_dir.iterdir():
+            stale.unlink()
         # Resume semantics: a seed dir without COMPLETE is a torn run —
         # wipe it so stale cells from a reclaimed runtime can't linger.
         for stale in run_dir.iterdir():

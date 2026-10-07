@@ -833,7 +833,7 @@
     "scripts/run_benchmark_efficiency.sh": "fe5ceac9d60a434f72cbfd85b1b3a4402f08883140925d9bc3657e92e764067d",
     "scripts/run_benchmark_efficiency_resume.sh": "35bbe47f24b85128231b3f039e9387884adbc4686c3e1293da2d4c9673cc6a90",
     "scripts/run_benchmark_smoke.sh": "5ea4808011efef89235e9d5b1b74151b665c5e70048d35b7b4dacee9cbf2cbd7",
-    "scripts/run_campaign1.py": "98d6f7a0305d4b20bb10f25a0fc54ec492be6ebec79a7056b72e704a5f6c2eed",
+    "scripts/run_campaign1.py": "f157defd7d72a62fb864a71c04b352b31f38d98c84c633aa5d86f38596e2e6ec",
     "scripts/run_colab_campaign.py": "9fcdac368f2e597050c82586bd3225f021d0f4e63a37ce7c139fd5e406fad0b8",
     "scripts/run_macos_preflight.py": "56c7526d689cf5d64805f613cde039b42457b76cf473e19a9aef959609ddf35f",
     "scripts/run_mtp5_cb_pagedkv_study.sh": "1a9fdd6108a58ffee4fc491a1c2a15503c7c73d1b2612b86f79a2af6b3d4a25a",
