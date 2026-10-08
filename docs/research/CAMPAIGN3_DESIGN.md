@@ -1,6 +1,14 @@
-# Campaign 3 (campaign3-v164) — Adaptation-Footprint Decision Experiment
+# Campaign 3 (campaign3-v165) — Adaptation-Footprint Decision Experiment
 
-Naming: campaign id suffix follows the plan schema version in use (v164 semantics; no new plan class), not the campaign ordinal.
+Naming: campaign id suffix follows the plan schema version in use. This
+draft was originally written for the v164 schema ("no new plan class");
+it now targets **v165** — the experiment content is identical (same
+gates, lever, corpus class); v165 only strengthens the signing surface
+by binding an `ExperimentProtocolV1` (every learning/memory/generation
+hyperparameter) and physical model/tokenizer artifact digests. Because
+the trained `q/k/v/o` adapter is deliberately unservable by
+NativeAdapter1, the config sets `require_native_servable_adapter: false`
+— the opt-out itself is part of the signed protocol.
 Status: **DRAFT for review** — not yet preregistered or executed.
 Config: `configs/campaign3.yaml`; corpus: `configs/campaign3_tasks.jsonl`
 (generator: `scripts/generate_campaign3_tasks.py`).
@@ -40,7 +48,7 @@ while preserving the statistically detectable increment.
 | gates | — | **identical values** |
 | seeds | 0-9 | identical |
 | arms | L1-L6 + NC | identical |
-| plan semantics | v164 | v164 (no code change) |
+| plan semantics | v164 | v165 (protocol-bound signing surface; same experiment) |
 
 Why lr over the other levers:
 
@@ -70,7 +78,7 @@ Why lr over the other levers:
 All Campaign-2 gate values are preserved verbatim, including the 0.02
 mean-FT floor. Consequences:
 
-- If campaign3-v164 QUALIFIES, it is promotion-relevant at the same bar
+- If campaign3-v165 QUALIFIES, it is promotion-relevant at the same bar
   Campaign 2 failed.
 - If it REFUSEs only on the FT floor while holding security, that
   confirms the security mitigation works but that halved pressure
@@ -78,9 +86,8 @@ mean-FT floor. Consequences:
   rather than more lr.
 - If it REFUSEs on security again, the regression is not a simple
   footprint effect and the next lever is data-side (refusal-mixed
-  training rows) or a footprint-ladder arm set (requires a V165 plan
-  schema and runner/qualifier changes — deliberately out of scope for
-  this config-only draft).
+  training rows) or a footprint-ladder arm set (a new experiment,
+  deliberately out of scope for this draft).
 
 ## Honest expectation
 
@@ -97,7 +104,8 @@ line — it decides whether adaptation footprint is the right dial.
       binds `configs/campaign3_tasks.jsonl`'s partition digest at
       signing time.
 - [ ] Execute via `scripts/run_colab_campaign.py` /
-      `run_campaign1.py --execute-seeds` under v164 resume semantics.
+      `run_campaign1.py --execute-seeds` under v165 verified-resume
+  semantics.
 - [ ] Independent qualification via
       `scripts/validation/qualify_campaign1.py` (artifact-only path,
       as re-verified for Campaign 2 on 2026-10-07).

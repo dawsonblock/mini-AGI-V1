@@ -36,7 +36,7 @@ nothing more.
 | Campaign 1 — `campaign1-v162`, 5 seeds | **EXECUTED — REFUSE** — ΔFT(L6−L5) = +0.20 but retention/security floors tripped on documented calibration artifacts |
 | Campaign 1b — `campaign1b-v163`, 5 seeds | **EXECUTED — QUALIFIED** — ΔFT = +0.20, 5/5 positive, reproduced bit-for-metric on a second fresh T4 runtime |
 | Campaign 2 — `campaign2-v164`, 10 seeds | **EXECUTED — REFUSE** — ΔFT = +0.01125 (95% CI [+0.00531, +0.01719] excludes zero but fails the ≥0.02 floor); security guardrail breached (−0.125 vs bound −0.10) |
-| Campaign 3 — `campaign3-v164` | **DRAFTED** — adaptation-footprint experiment; single-lever change vs Campaign 2 (halved optimization pressure), identical gates |
+| Campaign 3 — `campaign3-v165` | **DRAFTED** — adaptation-footprint experiment; single-lever change vs Campaign 2 (halved optimization pressure), identical gates |
 | Validated designation | **v16.2** — the v16.3 promotion gate required Campaign 2 to qualify; it did not |
 
 A campaign `QUALIFIED` is an *experimental qualification* under a
@@ -106,7 +106,7 @@ preregistered 0.02 minimum — and the L6 adapter breached the security
 guardrail (−0.125 vs L1). v16.2 remains the validated designation.
 Full record: `results/campaign-2/` on the evidence branch.
 
-### Campaign 3 — `campaign3-v164` (drafted)
+### Campaign 3 — `campaign3-v165` (drafted)
 
 Adaptation-footprint decision experiment: same architecture, corpus
 difficulty class, and gates as Campaign 2; single lever — halved
@@ -138,7 +138,7 @@ Full campaign:
 
 ```bash
 python3 scripts/run_campaign1.py --config configs/campaign3.yaml --storage /content/campaign3
-python3 scripts/validation/qualify_campaign1.py --storage /content/campaign3 --campaign-id campaign3-v164
+python3 scripts/validation/qualify_campaign1.py --storage /content/campaign3 --campaign-id campaign3-v165
 ```
 
 ### Lane-parallel execution

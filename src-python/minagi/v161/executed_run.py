@@ -1,6 +1,8 @@
 from __future__ import annotations
+import json
 from dataclasses import asdict, dataclass
-from typing import Mapping, Any
+from pathlib import Path
+from typing import Iterable, Mapping, Any
 from egai.common.canonical import digest, validate_digest
 from egai.common.crypto import Ed25519Signer, Ed25519Verifier, SignedEnvelope
 
@@ -83,3 +85,57 @@ class ExecutedRunReceiptV162:
         return cls(signature_b64=env.signature_b64,**body)
     def verify(self, verifier: Ed25519Verifier) -> bool:
         return verifier.verify(self.body,SignedEnvelope(self.signer_key_id,self.signature_b64))
+
+
+def load_verified_seed_result(run_dir, seed: int, campaign_digest: str,
+                              arms: Iterable[str],
+                              verifier: Ed25519Verifier) -> dict | None:
+    """Return a persisted SEED_RESULT dict only when the seed's evidence
+    chain is intact; otherwise None (caller must re-execute the seed).
+
+    A completed seed directory counts as evidence iff:
+      * COMPLETE + SEED_RESULT.json both exist and the recorded seed
+        matches the directory's seed,
+      * the recorded receipt_digests map covers the planned arm set
+        (extra cells such as v164 delayed-retention probes — stored under
+        names like "L1_delayed" whose receipt arm is "L1" — are allowed
+        but are verified exactly like the arm cells),
+      * every recorded receipt exists on disk, parses, is bound to this
+        campaign digest and seed, matches the digest recorded in
+        SEED_RESULT.json, verifies under the campaign witness key, and
+        for arm-named files its hidden_exact_match metric agrees with
+        the summary entry.
+
+    Fail-closed: any inconsistency — stale, grafted, truncated, or
+    forged evidence — discards the seed for re-execution rather than
+    silently aggregating it.
+    """
+    run_dir = Path(run_dir)
+    seed_result_path = run_dir / "SEED_RESULT.json"
+    if not (run_dir / "COMPLETE").is_file() or not seed_result_path.is_file():
+        return None
+    try:
+        sd = json.loads(seed_result_path.read_text())
+        if int(sd.get("seed", -1)) != int(seed):
+            return None
+        rec_digests = dict(sd.get("receipt_digests") or {})
+        arms = tuple(arms)
+        if not set(rec_digests) >= set(arms):
+            return None
+        hidden = dict(sd.get("hidden_exact_match") or {})
+        for name, recorded_digest in rec_digests.items():
+            doc = json.loads((run_dir / f"{name}.json").read_text())
+            r = ExecutedRunReceiptV162(**doc["receipt"])
+            if r.campaign_digest != campaign_digest or r.arm not in arms \
+                    or int(r.seed) != int(seed):
+                return None
+            if r.digest != recorded_digest:
+                return None
+            if not r.verify(verifier):
+                return None
+            if name == r.arm and float(hidden.get(name, float("nan"))) \
+                    != float(r.metrics.get("hidden_exact_match", float("nan"))):
+                return None
+        return sd
+    except Exception:
+        return None

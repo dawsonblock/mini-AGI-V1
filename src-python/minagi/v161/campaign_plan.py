@@ -198,3 +198,29 @@ class ColabCampaignPlanV164(ColabCampaignPlanV163):
     @property
     def digest(self) -> str:
         return digest(self)
+
+
+@dataclass(frozen=True)
+class ColabCampaignPlanV165(ColabCampaignPlanV164):
+    """Campaign plan v16.5 — full experiment binding.
+
+    Beyond V164:
+      * experiment_protocol_digest binds an ExperimentProtocolV1 covering
+        every learning, memory/replay, and generation hyperparameter.
+        Nothing experiment-affecting may live outside the signed surface.
+      * model_digest / tokenizer_digest are PHYSICAL artifact digests
+        (sha256 over the resolved model snapshot directory / tokenizer
+        artifact files, with HF cache symlinks resolved to their blob
+        targets), replacing the semantic config-digest identity used by
+        V163/V164 plans. A modified local weight file masquerading under
+        a pinned revision is now detectable.
+
+    V164 remains the schema of the executed Campaign 2 evidence; V165 is
+    the binding surface for new campaigns (Campaign 3 onward).
+    """
+    experiment_protocol_digest: str = ""
+    schema: str = "mini-agi-v16.5-colab-campaign-plan-v1"
+
+    def __post_init__(self):
+        super().__post_init__()
+        validate_digest(self.experiment_protocol_digest)

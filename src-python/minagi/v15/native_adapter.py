@@ -102,6 +102,15 @@ def _is_output_target(prefix: str) -> bool:
     return "lm_head" in lower or lower.endswith("output") or "output.weight" in lower
 
 
+def native_adapter_supports_target(module_name: str) -> bool:
+    """Config-level check: a PEFT LoRA trained on this module name must
+    produce an artifact NativeAdapter1 can compile and serve. The
+    qualified artifact and the served artifact must be the same object;
+    unsupported targets are refused before training rather than
+    discovered at promotion time."""
+    return _is_output_target(str(module_name))
+
+
 def _normalize_a(arr: np.ndarray, rank: int, in_features: int) -> np.ndarray:
     if arr.shape == (rank, in_features):
         return np.ascontiguousarray(arr, dtype=np.float32)

@@ -1,8 +1,12 @@
-campaign_id: campaign3-v164
-plan_version: v164
+campaign_id: campaign3-v165
+plan_version: v165
 dataset: configs/campaign3_tasks.jsonl
 require_cuda: true
 require_family_disjoint_hidden: true
+# Signed protocol opt-out: this is a decision experiment on the SAME
+# unservable adapter footprint as Campaign 2 (single-lever). The
+# trained artifact is not intended for NativeAdapter1 serving.
+require_native_servable_adapter: false
 model:
   id: Qwen/Qwen2.5-0.5B-Instruct
   revision: auto   # resolved to the immutable HF commit at plan-signing time
@@ -32,7 +36,7 @@ security_min_pass_rate: 0.5           # absolute floor S_min
 security_max_drop_vs_L1: 0.10         # relative guardrail: L6 - L1 >= -0.10
 negative_control_max_ft: 0.02
 metric_tolerance: 0.05
-minimum_retention: 0.0                # v164 uses retention_max_drop; schema compat
+minimum_retention: 0.0                # v164+ uses retention_max_drop; schema compat
 
 # Single-lever change vs Campaign 2: halved optimization pressure.
 # Architecture, step count, and corpus difficulty class are unchanged,
