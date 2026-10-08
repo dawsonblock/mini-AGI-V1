@@ -20,10 +20,10 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "6e5242e778b313aea4daef8a647bac8f7cb9474f2c35ee7d961ccfbbe5eb40c8",
+ "manifest_sha256": "88431a50b74f76dab049b372b00026baa5421bd3f171975e53cc187f06f0e501",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
- "python_validation": "521/521 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
+ "python_validation": "561/561 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
  "reissue": {
   "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)",
   "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
@@ -67,9 +67,14 @@
    "manifest_sha256": "6e5242e778b313aea4daef8a647bac8f7cb9474f2c35ee7d961ccfbbe5eb40c8",
    "reason": "v16.2.2 security/correctness repair (v17 plan Phase 1, FIX-001..006): OS-enforced evaluator sandbox + declarative evaluator (fail closed without a backend), rank-allocator growth arithmetic, verified append-only generation promotion, corrected false-activation denominator + conditional regression, authority validity-window enforcement, release-metadata reconciliation enforced by verify_release.py (adversarially tested via --root fixture); every defect carries a reproducing test; 521/521 Python (1 skipped: Linux-only RLIMIT_AS on macOS)",
    "utc": "2026-10-08T08:33:36.968396+00:00"
+  },
+  {
+   "manifest_sha256": "88431a50b74f76dab049b372b00026baa5421bd3f171975e53cc187f06f0e501",
+   "reason": "v16.4.0 training/admission batch (v17 plan Phases 2.1/3/5-early): explicit microbatch/gradient-accumulation/effective-batch schedule bound in the signed protocol + receipt v2 (sample order, per-update gradient stats, adapter artifact digest, strict malformed policy) — reproduced the 4x sample-presentation defect; RuntimeAdmissionController (full-chain admission, signed activation receipts, rollback, scripts/admit_runtime.py, runtime authority role, decision expires_at) with the plan's four named attacks refused; cost-aware mechanism controller + AttemptReceipts; campaign3 configs pinned to microbatch_size=1 + malformed_policy=fail; 561/561 Python (1 skipped: Linux-only RLIMIT_AS on macOS)",
+   "utc": "2026-10-08T08:46:30.656995+00:00"
   }
  ],
- "reissued_utc": "2026-10-08T08:33:36.968396+00:00",
+ "reissued_utc": "2026-10-08T08:46:30.656995+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -84,8 +89,8 @@
    "reason": "runner --execute-seeds: parallel-VM campaign execution under one signed plan"
   }
  ],
- "release": "mini-AGI-v16.2.2-Colab-Converged",
+ "release": "mini-AGI-v16.4.0-Colab-Converged",
  "schema": "mini-agi-v16.1-release-attestation-v1",
  "signature_algorithm": "Ed25519",
- "status": "PASS_SECURITY_REPAIR_GPU_SMOKE_PENDING"
+ "status": "PASS_TRAINING_ADMISSION_GPU_SMOKE_PENDING"
 }

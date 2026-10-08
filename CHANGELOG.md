@@ -1,3 +1,62 @@
+# v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
+
+Phases 2, 3, and (early) 5 of the v17 plan. Scientific claims unchanged
+(Campaign 1b QUALIFIED stands, Campaign 2 REFUSE stands, Campaign 3
+still drafted/unexecuted). Details and the record chain:
+`docs/research/TRAINING_AND_ADMISSION_V164.md`.
+
+Training schedule (Phase 2.1, v16.3.0 scope):
+
+- The structured trainer no longer places `gradient_accumulation_steps`
+  examples in each microbatch while also accumulating over that many
+  microbatches (which silently squared the effective batch size).
+  `LoraTrainSpec` and `ExperimentProtocolV1` gain explicit
+  `microbatch_size` / `train_microbatch_size`; effective batch =
+  microbatch × accumulation, optimizer updates = steps, presentations =
+  steps × effective batch. Reproduced: the original engine ran 48
+  presentations for a declared 12 (steps=3, gacc=4); the repaired
+  engine runs 12.
+- Receipt v2 binds the full schedule, actual sample order, per-update
+  gradient statistics, the malformed-sample policy/outcome, and
+  `adapter_artifact_digest` (weight+config bytes; the directory closure
+  digest in runtime manifests covers the receipt/spec evidence files).
+- `malformed_policy: reject | fail` — strict preregistered campaigns
+  fail the run on any unapproved sample rejection instead of silently
+  changing the training dataset; Campaign 3A/3B/3C configs set
+  `microbatch_size: 1` and `malformed_policy: fail` explicitly.
+
+Runtime admission (Phase 3, v16.4.0 scope):
+
+- New `minagi.v161.runtime_admission` + `scripts/admit_runtime.py`:
+  `RuntimeAdmissionController` verifies the full chain (plan →
+  qualification → promotion decision → runtime manifest → exact
+  adapter bytes) before serving and emits an ActivationReceipt;
+  rollback re-admits a previously receipted release and records the
+  lineage. Refused, with adversarial tests: unsigned/forged/expired/
+  revoked decisions, research-plane promotion attempts, one altered
+  adapter byte, substituted qualifications, model/tokenizer/backend
+  substitution, tampered manifests, incomplete chains, revoked
+  replays.
+- Sixth authority role `runtime` (trust root + `activation_receipt`
+  ledger kind); `promote.py` decisions carry `expires_at` (30-day
+  default).
+
+Mechanism controller (Phase 5, ahead of the v16.6.0 milestone):
+
+- `MechanismEstimate` + frozen `ObjectiveWeights`
+  (`U = ΔQ − λ_C·C − λ_R·R − λ_L·L`), `rank_candidates` with hard
+  regression-risk cap and confidence floor applied before ranking,
+  `select_mechanism` (weights require recorded cheaper attempts;
+  uncertain causes select a diagnostic experiment), and digest-chained
+  `AttemptReceipt`s (FailureEvidence → MechanismProposal →
+  AttemptReceipt → EvaluationBundle).
+
+Tests: +40 (engine-level schedule counts, policy behavior, receipt
+binding; the plan's four named admission attacks plus expiry/forgery/
+substitution/rollback/CLI; controller arithmetic, safety caps, ladder
+enforcement, attempt records). Suite: 561 passed, 1 skipped
+(Linux-only RLIMIT_AS on macOS). Manifest resealed.
+
 # v16.2.2 — Security and Correctness Repair (Phase 1)
 
 Phase 1 of the v17 plan: the six security/correctness defects from the

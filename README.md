@@ -29,11 +29,13 @@ nothing more.
 
 | Item | State |
 |---|---|
-| Current release | **v16.2.2** — security/correctness repair (Phase 1 of the v17 plan); scientific claims unchanged |
-| Release integrity (`scripts/verify_release.py`) | **PASS** — 1,430 governed files + Ed25519 signature + attestation/version reconciliation |
-| Unified Python suite (`tests-python/`) | **PASS** — 521 passed (1 skipped: Linux-only RLIMIT_AS test on the macOS host) |
+| Current release | **v16.4.0** — training-schedule repair, runtime admission, mechanism controller (Phases 2/3/5 of the v17 plan); scientific claims unchanged |
+| Release integrity (`scripts/verify_release.py`) | **PASS** — 1,436 governed files + Ed25519 signature + attestation/version reconciliation |
+| Unified Python suite (`tests-python/`) | **PASS** — 561 passed (1 skipped: Linux-only RLIMIT_AS test on the macOS host) |
+| Training schedule (Phase 2.1) | **FIXED + TESTED** — effective batch = microbatch × accumulation bound in the signed protocol; engine-level counts assert it (the original ran 4× the declared sample presentations for accumulation > 1); strict `malformed_policy: fail` invalidates runs on unapproved rejections |
+| Runtime admission (Phase 3) | **IMPLEMENTED + TESTED** — full-chain admission (plan → qualification → promotion → manifest → exact bytes) with signed activation receipts and rollback; the plan's four named attacks (altered byte, substituted qualification, revoked replay, research-plane identity) are refused by an adversarial suite |
 | Security repair (FIX-001..006) | **IMPLEMENTED + TESTED** — reproducing test per defect, adversarial suites (sandbox escape, forged/expired/revoked promotion, rank-budget exhaustion, chain manipulation); residual risks in `docs/research/SECURITY_REPAIR_V1622.md` |
-| Native CTest suite | **PASS** — 28/28 (CPU/stub build; CUDA paths unverified offline) |
+| Native CTest suite | **PASS** — 28/28 (CPU/stub build; CUDA paths unverified offline; not rerun for v16.4.0 — no C++ changes) |
 | Adversarial boundary checks | **PASS** — 16/16 rejections (artifact/evaluator/dataset substitution) |
 | Campaign 1 — `campaign1-v162`, 5 seeds | **EXECUTED — REFUSE** — ΔFT(L6−L5) = +0.20 but retention/security floors tripped on documented calibration artifacts |
 | Campaign 1b — `campaign1b-v163`, 5 seeds | **EXECUTED — QUALIFIED** — ΔFT = +0.20, 5/5 positive, reproduced bit-for-metric on a second fresh T4 runtime |
