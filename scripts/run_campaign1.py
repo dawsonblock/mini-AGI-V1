@@ -56,10 +56,18 @@ from minagi.v161.dataset_manifest import (DatasetMember,
 from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
 from minagi.v161.evaluators import (containment_match, exact_match,
                                     retention_score, security_regression)
+from minagi.v161.authority import (AuthorityLedger, AuthorityRegistry,
+                                   provision_role)
 from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
                                        ColabCampaignPlanV163,
                                        ColabCampaignPlanV164,
                                        ColabCampaignPlanV165)
+from minagi.v161.evidence_receipt_v3 import (EvidenceReceiptV3,
+                                             evaluation_bundle,
+                                             input_manifest_digest,
+                                             load_verified_seed_result_v3,
+                                             prediction_record,
+                                             write_predictions)
 from minagi.v161.executed_run import (ExecutedRunReceiptV162,
                                       load_verified_seed_result)
 from minagi.v161.experiment_protocol import ExperimentProtocolV1
@@ -92,8 +100,13 @@ def generate(model, tokenizer, prompt, max_new_tokens):
         return text, new_tokens
 
 
-def evaluate(model, tokenizer, rows, max_new_tokens, scorer, arm=None):
-    scores, outputs, tokens = [], [], 0
+def evaluate(model, tokenizer, rows, max_new_tokens, scorer, arm=None,
+             block=None):
+    """Evaluate rows; when `block` is given, also return canonical v3
+    prediction records (input digest + output + status, no expected
+    answers — scoring joins against the corpus at qualification time).
+    """
+    scores, outputs, tokens, preds = [], [], 0, []
     t0 = time.time()
     for row in rows:
         prompt = str(row["prompt"])
@@ -105,8 +118,11 @@ def evaluate(model, tokenizer, rows, max_new_tokens, scorer, arm=None):
         scores.append(score)
         outputs.append({"id": row["id"], "prediction": pred,
                         "expected": row["expected"], "score": score})
+        if block is not None:
+            preds.append(prediction_record(
+                str(row["id"]), block, prompt, pred, nt, max_new_tokens))
     mean = sum(scores) / len(scores) if scores else 0.0
-    return mean, outputs, tokens, time.time() - t0
+    return mean, outputs, tokens, time.time() - t0, preds
 
 
 def model_identity(model, spec):
@@ -216,8 +232,9 @@ def physical_identity_digests(spec: HFLoadSpec):
         sha256_bytes(template.encode())
 
 
-def security_eval(model, tokenizer, rows, max_new_tokens, security_fn, arm=None):
-    outputs, count, tokens = [], 0, 0
+def security_eval(model, tokenizer, rows, max_new_tokens, security_fn,
+                  arm=None):
+    outputs, count, tokens, preds = [], 0, 0, []
     for row in rows:
         prompt = str(row["prompt"])
         if arm is not None:
@@ -227,7 +244,9 @@ def security_eval(model, tokenizer, rows, max_new_tokens, security_fn, arm=None)
         flag = int(security_fn(pred, str(row["expected"])))
         count += flag
         outputs.append({"id": row["id"], "prediction": pred, "flagged": flag})
-    return count, outputs, tokens
+        preds.append(prediction_record(
+            str(row["id"]), "security", prompt, pred, nt, max_new_tokens))
+    return count, outputs, tokens, preds
 
 
 def free_model(model):
@@ -471,20 +490,53 @@ def main() -> int:
     # publish it.
     keys_dir = storage.root / ".keys"
     keys_dir.mkdir(parents=True, exist_ok=True)
-    legacy_key = campaign_dir / "EXECUTION_PRIVATE_KEY.bin"
-    key_path = (legacy_key if legacy_key.is_file()
-                else keys_dir / f"{cfg['campaign_id']}-execution-private-key.bin")
-    if key_path.is_file():
-        signer = Ed25519Signer.from_private_bytes(
-            key_path.read_bytes(), "campaign1-execution-witness")
+    trust_registry = None
+    authority_ledger = None
+    if isinstance(plan, ColabCampaignPlanV165):
+        # v165: role-separated authorities provisioned out-of-band by
+        # scripts/authority_bootstrap.py. The runner does NOT provision
+        # authorities — it requires them. A missing trust root or role
+        # key is a hard stop, not a silent self-issuance.
+        trust_path = storage.root / "trust_root.json"
+        if not trust_path.is_file():
+            raise SystemExit(
+                "v165 requires a provisioned authority trust root at "
+                f"{trust_path} — run scripts/authority_bootstrap.py "
+                "--storage <dir> first (each role should be provisioned "
+                "by its own operator in real deployments)")
+        trust_registry = AuthorityRegistry.load(trust_path)
+        authority_ledger = AuthorityLedger(
+            storage.root / "AUTHORITY_LEDGER.jsonl")
+
+        def _require_role_key(role):
+            p = keys_dir / f"{role}.pem"
+            if not p.is_file():
+                raise SystemExit(
+                    f"authority key missing: {p} — run "
+                    "scripts/authority_bootstrap.py first")
+            return Ed25519Signer.from_private_bytes(p.read_bytes())
+
+        plan_signer = _require_role_key("plan")
+        trust_registry.assert_authorized("plan", plan_signer.key_id)
+        signer = _require_role_key("execution_witness")
+        trust_registry.assert_authorized("execution_witness",
+                                         signer.key_id)
     else:
-        signer = Ed25519Signer.generate("campaign1-execution-witness")
-        key_path.write_bytes(signer.private_bytes())
+        legacy_key = campaign_dir / "EXECUTION_PRIVATE_KEY.bin"
+        key_path = (legacy_key if legacy_key.is_file()
+                    else keys_dir / f"{cfg['campaign_id']}-execution-private-key.bin")
+        if key_path.is_file():
+            signer = Ed25519Signer.from_private_bytes(
+                key_path.read_bytes(), "campaign1-execution-witness")
+        else:
+            signer = Ed25519Signer.generate("campaign1-execution-witness")
+            key_path.write_bytes(signer.private_bytes())
+        plan_signer = signer
     verifier = Ed25519Verifier()
     verifier.register(signer.key_id, signer.public_bytes())
-    plan_sig = signer.sign(asdict(plan))
+    plan_sig = plan_signer.sign(asdict(plan))
     plan_doc = {"value": asdict(plan), "digest": plan.digest,
-                "signer_key_id": signer.key_id,
+                "signer_key_id": plan_signer.key_id,
                 "signature_b64": plan_sig.signature_b64,
                 "signed_before_execution": True}
     (campaign_dir / "CAMPAIGN_PLAN.json").write_text(json.dumps(plan_doc, indent=2, sort_keys=True))
@@ -495,6 +547,27 @@ def main() -> int:
         (campaign_dir / "EXPERIMENT_PROTOCOL.json").write_text(json.dumps(
             {"value": asdict(protocol), "digest": protocol.digest},
             indent=2, sort_keys=True))
+    if authority_ledger is not None:
+        # preregistration must be the first authority event — evidence
+        # cannot legitimately precede a trusted plan. Resume is
+        # idempotent: an existing preregistration must bind THIS plan,
+        # otherwise the storage root is mixing campaigns.
+        existing = [json.loads(l) for l in
+                    authority_ledger.path.read_text().splitlines()
+                    if l.strip()] \
+            if authority_ledger.path.is_file() else []
+        reg = [l for l in existing
+               if l.get("kind") == "experiment_preregistration"]
+        if reg:
+            if reg[0].get("body_digest") != digest(plan_doc):
+                raise SystemExit(
+                    "authority ledger preregistered a different plan — "
+                    "refusing to mix campaign identities under this "
+                    "storage root")
+        else:
+            authority_ledger.append(plan_signer,
+                                    "experiment_preregistration",
+                                    plan_doc)
 
     train_texts = [str(r.get("train_text") or (str(r["prompt"]) + " " + str(r["expected"])))
                    for r in train]
@@ -511,20 +584,42 @@ def main() -> int:
     execute_set = (parse_seed_subset(args.execute_seeds, plan.seeds)
                    if args.execute_seeds else None)
 
+    v3 = isinstance(plan, ColabCampaignPlanV165)
+    if v3:
+        eval_dataset_d = digest({"hidden": parts.hidden.digest,
+                                 "retention": parts.retention.digest,
+                                 "security": parts.security.digest})
+        evaluator_set_d = digest([arts[0].digest, arts[1].digest,
+                                  arts[2].digest])
+
     all_seeds = []
     for seed in plan.seeds:
-        run_dir = campaign_dir / f"seed-{seed}"
-        seed_result_path = run_dir / "SEED_RESULT.json"
-        sd = load_verified_seed_result(run_dir, seed, plan.digest,
-                                       plan.arms, verifier)
+        final_dir = campaign_dir / f"seed-{seed}"
+        seed_result_path = final_dir / "SEED_RESULT.json"
+        if v3:
+            sd = load_verified_seed_result_v3(
+                final_dir, seed, plan.digest, plan.arms, verifier)
+        else:
+            sd = load_verified_seed_result(
+                final_dir, seed, plan.digest, plan.arms, verifier)
         if sd is not None:
             all_seeds.append(sd)
             continue
         if execute_set is not None and seed not in execute_set:
             continue  # another lane's seed; not our evidence to make
-        # Resume semantics: a seed dir without verified evidence is a torn
-        # run — wipe it so stale cells from a reclaimed runtime or a
-        # failed verification can't linger.
+        if final_dir.exists():
+            # An unverifiable published seed dir must not be silently
+            # overwritten — quarantine it for forensics, then re-execute.
+            final_dir.rename(final_dir.with_name(
+                f"{final_dir.name}.invalid-{int(time.time())}"))
+        # v3: execute in a staging dir and atomically publish the whole
+        # evidence bundle; older plans keep in-place resume semantics.
+        import secrets
+        attempt_id = secrets.token_hex(6)
+        run_dir = (campaign_dir / f"seed-{seed}.staging-{attempt_id}"
+                   if v3 else final_dir)
+        # Resume semantics: a work dir without verified evidence is a
+        # torn run — wipe it so stale cells can't linger.
         run_dir.mkdir(parents=True, exist_ok=True)
         for stale in run_dir.iterdir():
             stale.unlink()
@@ -539,35 +634,72 @@ def main() -> int:
         seed_receipts = {}
 
         def emit(arm_id, adapter_digest, state_digest, metrics, outputs,
-                 extra=None, out_name=None):
-            r = ExecutedRunReceiptV162.sign(
-                signer=signer, campaign_digest=plan.digest, arm=arm_id, seed=seed,
-                environment_digest=env.digest, model_digest=model_digest,
-                tokenizer_digest=tok_digest, adapter_digest=adapter_digest,
-                state_digest=state_digest, dataset_digest=parts.hidden.digest,
-                evaluator_digest=arts[0].digest, metrics=metrics)
-            assert r.verify(verifier)
-            doc = {"receipt": asdict(r), "outputs": outputs}
-            if extra:
-                doc.update(extra)
+                 extra=None, out_name=None, preds=None):
             name = out_name or arm_id
-            (run_dir / f"{name}.json").write_text(json.dumps(doc, indent=2, sort_keys=True))
+            if v3:
+                # Evidence receipt v3: predictions inside the signed
+                # payload — write canonical records, build the bundle,
+                # bind all three digests in the receipt.
+                pd = write_predictions(
+                    preds or [], run_dir / f"PREDICTIONS-{name}.jsonl")
+                im = input_manifest_digest(preds or [])
+                bundle = evaluation_bundle(
+                    plan.digest, protocol.digest, seed, arm_id, name,
+                    im, pd, metrics)
+                r = EvidenceReceiptV3.sign(
+                    signer=signer, campaign_digest=plan.digest,
+                    protocol_digest=protocol.digest, seed=seed, arm=arm_id,
+                    model_digest=model_digest,
+                    tokenizer_digest=tok_digest,
+                    adapter_digest=adapter_digest,
+                    state_digest=state_digest,
+                    environment_digest=env.digest,
+                    evaluation_dataset_digest=eval_dataset_d,
+                    evaluator_digest=evaluator_set_d,
+                    input_manifest_digest=im,
+                    predictions_digest=pd,
+                    evaluation_bundle_digest=digest(bundle))
+                assert r.verify(verifier)
+                doc = {"receipt": asdict(r), "bundle": bundle}
+            else:
+                r = ExecutedRunReceiptV162.sign(
+                    signer=signer, campaign_digest=plan.digest, arm=arm_id,
+                    seed=seed,
+                    environment_digest=env.digest, model_digest=model_digest,
+                    tokenizer_digest=tok_digest,
+                    adapter_digest=adapter_digest,
+                    state_digest=state_digest,
+                    dataset_digest=parts.hidden.digest,
+                    evaluator_digest=arts[0].digest, metrics=metrics)
+                assert r.verify(verifier)
+                doc = {"receipt": asdict(r), "outputs": outputs}
+                if extra:
+                    doc.update(extra)
+            (run_dir / f"{name}.json").write_text(
+                json.dumps(doc, indent=2, sort_keys=True))
             seed_receipts[name] = r
             return r
 
         def run_eval_block(arm, arm_id):
-            h_em, h_out, h_tok, h_sec = evaluate(model, tokenizer, hidden, max_new, score_fn, arm)
-            ret, ret_out, r_tok, r_sec = evaluate(model, tokenizer, retention_eval_rows,
-                                                  max_new, retention_fn, arm)
-            sec_n, sec_out, s_tok = security_eval(model, tokenizer, security_rows,
-                                                  max_new, security_fn, arm)
+            v3 = isinstance(plan, ColabCampaignPlanV165)
+            h_em, h_out, h_tok, h_sec, h_preds = evaluate(
+                model, tokenizer, hidden, max_new, score_fn, arm,
+                "hidden" if v3 else None)
+            ret, ret_out, r_tok, r_sec, r_preds = evaluate(
+                model, tokenizer, retention_eval_rows,
+                max_new, retention_fn, arm,
+                "retention" if v3 else None)
+            sec_n, sec_out, s_tok, s_preds = security_eval(
+                model, tokenizer, security_rows, max_new, security_fn, arm)
             metrics = {"hidden_exact_match": h_em, "retention": ret,
                        "security_regressions": sec_n,
                        "eval_seconds": round(h_sec + r_sec, 3),
                        "generated_tokens": h_tok + r_tok + s_tok,
                        "arm_state_bytes": dir_size_bytes(arm_state_dirs[arm_id])
                        if arm_id in arm_state_dirs else 0}
-            return metrics, {"hidden": h_out, "retention": ret_out, "security": sec_out}
+            preds = (h_preds + r_preds + s_preds) if v3 else None
+            return metrics, {"hidden": h_out, "retention": ret_out,
+                             "security": sec_out}, preds
 
         # ---- non-parametric arms on one base instance ----
         for arm_id in plan.arms:
@@ -593,11 +725,11 @@ def main() -> int:
             else:
                 arm = arm_instances[arm_id]
                 sd = sha256_path(arm_state_dirs[arm_id])
-            metrics, outputs = run_eval_block(arm, arm_id)
+            metrics, outputs, preds = run_eval_block(arm, arm_id)
             metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
             metrics["train_seconds"] = 0.0
             metrics["trainable_params"] = 0
-            emit(arm_id, ZERO_DIGEST, sd, metrics, outputs)
+            emit(arm_id, ZERO_DIGEST, sd, metrics, outputs, preds=preds)
 
         free_model(model)
 
@@ -625,13 +757,13 @@ def main() -> int:
             trainable = int(sum(p.numel() for p in model.parameters() if p.requires_grad))
             free_model(model)
             model = load_causal_lm(spec, adapter_path=str(adir))
-            metrics, outputs = run_eval_block(None, arm_id)
+            metrics, outputs, preds = run_eval_block(None, arm_id)
             metrics["arm_state_bytes"] = dir_size_bytes(adir)
             metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
             metrics["train_seconds"] = train_secs
             metrics["trainable_params"] = trainable
             emit(arm_id, adapter_digest, ZERO_DIGEST, metrics, outputs,
-                 {"training": train_receipt})
+                 {"training": train_receipt}, preds=preds)
             free_model(model)
 
         # ---- v164 delayed-retention probes (persistence check) ----
@@ -641,43 +773,82 @@ def main() -> int:
         # intervening computation; the reload exercises the closure path.
         delayed_metrics = {}
         if isinstance(plan, ColabCampaignPlanV164) and delayed_rows:
+            v3 = isinstance(plan, ColabCampaignPlanV165)
+            dblock = "retention_delayed" if v3 else None
             model = load_causal_lm(spec)
-            d1, d1_out, _, _ = evaluate(model, tokenizer, delayed_rows,
-                                        max_new, retention_fn)
+            d1, d1_out, _, _, d1_preds = evaluate(
+                model, tokenizer, delayed_rows, max_new, retention_fn,
+                block=dblock)
             free_model(model)
             delayed_metrics["L1"] = d1
             emit("L1", ZERO_DIGEST, ZERO_DIGEST,
                  {"retention_delayed": d1}, {"retention_delayed": d1_out},
-                 {"probe_kind": "delayed"}, out_name="L1_delayed")
+                 {"probe_kind": "delayed"}, out_name="L1_delayed",
+                 preds=d1_preds)
             if "L6" in adapter_dirs:
                 model = load_causal_lm(spec, adapter_path=str(adapter_dirs["L6"]))
-                d6, d6_out, _, _ = evaluate(model, tokenizer, delayed_rows,
-                                            max_new, retention_fn)
+                d6, d6_out, _, _, d6_preds = evaluate(
+                    model, tokenizer, delayed_rows, max_new, retention_fn,
+                    block=dblock)
                 free_model(model)
                 delayed_metrics["L6"] = d6
                 emit("L6", sha256_path(adapter_dirs["L6"]), ZERO_DIGEST,
                      {"retention_delayed": d6}, {"retention_delayed": d6_out},
-                     {"probe_kind": "delayed"}, out_name="L6_delayed")
+                     {"probe_kind": "delayed"}, out_name="L6_delayed",
+                     preds=d6_preds)
 
         # ---- seed summary ----
+        def _reported_metrics(arm):
+            if v3:
+                return json.loads((run_dir / f"{arm}.json").read_text())[
+                    "bundle"]["metrics_reported"]
+            return seed_receipts[arm].metrics
+
         sd_result = {"seed": seed,
-                     "hidden_exact_match": {a: seed_receipts[a].metrics["hidden_exact_match"]
-                                            for a in arms_in_plan},
-                     "receipt_digests": {a: seed_receipts[a].digest for a in seed_receipts}}
+                     "hidden_exact_match": {
+                         a: _reported_metrics(a)["hidden_exact_match"]
+                         for a in arms_in_plan},
+                     "receipt_digests": {a: seed_receipts[a].digest
+                                         for a in seed_receipts}}
         if delayed_metrics:
             sd_result["retention_delayed"] = delayed_metrics
-        seed_result_path.write_text(json.dumps(sd_result, indent=2, sort_keys=True))
+        if v3:
+            sd_result["attempt_id"] = attempt_id
+        # v3: SEED_RESULT lands INSIDE the staging dir and is enumerated
+        # by COMMIT_MANIFEST — it must never write directly into the
+        # final evidence location.
+        (run_dir / "SEED_RESULT.json").write_text(
+            json.dumps(sd_result, indent=2, sort_keys=True))
         (run_dir / "COMPLETE").write_text("complete\n")
+        if v3:
+            # Atomic evidence commit: the manifest enumerates every
+            # published file (except itself); the staging dir then
+            # renames into place as one indivisible unit.
+            manifest = {"seed": int(seed), "campaign_digest": plan.digest,
+                        "attempt_id": attempt_id,
+                        "files": {p.relative_to(run_dir).as_posix():
+                                  sha256_bytes(p.read_bytes())
+                                  for p in sorted(run_dir.rglob("*"))
+                                  if p.is_file()}}
+            (run_dir / "COMMIT_MANIFEST.json").write_text(
+                json.dumps(manifest, indent=2, sort_keys=True))
+            run_dir.rename(final_dir)
         all_seeds.append(sd_result)
 
     # ---- aggregate ----
+    def _cell_metrics(path):
+        doc = json.loads(path.read_text())
+        rec = doc.get("receipt") or {}
+        if "metrics" in rec:          # V162 cell
+            return rec["metrics"]
+        return (doc.get("bundle") or {}).get("metrics_reported") or {}
+
     def arm_mean(arm_id, metric):
         vals = []
         for s in all_seeds:
             r_path = campaign_dir / f"seed-{s['seed']}" / f"{arm_id}.json"
             if r_path.is_file():
-                doc = json.loads(r_path.read_text())
-                vals.append(float(doc["receipt"]["metrics"].get(metric, 0.0)))
+                vals.append(float(_cell_metrics(r_path).get(metric, 0.0)))
         return sum(vals) / len(vals) if vals else 0.0
 
     arm_hidden = {a: arm_mean(a, "hidden_exact_match") for a in plan.arms}
@@ -714,7 +885,7 @@ def main() -> int:
         for s in all_seeds:
             p = campaign_dir / f"seed-{s['seed']}" / f"{arm_id}.json"
             if p.is_file():
-                v = json.loads(p.read_text())["receipt"]["metrics"].get(metric)
+                v = _cell_metrics(p).get(metric)
                 if v is not None:
                     vals.append(float(v))
         return sum(vals) / len(vals) if vals else 0.0
@@ -807,8 +978,16 @@ def main() -> int:
                 for s in all_seeds)
     if not matrix_complete:
         reasons.insert(0, f"incomplete evidence matrix: seeds {completed_seeds}")
-    decision = ("INCOMPLETE" if not matrix_complete
-                else "PASS" if not reasons else "BLOCK")
+    # Explicit failure vocabulary (REPAIR-018): v165+ distinguishes
+    # INCOMPLETE / REFUSED / QUALIFIED and never emits a bare PASS — a
+    # runner result is provisional evidence summary, not promotion
+    # authority. Older plan versions keep their historical vocabulary.
+    if isinstance(plan, ColabCampaignPlanV165):
+        decision = ("INCOMPLETE" if not matrix_complete
+                    else "QUALIFIED" if not reasons else "REFUSED")
+    else:
+        decision = ("INCOMPLETE" if not matrix_complete
+                    else "PASS" if not reasons else "BLOCK")
     envs_seen = set()
     for s in all_seeds:
         for a in arms_in_plan:
@@ -839,9 +1018,11 @@ def main() -> int:
                "negative_control_violation": nc_violation,
                "decision": decision,
                "reasons": reasons,
-               "promotion_ready": decision == "PASS",
-               "note": "PASS is experimental qualification only; not "
-                       "production promotion authority."}
+               "promotion_ready": decision in ("PASS", "QUALIFIED"),
+               "note": "a runner decision is a provisional evidence "
+                       "summary only; QUALIFIED/PASS is experimental "
+                       "qualification, never production promotion "
+                       "authority."}
     if ci is not None:
         summary["bootstrap_ci_delta_ft_neural"] = ci
     if delayed_ret_mean["L1"] is not None:

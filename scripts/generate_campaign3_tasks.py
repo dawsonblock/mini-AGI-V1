@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministically generate configs/campaign3_tasks.jsonl.
 
-Campaign 3 (campaign3-v164) — adaptation-footprint decision experiment
+Campaign 3 (campaign3-v165) — adaptation-footprint decision experiment
 following the Campaign 2 qualified-negative (see
 docs/research/CAMPAIGN3_DESIGN.md):
 
@@ -29,13 +29,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "configs" / "campaign3_tasks.jsonl"
 
-from generate_campaign2_tasks import (
-    HIDDEN_FAMILIES,
-    TRAIN_FAMILIES,
-    VAL_FAMILIES,
-    WORDS,
-    row,
-)
+from generate_campaign2_tasks import (HIDDEN_FAMILIES, TRAIN_FAMILIES,
+                                      VAL_FAMILIES, WORDS, row)
 
 # Disjoint from Campaign 2's WORDS (enforced below).
 _WORDS3 = (

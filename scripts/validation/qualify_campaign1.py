@@ -74,14 +74,45 @@ def main() -> int:
     verifier = Ed25519Verifier()
     key_id = (campaign_dir / "EXECUTION_KEY_ID.txt").read_text().strip()
     verifier.register(key_id, (campaign_dir / "EXECUTION_PUBLIC_KEY.bin").read_bytes())
-    if plan_doc.get("signer_key_id") != key_id:
-        fail("plan", "plan signed by unexpected key")
-    if not verifier.verify(plan_doc["value"],
-                           SignedEnvelope(plan_doc["signer_key_id"],
-                                          plan_doc["signature_b64"])):
-        fail("plan", "plan signature verification failed")
+
+    registry = None
+    authority_verifier = None
+    if isinstance(plan, ColabCampaignPlanV165):
+        # v165: signatures mean nothing without authorized signers. The
+        # plan must be signed by the registered plan authority; receipts
+        # by the execution-witness role; both checked against the
+        # out-of-band trust root, never the evidence directory alone.
+        from minagi.v161.authority import (AuthorityLedger,
+                                           AuthorityRegistry)
+        trust_path = storage / "trust_root.json"
+        if not trust_path.is_file():
+            fail("authority", "trust_root.json missing for v165 campaign")
+        else:
+            try:
+                registry = AuthorityRegistry.load(trust_path)
+                authority_verifier = registry.verifier()
+            except Exception as exc:  # noqa: BLE001
+                fail("authority",
+                     f"trust root load: {type(exc).__name__}: {exc}")
+        if registry is not None:
+            if not registry.is_authorized(
+                    "plan", plan_doc.get("signer_key_id", "")):
+                fail("plan", "plan not signed by registered plan authority")
+            elif not authority_verifier.verify(
+                    plan_doc["value"],
+                    SignedEnvelope(plan_doc["signer_key_id"],
+                                   plan_doc["signature_b64"])):
+                fail("plan", "plan signature verification failed")
+    else:
+        if plan_doc.get("signer_key_id") != key_id:
+            fail("plan", "plan signed by unexpected key")
+        if not verifier.verify(plan_doc["value"],
+                               SignedEnvelope(plan_doc["signer_key_id"],
+                                              plan_doc["signature_b64"])):
+            fail("plan", "plan signature verification failed")
 
     # v165: the signed experiment protocol must be present and digest-bound
+    proto = None
     if isinstance(plan, ColabCampaignPlanV165):
         from minagi.v161.experiment_protocol import ExperimentProtocolV1
         proto_path = campaign_dir / "EXPERIMENT_PROTOCOL.json"
@@ -148,9 +179,125 @@ def main() -> int:
     if parts.hidden.digest != hidden_digest:
         fail("dataset", "recomputed hidden digest != DATASET_PROOF.json")
 
+    class _V3Cell:
+        """Uniform view: an EvidenceReceiptV3 whose reported metrics were
+        replaced by the INDEPENDENTLY recomputed values — downstream
+        reconstruction consumes verified scores, never worker claims."""
+        __slots__ = ("_receipt", "metrics")
+
+        def __init__(self, receipt, metrics):
+            self._receipt = receipt
+            self.metrics = metrics
+
+        def __getattr__(self, name):
+            return getattr(self._receipt, name)
+
     # --- Arm x seed matrix ---
     matrix: dict[str, dict[str, str]] = {}
     receipts: dict[tuple[int, str], ExecutedRunReceiptV162] = {}
+    recomputed_all: dict[tuple[int, str], dict] = {}
+
+    if isinstance(plan, ColabCampaignPlanV165):
+        # Independent rescore plumbing (v3): prediction records join the
+        # committed corpus by task id; expected answers never enter the
+        # evidence artifacts.
+        from minagi.v161.evaluators import (containment_match, exact_match,
+                                            retention_score,
+                                            security_regression)
+        from minagi.v161.evidence_receipt_v3 import (
+            EvidenceReceiptV3, evaluation_bundle,
+            input_manifest_digest, predictions_digest_of,
+            read_predictions)
+        from egai.common.canonical import digest as _digest, sha256_bytes as _sha
+        ret_impl = {"containment_match": containment_match,
+                    "retention_score": retention_score}
+        ret_fn = ret_impl[getattr(proto, "retention_scorer",
+                                  "retention_score")]
+        sec_rows_by_id = {str(r["id"]): r for r in by_split["security"]}
+        hid_rows_by_id = {str(r["id"]): r for r in by_split["hidden"]}
+        ret_probe = [r for r in by_split["retention"]
+                     if r.get("probe") != "delayed"]
+        ret_delayed = [r for r in by_split["retention"]
+                       if r.get("probe") == "delayed"]
+        ret_rows_by_id = {str(r["id"]): r for r in ret_probe}
+        delayed_rows_by_id = {str(r["id"]): r for r in ret_delayed}
+        eval_set_expected = _digest(
+            {"hidden": parts.hidden.digest,
+             "retention": parts.retention.digest,
+             "security": parts.security.digest})
+        evaluator_set_expected = _digest(
+            [plan.scorer_artifact_digest, plan.retention_artifact_digest,
+             plan.security_artifact_digest])
+
+        def _rescore_cell(seed, arm, cell_name, r3, doc):
+            """Verify evidence chain + recompute metrics from canonical
+            predictions. Returns recomputed metrics dict or None."""
+            where = f"seed-{seed}/{cell_name}"
+            preds_path = campaign_dir / f"seed-{seed}" / \
+                f"PREDICTIONS-{cell_name}.jsonl"
+            if not preds_path.is_file():
+                fail(where, "canonical predictions file missing")
+                return None
+            preds = read_predictions(preds_path)
+            if predictions_digest_of(preds) != r3.predictions_digest:
+                fail(where, "predictions digest mismatch vs receipt")
+                return None
+            if input_manifest_digest(preds) != r3.input_manifest_digest:
+                fail(where, "input manifest digest mismatch vs receipt")
+                return None
+            if _digest(doc.get("bundle") or {}) != \
+                    r3.evaluation_bundle_digest:
+                fail(where, "evaluation bundle digest mismatch vs receipt")
+                return None
+            block_index = {"hidden": (hid_rows_by_id, exact_match,
+                                      "hidden_exact_match", "mean"),
+                           "retention": (ret_rows_by_id, ret_fn,
+                                         "retention", "mean"),
+                           "retention_delayed": (delayed_rows_by_id, ret_fn,
+                                                 "retention_delayed", "mean"),
+                           "security": (sec_rows_by_id, security_regression,
+                                        "security_regressions", "count")}
+            metrics = {}
+            for rec in preds:
+                blk = rec.get("block")
+                if blk not in block_index:
+                    fail(where, f"unknown prediction block {blk!r}")
+                    return None
+                if _sha(str(rec.get("input", "")).encode()) != \
+                        rec.get("input_sha256"):
+                    fail(where, f"input digest mismatch in record {rec.get('id')}")
+                    return None
+            by_block = {}
+            for rec in preds:
+                by_block.setdefault(rec["block"], []).append(rec)
+            for blk, recs in by_block.items():
+                index, fn, metric, how = block_index[blk]
+                vals = []
+                for rec in recs:
+                    row = index.get(str(rec["id"]))
+                    if row is None:
+                        fail(where, f"prediction id {rec['id']} not in "
+                                    f"{blk} partition — off-corpus input")
+                        return None
+                    vals.append(float(fn(str(rec["output"]),
+                                         str(row["expected"]))))
+                metrics[metric] = (sum(vals) if how == "count"
+                                   else (sum(vals) / len(vals) if vals else 0.0))
+            # worker-reported metrics become checkable claims
+            reported = dict((doc.get("bundle") or {})
+                            .get("metrics_reported") or {})
+            for k, v in metrics.items():
+                if abs(float(reported.get(k, float("nan"))) - float(v)) > 1e-9:
+                    fail(where, f"reported metric {k}={reported.get(k)} "
+                                f"!= recomputed {v} — fabricated score")
+                    return None
+            for k in ("eval_seconds", "generated_tokens",
+                      "arm_state_bytes", "wall_seconds",
+                      "train_seconds", "trainable_params"):
+                if k in reported:
+                    metrics[k] = reported[k]
+            return metrics
+
     for seed in plan.seeds:
         run_dir = campaign_dir / f"seed-{seed}"
         matrix[f"seed-{seed}"] = {}
@@ -161,9 +308,49 @@ def main() -> int:
                 ("incomplete" if cell_path.is_file() else "missing")
             matrix[f"seed-{seed}"][arm] = state
             if state != "present":
-                fail(f"seed-{seed}/{arm}", f"cell {state}")
+                # v165 distinguishes absent evidence (INCOMPLETE — e.g.
+                # another lane's unfinished seed) from invalid evidence
+                # (a cell file present without a verified atomic commit
+                # — grafted/torn material). Only the latter is a failure.
+                if state == "incomplete" \
+                        or not isinstance(plan, ColabCampaignPlanV165):
+                    fail(f"seed-{seed}/{arm}", f"cell {state}")
                 continue
             doc = json.loads(cell_path.read_text())
+            if isinstance(plan, ColabCampaignPlanV165):
+                try:
+                    r3 = EvidenceReceiptV3(**doc["receipt"])
+                except Exception as exc:  # noqa: BLE001
+                    fail(f"seed-{seed}/{arm}",
+                         f"receipt parse: {type(exc).__name__}: {exc}")
+                    continue
+                if r3.arm != arm or int(r3.seed) != seed:
+                    fail(f"seed-{seed}/{arm}", "arm/seed field mismatch")
+                if r3.campaign_digest != plan.digest:
+                    fail(f"seed-{seed}/{arm}",
+                         "receipt campaign_digest does not match plan")
+                if r3.protocol_digest != plan.experiment_protocol_digest:
+                    fail(f"seed-{seed}/{arm}",
+                         "receipt protocol_digest != preregistered protocol")
+                if r3.evaluation_dataset_digest != eval_set_expected:
+                    fail(f"seed-{seed}/{arm}",
+                         "receipt evaluation_dataset_digest != partitions")
+                if r3.evaluator_digest != evaluator_set_expected:
+                    fail(f"seed-{seed}/{arm}",
+                         "receipt evaluator_digest != preregistered evaluator set")
+                if registry is not None and not registry.is_authorized(
+                        "execution_witness", r3.signer_key_id):
+                    fail(f"seed-{seed}/{arm}",
+                         "receipt signer not authorized as execution_witness")
+                elif authority_verifier is not None and \
+                        not r3.verify(authority_verifier):
+                    fail(f"seed-{seed}/{arm}", "signature verification failed")
+                metrics = _rescore_cell(seed, arm, arm, r3, doc)
+                if metrics is None:
+                    continue
+                recomputed_all[(seed, arm)] = metrics
+                receipts[(seed, arm)] = _V3Cell(r3, metrics)
+                continue
             try:
                 receipt = ExecutedRunReceiptV162(**doc["receipt"])
             except Exception as exc:  # noqa: BLE001
@@ -194,33 +381,69 @@ def main() -> int:
                     fail(f"seed-{seed}/{cell_name}", "delayed cell missing")
                     continue
                 doc = json.loads(cell_path.read_text())
-                try:
-                    rec = ExecutedRunReceiptV162(**doc["receipt"])
-                except Exception as exc:  # noqa: BLE001
-                    fail(f"seed-{seed}/{cell_name}",
-                         f"receipt parse: {type(exc).__name__}: {exc}")
-                    continue
-                if rec.arm != arm_id or int(rec.seed) != seed:
-                    fail(f"seed-{seed}/{cell_name}", "arm/seed field mismatch")
-                if rec.campaign_digest != plan.digest:
-                    fail(f"seed-{seed}/{cell_name}", "receipt campaign_digest != plan")
-                if rec.evaluator_digest != plan.scorer_artifact_digest:
-                    fail(f"seed-{seed}/{cell_name}", "receipt evaluator_digest != scorer")
-                if rec.dataset_digest != hidden_digest:
-                    fail(f"seed-{seed}/{cell_name}", "receipt dataset_digest != hidden")
-                if rec.signer_key_id != key_id or not rec.verify(verifier):
-                    fail(f"seed-{seed}/{cell_name}", "signature verification failed")
-                if doc.get("probe_kind") != "delayed":
-                    fail(f"seed-{seed}/{cell_name}", "probe_kind marker missing")
-                if "retention_delayed" not in rec.metrics:
-                    fail(f"seed-{seed}/{cell_name}", "retention_delayed metric missing")
-                delayed[(seed, arm_id)] = float(rec.metrics.get("retention_delayed", 0.0))
+                if isinstance(plan, ColabCampaignPlanV165):
+                    try:
+                        r3 = EvidenceReceiptV3(**doc["receipt"])
+                    except Exception as exc:  # noqa: BLE001
+                        fail(f"seed-{seed}/{cell_name}",
+                             f"receipt parse: {type(exc).__name__}: {exc}")
+                        continue
+                    if r3.arm != arm_id or int(r3.seed) != seed:
+                        fail(f"seed-{seed}/{cell_name}",
+                             "arm/seed field mismatch")
+                    if r3.campaign_digest != plan.digest:
+                        fail(f"seed-{seed}/{cell_name}",
+                             "receipt campaign_digest != plan")
+                    if registry is not None and not registry.is_authorized(
+                            "execution_witness", r3.signer_key_id):
+                        fail(f"seed-{seed}/{cell_name}",
+                             "delayed receipt signer not authorized")
+                    elif authority_verifier is not None and \
+                            not r3.verify(authority_verifier):
+                        fail(f"seed-{seed}/{cell_name}",
+                             "signature verification failed")
+                    if (doc.get("bundle") or {}).get("cell") != cell_name:
+                        fail(f"seed-{seed}/{cell_name}",
+                             "bundle cell marker mismatch")
+                    metrics = _rescore_cell(seed, arm_id, cell_name, r3, doc)
+                    if metrics is None:
+                        continue
+                    if "retention_delayed" not in metrics:
+                        fail(f"seed-{seed}/{cell_name}",
+                             "retention_delayed metric missing")
+                        continue
+                    delayed[(seed, arm_id)] = float(
+                        metrics["retention_delayed"])
+                else:
+                    try:
+                        rec = ExecutedRunReceiptV162(**doc["receipt"])
+                    except Exception as exc:  # noqa: BLE001
+                        fail(f"seed-{seed}/{cell_name}",
+                             f"receipt parse: {type(exc).__name__}: {exc}")
+                        continue
+                    if rec.arm != arm_id or int(rec.seed) != seed:
+                        fail(f"seed-{seed}/{cell_name}", "arm/seed field mismatch")
+                    if rec.campaign_digest != plan.digest:
+                        fail(f"seed-{seed}/{cell_name}", "receipt campaign_digest != plan")
+                    if rec.evaluator_digest != plan.scorer_artifact_digest:
+                        fail(f"seed-{seed}/{cell_name}", "receipt evaluator_digest != scorer")
+                    if rec.dataset_digest != hidden_digest:
+                        fail(f"seed-{seed}/{cell_name}", "receipt dataset_digest != hidden")
+                    if rec.signer_key_id != key_id or not rec.verify(verifier):
+                        fail(f"seed-{seed}/{cell_name}", "signature verification failed")
+                    if doc.get("probe_kind") != "delayed":
+                        fail(f"seed-{seed}/{cell_name}", "probe_kind marker missing")
+                    if "retention_delayed" not in rec.metrics:
+                        fail(f"seed-{seed}/{cell_name}", "retention_delayed metric missing")
+                    delayed[(seed, arm_id)] = float(rec.metrics.get("retention_delayed", 0.0))
                 # L6 delayed cell re-verifies the persisted adapter bytes
                 if arm_id == "L6":
+                    _rec = (r3 if isinstance(plan, ColabCampaignPlanV165)
+                            else rec)
                     adir = storage / "adapters" / args.campaign_id / "L6" / f"seed-{seed}"
                     if not adir.is_dir():
                         fail(f"seed-{seed}/{cell_name}", "L6 adapter dir missing for delayed probe")
-                    elif sha256_path(adir) != rec.adapter_digest:
+                    elif sha256_path(adir) != _rec.adapter_digest:
                         fail(f"seed-{seed}/{cell_name}", "L6 delayed adapter digest mismatch")
 
     # --- Physical closure: adapters (L6/NC) and arm states (L2-L5) ---
@@ -259,8 +482,11 @@ def main() -> int:
                 p = cell_path / f"{nm}.json"
                 if p.is_file():
                     try:
-                        delayed_receipts[(seed, nm)] = ExecutedRunReceiptV162(
-                            **json.loads(p.read_text())["receipt"])
+                        rdoc = json.loads(p.read_text())["receipt"]
+                        delayed_receipts[(seed, nm)] = (
+                            EvidenceReceiptV3(**rdoc)
+                            if isinstance(plan, ColabCampaignPlanV165)
+                            else ExecutedRunReceiptV162(**rdoc))
                     except Exception:
                         pass
         for seed in plan.seeds:
@@ -390,7 +616,21 @@ def main() -> int:
                            f"{plan.negative_control_max_ft} — pipeline suspect")
     if not complete:
         reasons.insert(0, "incomplete or invalid evidence matrix")
-    decision = "QUALIFIED" if complete and not reasons else "REFUSE"
+    # Explicit failure states (REPAIR-018): v165 distinguishes
+    # INCOMPLETE (absent cells) / INVALID_EVIDENCE (integrity failures)
+    # / REFUSED (gates unmet) / QUALIFIED. Older plans keep their
+    # historical vocabulary for evidence compatibility.
+    if isinstance(plan, ColabCampaignPlanV165):
+        if failures:
+            decision = "INVALID_EVIDENCE"
+        elif len(per_seed) < len(plan.seeds):
+            decision = "INCOMPLETE"
+        elif reasons:
+            decision = "REFUSED"
+        else:
+            decision = "QUALIFIED"
+    else:
+        decision = "QUALIFIED" if complete and not reasons else "REFUSE"
 
     recorded_result = None
     result_path = campaign_dir / "RESULT.json"
@@ -398,7 +638,11 @@ def main() -> int:
         recorded_result = json.loads(result_path.read_text())
     agreement = None
     if recorded_result is not None:
-        agreement = (recorded_result.get("decision") == "PASS") == (decision == "QUALIFIED")
+        if isinstance(plan, ColabCampaignPlanV165):
+            agreement = (recorded_result.get("decision") == decision)
+        else:
+            agreement = (recorded_result.get("decision") == "PASS") == \
+                        (decision == "QUALIFIED")
 
     record = {
         "schema": "mini-agi-v16.2-campaign1-qualification-v1",
@@ -421,7 +665,67 @@ def main() -> int:
         "note": "QUALIFIED is experimental qualification only; not "
                 "production promotion authority.",
     }
-    output.write_text(json.dumps(record, indent=2, sort_keys=True))
+
+    if isinstance(plan, ColabCampaignPlanV165) and registry is not None:
+        # Independent authority output: the evaluation authority signs
+        # the recomputed metrics + evidence root; the qualification
+        # authority signs the gate decision; both land in the ledger.
+        from egai.common.crypto import Ed25519Signer
+        from egai.common.canonical import digest as _d
+
+        def _role_signer(role):
+            p = storage / ".keys" / f"{role}.pem"
+            if not p.is_file():
+                return None
+            s = Ed25519Signer.from_private_bytes(p.read_bytes())
+            return s if registry.is_authorized(role, s.key_id) else None
+
+        eval_signer = _role_signer("evaluation")
+        qual_signer = _role_signer("qualification")
+        evidence_root = sha256_path(campaign_dir)
+        bundle_body = {
+            "schema": "mini-agi-v16.5-evaluation-record-v1",
+            "campaign_id": args.campaign_id,
+            "campaign_plan_digest": plan.digest,
+            "protocol_digest": plan.experiment_protocol_digest,
+            "evidence_root_digest": evidence_root,
+            "evaluator_set_digest": evaluator_set_expected,
+            "recomputed_per_cell": {f"{s}-{a}": m
+                                   for (s, a), m in
+                                   sorted(recomputed_all.items())},
+            "per_seed": per_seed,
+        }
+        if eval_signer is not None:
+            env = eval_signer.sign(bundle_body)
+            bundle_doc = {"value": bundle_body,
+                          "digest": _d(bundle_body),
+                          "signer_key_id": env.key_id,
+                          "signature_b64": env.signature_b64}
+            (campaign_dir / "EVALUATION_BUNDLE.json").write_text(
+                json.dumps(bundle_doc, indent=2, sort_keys=True))
+            AuthorityLedger(storage / "AUTHORITY_LEDGER.jsonl") \
+                .append(eval_signer, "evaluation_bundle", bundle_body)
+            record["evaluation_bundle_digest"] = _d(bundle_body)
+            record["evidence_root_digest"] = evidence_root
+            record["scoring"] = "independently-recomputed-from-predictions"
+        else:
+            fail("authority", "evaluation authority key unavailable — "
+                              "record left unsigned")
+        if qual_signer is not None:
+            qenv = qual_signer.sign(record)
+            record_doc = {"value": record, "digest": _d(record),
+                          "signer_key_id": qenv.key_id,
+                          "signature_b64": qenv.signature_b64}
+            output.write_text(json.dumps(record_doc, indent=2,
+                                         sort_keys=True))
+            AuthorityLedger(storage / "AUTHORITY_LEDGER.jsonl") \
+                .append(qual_signer, "qualification_record", record)
+        else:
+            fail("authority", "qualification authority key unavailable — "
+                              "record left unsigned")
+            output.write_text(json.dumps(record, indent=2, sort_keys=True))
+    else:
+        output.write_text(json.dumps(record, indent=2, sort_keys=True))
     print(json.dumps({k: record[k] for k in
                       ("schema", "campaign_id", "decision", "runner_decision_agreement")},
                      indent=2))

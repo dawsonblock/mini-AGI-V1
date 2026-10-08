@@ -62,7 +62,7 @@
     "component": {
       "name": "mini-AGI Colab Converged",
       "type": "application",
-      "version": "16.1.0"
+      "version": "16.2.1"
     }
   },
   "specVersion": "1.5",

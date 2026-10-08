@@ -1,3 +1,72 @@
+# v16.2.1 — Evidence-Verified Research Baseline (integrity repair)
+
+Integrity repair release — no scientific claims changed; Campaign 2's
+qualified-negative result stands unchanged under its original V164
+schema. The v16.3 designation remains reserved for a scientific
+promotion condition Campaign 2 did not satisfy.
+
+Release integrity:
+
+- `scripts/verify_release.py` no longer trusts the in-package public
+  key: the bundled key must carry the pinned v16.x release fingerprint
+  (`REQUIRED_TRUSTED_KEY_FINGERPRINT`), with `--trusted-key` and
+  `MINIAGI_RELEASE_KEY_FP` overrides for independently held keys and
+  historical releases. Replacing manifest+key+signature inside an
+  archive can no longer self-verify.
+- Tag-gated clean-extraction release check in CI
+  (`.github/workflows/rc11-integrity.yml`); per-commit pushes do not
+  re-sign (manifest is resealed at release points).
+- Version metadata normalized to 16.2.1 across VERSION, pyproject,
+  package, SBOM, and release validation docs.
+
+Evidence authenticity (v165 plan path):
+
+- New `EvidenceReceiptV3` binds canonical prediction artifacts inside
+  the signed payload: per-task prediction JSONL (input digest + output
+  + status), `input_manifest_digest`, `predictions_digest`, and
+  `evaluation_bundle_digest` — worker-reported metrics are now
+  checkable claims, not facts.
+- The qualifier independently re-scores every cell by joining
+  canonical predictions to the committed corpus partitions; mismatched
+  reported metrics, off-corpus prediction ids, or tampered artifacts
+  produce `INVALID_EVIDENCE`, never `QUALIFIED`.
+
+Independent authority:
+
+- New role-separated authority plane (`minagi.v161.authority`):
+  `plan`, `execution_witness`, `evaluation`, `qualification`,
+  `promotion` — distinct Ed25519 identities in an out-of-band
+  `trust_root.json`; same-key collapse and revoked/unregistered
+  identities are rejected. The execution signer can no longer
+  authorize its own qualification.
+- Append-only `AUTHORITY_LEDGER.jsonl` chain-of-digests records
+  preregistration -> evaluation bundle -> qualification record ->
+  promotion decision, each signed by its owning role.
+- `scripts/authority_bootstrap.py` provisions the trust root;
+  `scripts/promote.py` issues the signed promotion decision bound to
+  exact adapter digests (never mutable names).
+
+Atomic, fail-closed execution:
+
+- v165 seeds execute in staging directories and publish via atomic
+  rename with a `COMMIT_MANIFEST.json` enumerating every artifact;
+  torn or grafted evidence is quarantined and re-executed, never
+  merged.
+- Explicit decision vocabulary: `INCOMPLETE` / `INVALID_EVIDENCE` /
+  `REFUSED` / `QUALIFIED` (runner emits provisional decisions;
+  authoritative qualification is the independently signed
+  `QUALIFICATION_RECORD.json`; `PROMOTED` requires the promotion
+  authority).
+- 34 new adversarial regression tests covering prediction/receipt/
+  input-manifest/bundle mutation, authority substitution, key
+  revocation, ledger tampering, torn atomic commits, and numeric
+  injection — 393/393 tests pass.
+
+Not in this release: corrected response-masked LoRA training, PEFT
+serving-path qualification, Campaign 3 redesign/execution, dynamic
+LoRA, recursive-improvement generations — deferred per the v16.2.1
+repair plan until the evidence loop is trustworthy.
+
 # v16.2.0-post — Campaign 2 Scale/Generalization Result (2026-10-07)
 
 - Campaign 2 (`campaign2-v164`) completed the full 10-seed × 7-arm

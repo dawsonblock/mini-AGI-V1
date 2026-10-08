@@ -20,10 +20,10 @@
   },
   "created_utc": "2026-10-06T08:50:02.699595+00:00",
   "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
-  "manifest_sha256": "fd31a757099bc6be6347e99a1a4debe9087ec8fe50d34c5428f44ed0fc1391a8",
+  "manifest_sha256": "4158c00ee0935418a57d9a57713908394d5ba1725b6bf9c7e67346e7606b9980",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
-  "python_validation": "313/313 PASS (reproduced on Colab T4, 2026-10-06)",
+  "python_validation": "393/393 PASS (local, pre-commit)",
   "reissue": {
     "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)",
     "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
@@ -41,9 +41,15 @@
       "manifest_sha256": "952673cc826c4dcf0ffea3c83566b70b3c797379ce8dfe81b2dcab57347b4bd2",
       "reason": "v16.2 designation: Campaign 1b QUALIFIED + reproduced satisfies the promotion gate; version bump 16.1.0 -> 16.2.0; status smoke-scope -> campaign-scope.",
       "utc": "2026-10-07T00:54:04.580354+00:00"
+    },
+    {
+      "commit": "2ba0da2",
+      "manifest_sha256": "4158c00ee0935418a57d9a57713908394d5ba1725b6bf9c7e67346e7606b9980",
+      "reason": "v16.2.1 integrity repair: hardened verifier (pinned trusted-key fingerprint + --trusted-key override), EvidenceReceiptV3 prediction binding, role-separated authority (plan/witness/eval/qual/promote), atomic seed commits, signed qualification records, 393/393 tests; scientific claims unchanged",
+      "utc": "2026-10-08T02:41:18.288644+00:00"
     }
   ],
-  "reissued_utc": "2026-10-06T10:35:00+00:00",
+  "reissued_utc": "2026-10-08T02:41:18.288644+00:00",
   "reissues": [
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -58,8 +64,8 @@
       "reason": "runner --execute-seeds: parallel-VM campaign execution under one signed plan"
     }
   ],
-  "release": "mini-AGI-v16.2-Colab-Converged-Full-Upgraded",
+  "release": "mini-AGI-v16.2.1-Colab-Converged",
   "schema": "mini-agi-v16.1-release-attestation-v1",
   "signature_algorithm": "Ed25519",
-  "status": "COLAB_VALIDATED_CAMPAIGN_SCOPE"
+  "status": "PASS_INTEGRITY_REPAIR_GPU_SMOKE_PENDING"
 }
