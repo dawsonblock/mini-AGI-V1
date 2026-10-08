@@ -74,6 +74,12 @@ survived the timeout; all three are blocked now.
   qualifier surfacing.
 * `test_v1622_release_metadata.py` — attestation ↔ manifest ↔ version
   identity reconciliation, signature verification.
+* `test_v1622_verify_release_script.py` — adversarial exercise of the
+  release verifier against a signed fixture: tampered/extra/missing
+  files, corrupted manifest digest entries, unsupported manifest
+  schema, forged signatures, stale attestation digests, stale reissue
+  history, missing attestation, and version-identity disagreement all
+  fail with their documented exit codes.
 
 Every defect-reproducing test fails on the v16.2.1 code and passes on
 this release (verified by reverting each repaired module in turn).

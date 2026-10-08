@@ -20,10 +20,10 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "855a79e08c0be64ebec39f57009940d6f6d2a74dce064ba795595507b20fd544",
+ "manifest_sha256": "6e5242e778b313aea4daef8a647bac8f7cb9474f2c35ee7d961ccfbbe5eb40c8",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
- "python_validation": "510/510 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
+ "python_validation": "521/521 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
  "reissue": {
   "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)",
   "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
@@ -64,12 +64,12 @@
    "utc": "2026-10-08T04:09:53.206035+00:00"
   },
   {
-   "manifest_sha256": "855a79e08c0be64ebec39f57009940d6f6d2a74dce064ba795595507b20fd544",
-   "reason": "v16.2.2 security/correctness repair (v17 plan Phase 1, FIX-001..006): OS-enforced evaluator sandbox + declarative evaluator (fail closed without a backend), rank-allocator growth arithmetic, verified append-only generation promotion, corrected false-activation denominator + conditional regression, authority validity-window enforcement, release-metadata reconciliation enforced by verify_release.py; every defect carries a reproducing test; 510/510 Python (1 skipped: Linux-only RLIMIT_AS on macOS)",
-   "utc": "2026-10-08T08:31:01.566860+00:00"
+   "manifest_sha256": "6e5242e778b313aea4daef8a647bac8f7cb9474f2c35ee7d961ccfbbe5eb40c8",
+   "reason": "v16.2.2 security/correctness repair (v17 plan Phase 1, FIX-001..006): OS-enforced evaluator sandbox + declarative evaluator (fail closed without a backend), rank-allocator growth arithmetic, verified append-only generation promotion, corrected false-activation denominator + conditional regression, authority validity-window enforcement, release-metadata reconciliation enforced by verify_release.py (adversarially tested via --root fixture); every defect carries a reproducing test; 521/521 Python (1 skipped: Linux-only RLIMIT_AS on macOS)",
+   "utc": "2026-10-08T08:33:36.968396+00:00"
   }
  ],
- "reissued_utc": "2026-10-08T08:31:01.566860+00:00",
+ "reissued_utc": "2026-10-08T08:33:36.968396+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",

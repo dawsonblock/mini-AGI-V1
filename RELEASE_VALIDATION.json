@@ -7,7 +7,7 @@
   "gpu_smoke": "NOT_RUN_CPU_OFFLINE_ENVIRONMENT (v165 GPU campaign remains unexercised; Campaign 3 is drafted/unrun)",
   "native_serving_route_b": "v2 bundle schema (per-layer q/k/v/o, dims-validated, fail-closed): single-token decode path applies deltas; batched prefill/decode and recurrent layers refuse rather than silently drop; compiler emits bit-exact F32 from safetensors; end-to-end real-model parity NOT yet run",
   "plasticity": "governed scaffold: diagnosis ladder + signed proposals requiring cheaper-mechanism priors; DynamicLoraPolicyV1 + RankAllocator enforce rank budgets, step growth, activation protection. FIX-002: growth clamps to current rank + remaining headroom, is strictly non-decreasing, and blocked growth leaves state unchanged",
-  "python_tests": "510/510 PASS + 1 skipped (Linux-only RLIMIT_AS test on the macOS host)",
+  "python_tests": "521/521 PASS + 1 skipped (Linux-only RLIMIT_AS test on the macOS host)",
   "recursive_generations": "GenerationRecord/GenerationChain scaffold: promotion-gated child preregistration, fresh-corpus enforcement, digest-pinned ancestry. FIX-003: promotion is an append-only event validated against the promotion authority — signed envelope, bound generation record/campaign/qualification, authorized signer valid at verification time, unexpired, unrevoked; bare digests never promote",
   "release_integrity": "source manifest/signature verifier with pinned trusted-key fingerprint + external --trusted-key override; tag-gated clean-extraction CI check; final result recorded in RELEASE_ATTESTATION.json. FIX-006: verify_release.py now fails on attestation/manifest/version drift (exit 5) and the reconciliation is regression-tested",
   "schema": "mini-agi-v16.2.2-release-validation-v1",
