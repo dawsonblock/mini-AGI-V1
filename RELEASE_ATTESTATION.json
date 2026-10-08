@@ -1,76 +1,81 @@
 {
-  "assembly_signature_only": true,
-  "campaign_qualification": {
-    "campaign_id": "campaign1b-v163",
-    "decision": "QUALIFIED",
-    "delta_ft_neural_L6_minus_L5": 0.2,
-    "reproduction": "REPRODUCED (fresh Runtime B, public-source-only, metric-identical)",
-    "results_branch": "results/v16.1-colab-campaign-1",
-    "results_tip": "2f75ffb82df9ab1c914747814bda93c4b72116d7",
-    "seeds_positive": "5/5"
+ "assembly_signature_only": true,
+ "campaign_qualification": {
+  "campaign_id": "campaign1b-v163",
+  "decision": "QUALIFIED",
+  "delta_ft_neural_L6_minus_L5": 0.2,
+  "reproduction": "REPRODUCED (fresh Runtime B, public-source-only, metric-identical)",
+  "results_branch": "results/v16.1-colab-campaign-1",
+  "results_tip": "2f75ffb82df9ab1c914747814bda93c4b72116d7",
+  "seeds_positive": "5/5"
+ },
+ "colab_validation": {
+  "cuda": "13.0",
+  "date_utc": "2026-10-06",
+  "evidence_branch": "results/v16.1-colab-campaign-1",
+  "gpu": "Tesla T4 15637086208 bytes VRAM",
+  "python": "3.13.15",
+  "runtime": "Google Colab T4",
+  "torch": "2.11.0+cu130"
+ },
+ "created_utc": "2026-10-06T08:50:02.699595+00:00",
+ "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
+ "manifest_sha256": "1e8ee9cacd461faf5eda8c22db6f7bea343fc3c2caabf7681b88a2c12f270ddb",
+ "operator_promotion_authority": false,
+ "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
+ "python_validation": "409/409 PASS (local, pre-commit)",
+ "reissue": {
+  "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)",
+  "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
+  "original_assembly_public_key_sha256": "c55e4d202697ad48c520d538e9300da86de26e3fe97929e2135e9ea7bb9befcf",
+  "reason": "post-assembly source updates: scripts/validation harness, status documents with actual Colab results, verify_release install-artifact exclusions, colab_install torchao floor"
+ },
+ "reissue_history": [
+  {
+   "commit": "54a5202e0223e46cfd473843f74ef2138f991982",
+   "manifest_sha256": "860c081ff7ba532eec6bfe4fc70fc4f2e69a7f96b0a7ea88abd357466a8bfe00",
+   "reason": "reissue_release.py enumerates via git ls-files; two gitignored Runtime-B evidence strays had leaked into c053e79's manifest via disk-walk. Manifest regenerated over tracked set only.",
+   "utc": "2026-10-07T00:23:44.800932+00:00"
   },
-  "colab_validation": {
-    "cuda": "13.0",
-    "date_utc": "2026-10-06",
-    "evidence_branch": "results/v16.1-colab-campaign-1",
-    "gpu": "Tesla T4 15637086208 bytes VRAM",
-    "python": "3.13.15",
-    "runtime": "Google Colab T4",
-    "torch": "2.11.0+cu130"
+  {
+   "manifest_sha256": "952673cc826c4dcf0ffea3c83566b70b3c797379ce8dfe81b2dcab57347b4bd2",
+   "reason": "v16.2 designation: Campaign 1b QUALIFIED + reproduced satisfies the promotion gate; version bump 16.1.0 -> 16.2.0; status smoke-scope -> campaign-scope.",
+   "utc": "2026-10-07T00:54:04.580354+00:00"
   },
-  "created_utc": "2026-10-06T08:50:02.699595+00:00",
-  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
-  "manifest_sha256": "1e8ee9cacd461faf5eda8c22db6f7bea343fc3c2caabf7681b88a2c12f270ddb",
-  "operator_promotion_authority": false,
-  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
-  "python_validation": "409/409 PASS (local, pre-commit)",
-  "reissue": {
-    "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)",
-    "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
-    "original_assembly_public_key_sha256": "c55e4d202697ad48c520d538e9300da86de26e3fe97929e2135e9ea7bb9befcf",
-    "reason": "post-assembly source updates: scripts/validation harness, status documents with actual Colab results, verify_release install-artifact exclusions, colab_install torchao floor"
+  {
+   "commit": "2ba0da2",
+   "manifest_sha256": "4158c00ee0935418a57d9a57713908394d5ba1725b6bf9c7e67346e7606b9980",
+   "reason": "v16.2.1 integrity repair: hardened verifier (pinned trusted-key fingerprint + --trusted-key override), EvidenceReceiptV3 prediction binding, role-separated authority (plan/witness/eval/qual/promote), atomic seed commits, signed qualification records, 393/393 tests; scientific claims unchanged",
+   "utc": "2026-10-08T02:41:18.288644+00:00"
   },
-  "reissue_history": [
-    {
-      "commit": "54a5202e0223e46cfd473843f74ef2138f991982",
-      "manifest_sha256": "860c081ff7ba532eec6bfe4fc70fc4f2e69a7f96b0a7ea88abd357466a8bfe00",
-      "reason": "reissue_release.py enumerates via git ls-files; two gitignored Runtime-B evidence strays had leaked into c053e79's manifest via disk-walk. Manifest regenerated over tracked set only.",
-      "utc": "2026-10-07T00:23:44.800932+00:00"
-    },
-    {
-      "manifest_sha256": "952673cc826c4dcf0ffea3c83566b70b3c797379ce8dfe81b2dcab57347b4bd2",
-      "reason": "v16.2 designation: Campaign 1b QUALIFIED + reproduced satisfies the promotion gate; version bump 16.1.0 -> 16.2.0; status smoke-scope -> campaign-scope.",
-      "utc": "2026-10-07T00:54:04.580354+00:00"
-    },
-    {
-      "commit": "2ba0da2",
-      "manifest_sha256": "4158c00ee0935418a57d9a57713908394d5ba1725b6bf9c7e67346e7606b9980",
-      "reason": "v16.2.1 integrity repair: hardened verifier (pinned trusted-key fingerprint + --trusted-key override), EvidenceReceiptV3 prediction binding, role-separated authority (plan/witness/eval/qual/promote), atomic seed commits, signed qualification records, 393/393 tests; scientific claims unchanged",
-      "utc": "2026-10-08T02:41:18.288644+00:00"
-    },
-    {
-      "manifest_sha256": "1e8ee9cacd461faf5eda8c22db6f7bea343fc3c2caabf7681b88a2c12f270ddb",
-      "reason": "v16.2.1 P1 batch: corrected response-masked LoRA trainer, protocol-bound optimizer/grad-accum/masking, PEFT serving-path closure + runtime manifests in promote.py",
-      "utc": "2026-10-08T03:02:22.048288+00:00"
-    }
-  ],
-  "reissued_utc": "2026-10-08T02:41:18.288644+00:00",
-  "reissues": [
-    {
-      "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
-      "reason": "Campaign 2 (v164) harness added: corpus generator + 464-row corpus, V164 plan schema, bootstrap CI, delayed-retention probes, efficiency metrics, qualifier extensions"
-    },
-    {
-      "manifest_sha256": "1446b7510ba87c9ac1c027ce7eaed249528636192bb7a634b151301e722b2ae8",
-      "reason": "v164 resume semantics: persisted witness key + per-seed env atomicity for reclaimed-runtime survival"
-    },
-    {
-      "manifest_sha256": "fd31a757099bc6be6347e99a1a4debe9087ec8fe50d34c5428f44ed0fc1391a8",
-      "reason": "runner --execute-seeds: parallel-VM campaign execution under one signed plan"
-    }
-  ],
-  "release": "mini-AGI-v16.2.1-Colab-Converged",
-  "schema": "mini-agi-v16.1-release-attestation-v1",
-  "signature_algorithm": "Ed25519",
-  "status": "PASS_INTEGRITY_REPAIR_GPU_SMOKE_PENDING"
+  {
+   "manifest_sha256": "1e8ee9cacd461faf5eda8c22db6f7bea343fc3c2caabf7681b88a2c12f270ddb",
+   "reason": "v16.2.1 P1 batch: corrected response-masked LoRA trainer, protocol-bound optimizer/grad-accum/masking, PEFT serving-path closure + runtime manifests in promote.py",
+   "utc": "2026-10-08T03:02:22.048288+00:00"
+  },
+  {
+   "manifest_sha256": "f891753367c100e8515dfbc7c41601dd788830973d43a54aef43964e48136b7f",
+   "reason": "v16.2.1 Phase-6 batch: DatasetPartitionSetV2 sealed final holdout, ColabCampaignPlanV166 (cluster unit + false-activation cap + preregistered comparisons), cluster_bootstrap_ci + false_activation_rate stats, executor-verified scoring dispatch, seal_final_holdout.py, campaign3a/b/c prereg configs, qualifier --holdout + cluster/false-activation gates; 430/430 tests",
+   "utc": "2026-10-08T03:20:48.092305+00:00"
+  }
+ ],
+ "reissued_utc": "2026-10-08T02:41:18.288644+00:00",
+ "reissues": [
+  {
+   "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
+   "reason": "Campaign 2 (v164) harness added: corpus generator + 464-row corpus, V164 plan schema, bootstrap CI, delayed-retention probes, efficiency metrics, qualifier extensions"
+  },
+  {
+   "manifest_sha256": "1446b7510ba87c9ac1c027ce7eaed249528636192bb7a634b151301e722b2ae8",
+   "reason": "v164 resume semantics: persisted witness key + per-seed env atomicity for reclaimed-runtime survival"
+  },
+  {
+   "manifest_sha256": "fd31a757099bc6be6347e99a1a4debe9087ec8fe50d34c5428f44ed0fc1391a8",
+   "reason": "runner --execute-seeds: parallel-VM campaign execution under one signed plan"
+  }
+ ],
+ "release": "mini-AGI-v16.2.1-Colab-Converged",
+ "schema": "mini-agi-v16.1-release-attestation-v1",
+ "signature_algorithm": "Ed25519",
+ "status": "PASS_INTEGRITY_REPAIR_GPU_SMOKE_PENDING"
 }

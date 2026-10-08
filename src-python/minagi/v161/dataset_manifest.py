@@ -95,3 +95,44 @@ class DatasetPartitionSet:
             "hidden_family_overlap": 0 if self.require_family_disjoint_hidden else None,
             "verified": True,
         }
+
+
+@dataclass(frozen=True)
+class DatasetPartitionSetV2(DatasetPartitionSet):
+    """v16.6 partition set — adds the evaluator-sealed FINAL HOLDOUT.
+
+    The holdout partition is authority-controlled: its rows never reach
+    the worker's training, model-selection, prompt-tuning, or feedback
+    paths (the runner binds only its digest). It must be disjoint — by
+    sample id AND family — from every other partition.
+
+    This is a NEW schema (different dataclass shape + schema string), so
+    V1 partition digests used by executed campaigns are byte-stable.
+    """
+    final_holdout: DatasetMembershipManifest | None = None
+    schema: str = "mini-agi-v16.6-dataset-partition-set-v1"
+
+    def assert_disjoint(self) -> None:
+        super().assert_disjoint()
+        if self.final_holdout is None:
+            return
+        for name, part in (("train", self.train),
+                           ("validation", self.validation),
+                           ("hidden", self.hidden),
+                           ("retention", self.retention),
+                           ("security", self.security)):
+            if part is None:
+                continue
+            if part.sample_ids & self.final_holdout.sample_ids:
+                raise PermissionError(
+                    f"final holdout sample leakage into {name}")
+            if part.family_ids & self.final_holdout.family_ids:
+                raise PermissionError(
+                    f"final holdout family leakage into {name}")
+
+    def proof(self) -> dict:
+        p = super().proof()
+        p["schema"] = "mini-agi-v16.6-disjointness-proof-v1"
+        p["final_holdout_digest"] = (self.final_holdout.digest
+                                    if self.final_holdout else None)
+        return p

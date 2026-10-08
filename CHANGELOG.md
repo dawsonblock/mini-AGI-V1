@@ -93,10 +93,46 @@ PEFT serving path (REPAIR-025..029, Route A):
   never mutable names. Native qw3 parity remains Route B and is a
   separate, unclaimed gate.
 
+Experimental validity (REPAIR-030..036, v166 plan schema):
+
+- `DatasetPartitionSetV2` adds an evaluator-sealed `final_holdout`
+  partition — disjoint by sample id AND task family from every
+  campaign partition. V1 partition digests are byte-stable (the V2
+  wrapper is a new schema, not a mutation); Campaign 2 evidence is
+  unaffected.
+- `ColabCampaignPlanV166` extends V165 with `final_holdout_digest`
+  (bound by digest only — the runner never reads the holdout file),
+  `cluster_unit` (uncertainty resampling unit), a preregistered
+  `max_false_activation_rate` cap, and `n_comparisons_preregistered`
+  (the signed multiplicity budget).
+- `cluster_bootstrap_ci` resamples task families, not rows —
+  correlated same-template examples are no longer counted as
+  independent evidence; `false_activation_rate` counts rows where the
+  adapted arm flips an L1-correct answer to a wrong one.
+- `executor_score`/`score_row` give task rows a `verify` spec
+  (`python_assert` checks run in an isolated, timed subprocess) — the
+  same dispatch is used by the runner and the independent qualifier,
+  so executor-verified scoring is declaration-bound and reproducible.
+- `scripts/seal_final_holdout.py` (authority side) seals a holdout
+  JSONL into its bound manifest digest and rejects id/family leakage;
+  `qualify_campaign1.py --holdout` re-derives the digest from the
+  evaluator-supplied file — a substituted holdout fails closed.
+- Campaign 3 scaffold split into preregistered singles: 3A (controlled
+  learning rate), 3B (fresh families + separately sealed holdout),
+  3C (serving-path confirmation). `configs/campaign3a.yaml` is the
+  v166 single-lever config; 3B/3C reuse it frozen.
+- Tests: +21 cases — V2 holdout binding/leakage, clustered-bootstrap
+  determinism and width-vs-rows, false-activation semantics, executor
+  dispatch/substitution/timeout, V166 plan validation, and a full
+  V166 qualifier end-to-end (clean matrix QUALIFIES; missing or
+  substituted holdout and false-activation breach fail closed).
+
 Not in this release: response-masked GPU campaign execution, Campaign
-3 redesign/execution, dynamic LoRA, recursive-improvement generations,
-native attention-projection serving — deferred per the repair plan
-until exercised under the new evidence loop.
+3A/3B/3C execution (configs preregistered, holdouts unsealed — the
+evaluator authority seals them at campaign time), dynamic LoRA,
+recursive-improvement generations, native attention-projection
+serving — deferred per the repair plan until exercised under the new
+evidence loop.
 
 # v16.2.0-post — Campaign 2 Scale/Generalization Result (2026-10-07)
 

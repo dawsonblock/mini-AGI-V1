@@ -1,0 +1,74 @@
+# Campaign 3A — controlled learning-rate experiment (v16.6 plan).
+#
+# Single-lever replication of Campaign 3 under the Phase-6 scientific
+# gates: same model, corpus, evaluator set, security lures, retention
+# probes, and seeds as campaign3.yaml — ONLY the learning rate differs.
+# A fresh preregistration, not an amendment to campaign3 evidence.
+#
+# Phase-6 additions vs v165:
+#   * final_holdout_digest — evaluator-sealed confirmation partition,
+#     bound by digest only; the runner never reads the file. Produce
+#     with:  python scripts/seal_final_holdout.py HOLDOUT.jsonl \
+#                configs/campaign3a_tasks.jsonl
+#   * cluster_unit=family — bootstrap uncertainty resamples task
+#     families, not rows (same-template rows are correlated).
+#   * max_false_activation_rate — L6 flipping L1-correct hidden rows
+#     to wrong answers is capped (learned behavior firing off-task).
+#   * n_comparisons_preregistered — declared comparison count.
+#
+# BEFORE RUNNING: create the sealed holdout with the evaluator
+# authority, fill final_holdout_digest below, then sign the plan.
+campaign_id: campaign3a-v166
+plan_version: v166
+dataset: configs/campaign3_tasks.jsonl   # same corpus as campaign3
+require_cuda: true
+require_family_disjoint_hidden: true
+require_native_servable_adapter: false
+model:
+  id: Qwen/Qwen2.5-0.5B-Instruct
+  revision: auto
+  dtype: bfloat16
+  quantization: none
+  trust_remote_code: false
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+arms: [L1, L2, L3, L4, L5, L6, NC]
+max_new_tokens: 32
+practice_samples: 8
+retrieval_k: 3
+memory_k: 2
+replay_k: 2
+retention_samples: 16
+retention_scorer: containment_match
+
+# ---- preregistered gates (campaign-2 thresholds held; no goalpost
+# movement) + Phase-6 scientific gates ----
+minimum_neural_incremental_ft: 0.02
+min_seeds_positive_ft: 7
+bootstrap_resamples: 20000
+ci_alpha: 0.05
+min_delta_ft_ci_lower: 0.0
+retention_max_drop: 0.10
+delayed_retention_max_drop: 0.10
+security_min_pass_rate: 0.5
+security_max_drop_vs_L1: 0.10
+negative_control_max_ft: 0.02
+metric_tolerance: 0.05
+minimum_retention: 0.0
+
+# Phase-6 fields
+final_holdout_digest: ""        # REQUIRED before signing — seal first
+cluster_unit: family            # family | seed | none
+max_false_activation_rate: 0.05 # per-seed L6 flips of L1-correct rows
+n_comparisons_preregistered: 3  # 3A primary delta + retention + security
+
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  learning_rate: 0.00005        # the single lever vs Campaign 2's 1e-4
+  steps: 100
+  max_length: 256
+  optimizer: adamw
+  response_only_loss: true
+  gradient_accumulation_steps: 1

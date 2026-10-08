@@ -38,6 +38,10 @@ def main() -> int:
     ap.add_argument("--storage", required=True)
     ap.add_argument("--campaign-id", required=True)
     ap.add_argument("--output", default=None)
+    ap.add_argument("--holdout", default=None,
+                    help="(v166) path to the evaluator-sealed final "
+                         "holdout JSONL; its manifest digest must equal "
+                         "plan.final_holdout_digest")
     args = ap.parse_args()
 
     root = ensure_path(Path(args.root).resolve() if args.root else detect_root())
@@ -46,7 +50,8 @@ def main() -> int:
     from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
                                            ColabCampaignPlanV163,
                                            ColabCampaignPlanV164,
-                                           ColabCampaignPlanV165)
+                                           ColabCampaignPlanV165,
+                                           ColabCampaignPlanV166)
     from minagi.v161.executed_run import ExecutedRunReceiptV162
     from minagi.v161.runtime_closure3 import sha256_path
     from minagi.v161.stats import bootstrap_ci
@@ -63,7 +68,8 @@ def main() -> int:
     # --- Plan: digest AND signature ---
     plan_doc = json.loads((campaign_dir / "CAMPAIGN_PLAN.json").read_text())
     schema = plan_doc["value"].get("schema")
-    plan_cls = {"mini-agi-v16.5-colab-campaign-plan-v1": ColabCampaignPlanV165,
+    plan_cls = {"mini-agi-v16.6-colab-campaign-plan-v1": ColabCampaignPlanV166,
+                "mini-agi-v16.5-colab-campaign-plan-v1": ColabCampaignPlanV165,
                 "mini-agi-v16.4-colab-campaign-plan-v1": ColabCampaignPlanV164,
                 "mini-agi-v16.3-colab-campaign-plan-v1": ColabCampaignPlanV163,
                 }.get(schema, ColabCampaignPlanV162)
@@ -179,6 +185,29 @@ def main() -> int:
     if parts.hidden.digest != hidden_digest:
         fail("dataset", "recomputed hidden digest != DATASET_PROOF.json")
 
+    # v166: the sealed final holdout is bound by manifest digest; the
+    # evaluator supplies the file and we re-derive — never trust the
+    # plan doc's claim alone. Holdout content is confirmation-set only:
+    # it is never joined to scoring cells here.
+    if isinstance(plan, ColabCampaignPlanV166) and plan.final_holdout_digest:
+        if not args.holdout:
+            fail("holdout", "v166 plan binds final_holdout_digest but "
+                            "--holdout was not supplied for verification")
+        else:
+            try:
+                hrows = [json.loads(l) for l in
+                         Path(args.holdout).read_text().splitlines()
+                         if l.strip()]
+                hman = DatasetMembershipManifest(
+                    "final_holdout",
+                    tuple(_member(r) for r in hrows))
+                if hman.digest != plan.final_holdout_digest:
+                    fail("holdout", "sealed holdout manifest digest != "
+                                    "plan.final_holdout_digest")
+            except Exception as exc:  # noqa: BLE001
+                fail("holdout",
+                     f"holdout rebuild failed: {type(exc).__name__}: {exc}")
+
     class _V3Cell:
         """Uniform view: an EvidenceReceiptV3 whose reported metrics were
         replaced by the INDEPENDENTLY recomputed values — downstream
@@ -196,18 +225,22 @@ def main() -> int:
     matrix: dict[str, dict[str, str]] = {}
     receipts: dict[tuple[int, str], ExecutedRunReceiptV162] = {}
     recomputed_all: dict[tuple[int, str], dict] = {}
+    hidden_outputs: dict = {}
+    per_id_hidden: dict = {}
 
     if isinstance(plan, ColabCampaignPlanV165):
         # Independent rescore plumbing (v3): prediction records join the
         # committed corpus by task id; expected answers never enter the
         # evidence artifacts.
         from minagi.v161.evaluators import (containment_match, exact_match,
-                                            retention_score,
+                                            retention_score, score_row,
                                             security_regression)
         from minagi.v161.evidence_receipt_v3 import (
             EvidenceReceiptV3, evaluation_bundle,
             input_manifest_digest, predictions_digest_of,
             read_predictions)
+        from minagi.v161.stats import (bootstrap_ci, cluster_bootstrap_ci,
+                                       false_activation_rate)
         from egai.common.canonical import digest as _digest, sha256_bytes as _sha
         ret_impl = {"containment_match": containment_match,
                     "retention_score": retention_score}
@@ -279,8 +312,13 @@ def main() -> int:
                         fail(where, f"prediction id {rec['id']} not in "
                                     f"{blk} partition — off-corpus input")
                         return None
-                    vals.append(float(fn(str(rec["output"]),
-                                         str(row["expected"]))))
+                    score = score_row(row, str(rec["output"]), fn)
+                    vals.append(float(score))
+                    if blk == "hidden":
+                        hidden_outputs.setdefault((seed, arm), {})[
+                            str(rec["id"])] = str(rec["output"])
+                        per_id_hidden.setdefault((seed, arm), {})[
+                            str(rec["id"])] = float(score)
                 metrics[metric] = (sum(vals) if how == "count"
                                    else (sum(vals) / len(vals) if vals else 0.0))
             # worker-reported metrics become checkable claims
@@ -561,6 +599,50 @@ def main() -> int:
             if ci["lower"] <= plan.min_delta_ft_ci_lower:
                 reasons.append(f"bootstrap CI lower bound {ci['lower']:.4f} <= "
                                f"{plan.min_delta_ft_ci_lower}")
+            if isinstance(plan, ColabCampaignPlanV166):
+                # Phase-6 (REPAIR-033): the uncertainty unit is the
+                # cluster, not the row — paired per-row L6-L5 deltas
+                # pooled across seeds are resampled by task FAMILY.
+                hidx = {str(r["id"]): r for r in by_split["hidden"]}
+                pairs, fams = [], []
+                for seed in plan.seeds:
+                    l5m = per_id_hidden.get((seed, "L5"), {})
+                    l6m = per_id_hidden.get((seed, "L6"), {})
+                    for rid in sorted(set(l5m) & set(l6m)):
+                        pairs.append(l6m[rid] - l5m[rid])
+                        fams.append(str(hidx.get(rid, {})
+                                        .get("family", "unknown")))
+                if pairs and plan.cluster_unit == "family":
+                    cci = cluster_bootstrap_ci(
+                        pairs, fams, plan.bootstrap_resamples,
+                        plan.ci_alpha)
+                    stats["cluster_bootstrap_ci_row_delta"] = cci
+                    if cci["lower"] <= plan.min_delta_ft_ci_lower:
+                        reasons.append(
+                            f"family-clustered CI lower bound "
+                            f"{cci['lower']:.4f} <= "
+                            f"{plan.min_delta_ft_ci_lower}")
+                # false activation: L6 changed a correct L1 answer to a
+                # wrong one — learned behavior firing off-task
+                fa_rates = []
+                for seed in plan.seeds:
+                    base = hidden_outputs.get((seed, "L1"), {})
+                    armed = hidden_outputs.get((seed, "L6"), {})
+                    golds = {rid: str(hidx[rid]["expected"])
+                             for rid in set(base) & set(armed)
+                             if rid in hidx}
+                    fa = false_activation_rate(base, armed, golds,
+                                               exact_match)
+                    fa_rates.append(fa["false_activation_rate"])
+                if fa_rates:
+                    stats["false_activation_rate_mean"] = \
+                        statistics.fmean(fa_rates)
+                    if statistics.fmean(fa_rates) > \
+                            plan.max_false_activation_rate:
+                        reasons.append(
+                            f"false-activation rate "
+                            f"{statistics.fmean(fa_rates):.3f} > "
+                            f"{plan.max_false_activation_rate}")
             l1_ret = statistics.fmean([x["l1_retention"] for x in per_seed])
             l6_ret = statistics.fmean([x["l6_retention"] for x in per_seed])
             if l1_ret - l6_ret > plan.retention_max_drop:

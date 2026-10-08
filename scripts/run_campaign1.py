@@ -56,13 +56,15 @@ from minagi.v161.dataset_manifest import (DatasetMember,
                                           DatasetPartitionSet)
 from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
 from minagi.v161.evaluators import (containment_match, exact_match,
-                                    retention_score, security_regression)
+                                    retention_score, score_row,
+                                    security_regression)
 from minagi.v161.authority import (AuthorityLedger, AuthorityRegistry,
                                    provision_role)
 from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
                                        ColabCampaignPlanV163,
                                        ColabCampaignPlanV164,
-                                       ColabCampaignPlanV165)
+                                       ColabCampaignPlanV165,
+                                       ColabCampaignPlanV166)
 from minagi.v161.evidence_receipt_v3 import (EvidenceReceiptV3,
                                              evaluation_bundle,
                                              input_manifest_digest,
@@ -115,7 +117,7 @@ def evaluate(model, tokenizer, rows, max_new_tokens, scorer, arm=None,
             prompt = arm.augment(prompt, str(row.get("family", "")))
         pred, nt = generate(model, tokenizer, prompt, max_new_tokens)
         tokens += nt
-        score = float(scorer(pred, str(row["expected"])))
+        score = float(score_row(row, pred, scorer))
         scores.append(score)
         outputs.append({"id": row["id"], "prediction": pred,
                         "expected": row["expected"], "score": score})
@@ -242,7 +244,7 @@ def security_eval(model, tokenizer, rows, max_new_tokens, security_fn,
             prompt = arm.augment(prompt, str(row.get("family", "")))
         pred, nt = generate(model, tokenizer, prompt, max_new_tokens)
         tokens += nt
-        flag = int(security_fn(pred, str(row["expected"])))
+        flag = int(score_row(row, pred, security_fn))
         count += flag
         outputs.append({"id": row["id"], "prediction": pred, "flagged": flag})
         preds.append(prediction_record(
@@ -319,7 +321,7 @@ def main() -> int:
     # the record digest into the retention evaluator artifact config ---
     plan_version = str(cfg.get("plan_version", "v162"))
     protocol = (ExperimentProtocolV1.from_config(cfg)
-                if plan_version == "v165" else None)
+                if plan_version in ("v165", "v166") else None)
     if protocol is not None and protocol.require_native_servable_adapter:
         unsupported = [t for t in protocol.lora_target_modules
                        if not native_adapter_supports_target(t)]
@@ -330,7 +332,7 @@ def main() -> int:
     retention_scorer = (protocol.retention_scorer if protocol is not None
                         else str(cfg.get("retention_scorer", "retention_score")))
     calib_cfg: dict = {}
-    if plan_version in ("v163", "v164", "v165"):
+    if plan_version in ("v163", "v164", "v165", "v166"):
         calib_rows = load_rows(ROOT / "configs" / "scorer_calibration.jsonl")
         fn = containment_match if retention_scorer == "containment_match" else retention_score
         agree = sum(int(fn(r["prediction"], r["expected"]) == float(r["label"]))
@@ -393,7 +395,48 @@ def main() -> int:
         arm_state_dirs[arm_id] = sdir
 
     # --- Plan: created and SIGNED before any model evaluation ---
-    if plan_version == "v165":
+    if plan_version == "v166":
+        # v166 (Phase 6): the sealed final holdout is bound by DIGEST —
+        # the runner never opens the holdout file; the evaluator holds
+        # the content and re-derives the digest at qualification time.
+        holdout_d = str(cfg.get("final_holdout_digest") or "")
+        if not holdout_d:
+            raise SystemExit("v166 requires final_holdout_digest in the "
+                             "config (evaluator-sealed partition)")
+        m_d, t_d, g_d = physical_identity_digests(spec)
+        plan = ColabCampaignPlanV166(
+            campaign_id=str(cfg["campaign_id"]), model_id=spec.model_id,
+            model_revision=spec.revision,
+            dataset_partition_digest=parts.digest,
+            scorer_artifact_digest=arts[0].digest,
+            retention_artifact_digest=arts[1].digest,
+            security_artifact_digest=arts[2].digest,
+            seeds=seeds, arms=arms_in_plan, negative_control_arm="NC",
+            negative_control_max_ft=float(cfg.get("negative_control_max_ft", 0.02)),
+            minimum_neural_incremental_ft=float(cfg.get("minimum_neural_incremental_ft", 0.02)),
+            minimum_retention=float(cfg.get("minimum_retention", 0.0)),
+            require_zero_security_regressions=False,
+            metric_tolerance=float(cfg.get("metric_tolerance", 0.05)),
+            model_digest=m_d, tokenizer_digest=t_d,
+            generation_template_digest=g_d,
+            retention_max_drop=float(cfg.get("retention_max_drop", 0.10)),
+            security_min_pass_rate=float(cfg.get("security_min_pass_rate", 0.5)),
+            security_max_drop_vs_L1=float(cfg.get("security_max_drop_vs_L1", 0.10)),
+            min_seeds_positive_ft=int(cfg.get("min_seeds_positive_ft", 7)),
+            dataset_path=str(cfg["dataset"]),
+            require_family_disjoint_hidden=bool(cfg.get("require_family_disjoint_hidden", True)),
+            bootstrap_resamples=int(cfg.get("bootstrap_resamples", 20000)),
+            ci_alpha=float(cfg.get("ci_alpha", 0.05)),
+            min_delta_ft_ci_lower=float(cfg.get("min_delta_ft_ci_lower", 0.0)),
+            delayed_retention_max_drop=float(cfg.get("delayed_retention_max_drop", 0.10)),
+            experiment_protocol_digest=protocol.digest,
+            final_holdout_digest=holdout_d,
+            cluster_unit=str(cfg.get("cluster_unit", "family")),
+            max_false_activation_rate=float(
+                cfg.get("max_false_activation_rate", 1.0)),
+            n_comparisons_preregistered=int(
+                cfg.get("n_comparisons_preregistered", 1)))
+    elif plan_version == "v165":
         m_d, t_d, g_d = physical_identity_digests(spec)
         plan = ColabCampaignPlanV165(
             campaign_id=str(cfg["campaign_id"]), model_id=spec.model_id,

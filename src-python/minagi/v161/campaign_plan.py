@@ -224,3 +224,40 @@ class ColabCampaignPlanV165(ColabCampaignPlanV164):
     def __post_init__(self):
         super().__post_init__()
         validate_digest(self.experiment_protocol_digest)
+
+
+@dataclass(frozen=True)
+class ColabCampaignPlanV166(ColabCampaignPlanV165):
+    """Campaign plan v16.6 — Phase-6 scientific benchmark surface.
+
+    Beyond V165:
+      * final_holdout_digest binds an evaluator-sealed partition the
+        worker never sees — excluded from training, model selection,
+        prompt tuning, and feedback. Post-qualification confirmation
+        runs against it under the evaluation authority.
+      * cluster_unit declares the uncertainty unit (default "family"):
+        qualification CIs are computed by resampling clusters, not
+        rows — correlated same-template examples are not treated as
+        independent evidence.
+      * max_false_activation_rate gates spurious firing: rows where L1
+        answered correctly but the adapted arm changed the output to an
+        incorrect one. 1.0 = measured-but-not-gated (default);
+        preregistered campaigns should set a real bound.
+      * n_comparisons_preregistered records the declared number of
+        confirmatory comparisons — the multiplicity budget is signed.
+    """
+    final_holdout_digest: str = ""
+    cluster_unit: str = "family"
+    max_false_activation_rate: float = 1.0
+    n_comparisons_preregistered: int = 1
+    schema: str = "mini-agi-v16.6-colab-campaign-plan-v1"
+
+    def __post_init__(self):
+        super().__post_init__()
+        validate_digest(self.final_holdout_digest)
+        if self.cluster_unit not in ("family", "seed", "none"):
+            raise ValueError("cluster_unit must be family|seed|none")
+        if not 0 <= self.max_false_activation_rate <= 1:
+            raise ValueError("max_false_activation_rate must be in [0,1]")
+        if self.n_comparisons_preregistered < 1:
+            raise ValueError("n_comparisons_preregistered must be >= 1")

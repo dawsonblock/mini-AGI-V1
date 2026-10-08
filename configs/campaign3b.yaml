@@ -1,0 +1,62 @@
+# Campaign 3B — fresh replication (v16.6 plan).
+#
+# Freeze the winning 3A configuration and evaluate against NEW task
+# families plus a separately controlled holdout. This is the
+# generalization measurement: 3A tuned a lever; 3B asks whether the
+# effect survives contact with families nobody optimized against.
+#
+# Requires a fresh corpus (new hidden families, disjoint from 3A's
+# train/validation/hidden by family) generated and sealed by the
+# evaluation authority BEFORE this plan is signed.
+campaign_id: campaign3b-v166
+plan_version: v166
+dataset: configs/campaign3b_tasks.jsonl  # NEW corpus — fresh families
+require_cuda: true
+require_family_disjoint_hidden: true
+require_native_servable_adapter: false
+model:
+  id: Qwen/Qwen2.5-0.5B-Instruct
+  revision: auto
+  dtype: bfloat16
+  quantization: none
+  trust_remote_code: false
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+arms: [L1, L2, L3, L4, L5, L6, NC]
+max_new_tokens: 32
+practice_samples: 8
+retrieval_k: 3
+memory_k: 2
+replay_k: 2
+retention_samples: 16
+retention_scorer: containment_match
+
+minimum_neural_incremental_ft: 0.02
+min_seeds_positive_ft: 7
+bootstrap_resamples: 20000
+ci_alpha: 0.05
+min_delta_ft_ci_lower: 0.0
+retention_max_drop: 0.10
+delayed_retention_max_drop: 0.10
+security_min_pass_rate: 0.5
+security_max_drop_vs_L1: 0.10
+negative_control_max_ft: 0.02
+metric_tolerance: 0.05
+minimum_retention: 0.0
+
+# Phase-6 fields
+final_holdout_digest: ""        # REQUIRED — seal via scripts/seal_final_holdout.py
+cluster_unit: family
+max_false_activation_rate: 0.05
+n_comparisons_preregistered: 3
+
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  learning_rate: 0.00005        # frozen at whatever 3A selected
+  steps: 100
+  max_length: 256
+  optimizer: adamw
+  response_only_loss: true
+  gradient_accumulation_steps: 1
