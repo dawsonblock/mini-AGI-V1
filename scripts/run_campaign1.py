@@ -76,7 +76,8 @@ from minagi.v161.executed_run import (ExecutedRunReceiptV162,
 from minagi.v161.experiment_protocol import ExperimentProtocolV1
 from minagi.v161.stats import bootstrap_ci
 from minagi.v161.runtime_closure3 import sha256_path
-from minagi.v15.native_adapter import native_adapter_supports_target
+from minagi.v15.native_adapter import (native_adapter2_supports_target,
+                                       native_adapter_supports_target)
 
 
 def load_rows(path: Path):
@@ -323,8 +324,14 @@ def main() -> int:
     protocol = (ExperimentProtocolV1.from_config(cfg)
                 if plan_version in ("v165", "v166") else None)
     if protocol is not None and protocol.require_native_servable_adapter:
+        # v166 tier gate: tier 2 plans may train attention-projection
+        # adapters (NativeAdapter2 v2 bundles); tier 1 keeps the v1
+        # LM-head-only surface.
+        tier = int(cfg.get("native_adapter_tier", 1))
+        supports = (native_adapter2_supports_target if tier == 2
+                    else native_adapter_supports_target)
         unsupported = [t for t in protocol.lora_target_modules
-                       if not native_adapter_supports_target(t)]
+                       if not supports(t)]
         if unsupported:
             raise SystemExit(
                 "v165 requires every trained adapter to be servable by the "
@@ -435,7 +442,8 @@ def main() -> int:
             max_false_activation_rate=float(
                 cfg.get("max_false_activation_rate", 1.0)),
             n_comparisons_preregistered=int(
-                cfg.get("n_comparisons_preregistered", 1)))
+                cfg.get("n_comparisons_preregistered", 1)),
+            native_adapter_tier=int(cfg.get("native_adapter_tier", 1)))
     elif plan_version == "v165":
         m_d, t_d, g_d = physical_identity_digests(spec)
         plan = ColabCampaignPlanV165(

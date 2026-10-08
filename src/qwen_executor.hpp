@@ -941,6 +941,23 @@ private:
                                   uint32_t batch,
                                   uint32_t input_stride,
                                   uint32_t output_stride);
+    // v2 bundles: apply the declared delta for (kind, layer) onto an
+    // already-materialized projection output. No-op when the bundle has
+    // no matching entry; missing coverage is NOT an error at this level
+    // (the loader enforces schema+dims; coverage checks live with the
+    // serving bundle's declared layer set).
+    void apply_native_lora_projection(NativeLoraKind kind,
+                                      uint32_t layer,
+                                      DeviceTensor &proj_out,
+                                      const DeviceTensor &input,
+                                      uint32_t batch,
+                                      uint32_t input_stride,
+                                      uint32_t output_stride);
+    // Fail closed when a v2 attention bundle is attached but the active
+    // code path cannot apply it (recurrent GDN layers, batched prefill,
+    // window/paged decode). Called once per layer kind at serve time.
+    void require_lora_path_supported(uint32_t layer_index,
+                                     bool layer_is_recurrent) const;
 
     void ensure_batch_scratch(uint32_t batch);
     void ensure_ffn_mid_batch_scratch(uint32_t active_batch);

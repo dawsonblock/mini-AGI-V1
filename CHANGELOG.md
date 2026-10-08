@@ -127,12 +127,65 @@ Experimental validity (REPAIR-030..036, v166 plan schema):
   V166 qualifier end-to-end (clean matrix QUALIFIES; missing or
   substituted holdout and false-activation breach fail closed).
 
+Native Route B — attention-projection LoRA (REPAIR-025..029 cont.):
+
+- `qw3-native-lora-bundle-v2` schema: per-layer
+  `self_attn.{q,k,v,o}_proj` entries with explicit `layer` index,
+  validated at load against declared model geometry
+  (`NativeLoraAttentionDims`: n_layers/hidden/q_rows/kv_rows/o_in —
+  `o_in` is the post-attention mid width, which differs from fused
+  q+gate `q_rows` on gated-attention models). Duplicate (kind,layer)
+  entries, unknown targets, out-of-range layers, and dims mismatches
+  are rejected at load; attention entries under a v1 schema are
+  refused.
+- Device path: `NativeLoraSet::apply_projection` applies
+  `out += scale*B*(A*x)` per (kind,layer); wired into the single-token
+  decode path (q/k/v deltas on the post-norm input after the qkv
+  fanout, o delta accumulated into the residual). Batched prefill,
+  batched decode, and MTP verify REFUSE v2 bundles rather than
+  silently serving unadapted KV; attention entries on recurrent (GDN)
+  layers refuse at execution.
+- `NativeQW3Adapter2Compiler` (Python): compiles PEFT safetensors
+  `layers.N.self_attn.*_proj` pairs into v2 bundles — per-kind dims
+  checks, scale = lora_alpha/rank, byte-hashed F32 payloads;
+  `native_adapter2_supports_target` plus a preregistered
+  `native_adapter_tier` field on the V166 plan gate the runner's
+  servability check (tier 1 keeps the LM-head-only v1 surface).
+- Parity: emitted F32 payloads reproduce `scale*B@(A*x)` bit-for-bit
+  against the safetensors source (test asserts rtol=atol=0).
+
+Adaptive plasticity (REPAIR-037..041, governed scaffold):
+
+- `minagi.v161.plasticity`: deterministic failure diagnosis
+  (harness-defect > missing-information > repeatable-procedure >
+  persistent-deficiency) mapped onto the cheapest-first mechanism
+  ladder retrieval → skill → weights → harness. `PlasticityProposal`
+  requires recorded attempts at every cheaper rung — a weight-
+  adaptation proposal without retrieval+skill evidence is malformed.
+  Proposals are digest-bound inputs to preregistration, never
+  authorizations.
+- `DynamicLoraPolicyV1` + `RankAllocator`: rank is allocated, never
+  unbounded — per-task and total budgets clamp every allocation,
+  growth is step-limited, and `activation_protection` refuses growth
+  while the false-activation gate is breached.
+
+Governed recursive improvement (REPAIR-042..046, scaffold):
+
+- `minagi.v161.generations`: `GenerationRecord`/`GenerationChain` —
+  G(n+1) may be preregistered only after the promotion authority signs
+  the parent's decision; parent linkage is digest-pinned, evaluation
+  corpora must be fresh across generations, and promotion may only
+  attach to the chain tip. This is the governance scaffold for the
+  G0→G3 sequence — it does not execute campaigns.
+
 Not in this release: response-masked GPU campaign execution, Campaign
 3A/3B/3C execution (configs preregistered, holdouts unsealed — the
-evaluator authority seals them at campaign time), dynamic LoRA,
-recursive-improvement generations, native attention-projection
-serving — deferred per the repair plan until exercised under the new
-evidence loop.
+evaluator authority seals them at campaign time), end-to-end native
+attention-LoRA serving parity on a real model (the v2 path is
+load-verified, CPU-oracle-verified, and decode-path-wired, but no
+real-weight forward pass has run — parity claims await the Route B
+qualification campaign), dynamic-LoRA training integration (policy +
+allocator only), executed improvement generations.
 
 # v16.2.0-post — Campaign 2 Scale/Generalization Result (2026-10-07)
 

@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 import hashlib
 import json
+import re
 import struct
 from typing import Mapping
 
@@ -109,6 +110,29 @@ def native_adapter_supports_target(module_name: str) -> bool:
     unsupported targets are refused before training rather than
     discovered at promotion time."""
     return _is_output_target(str(module_name))
+
+
+_NATIVE2_ATTENTION_TARGETS = ("q_proj", "k_proj", "v_proj", "o_proj")
+
+
+def _attention_target_kind(prefix: str) -> tuple[int, str] | None:
+    """Match a PEFT module prefix to (layer_index, kind) for attention
+    projections: '...layers.12.self_attn.q_proj' -> (12, 'q_proj')."""
+    m = re.search(r"\.layers\.(\d+)\.self_attn\.(q_proj|k_proj|v_proj|o_proj)$",
+                  prefix.lower())
+    if not m:
+        return None
+    return int(m.group(1)), m.group(2)
+
+
+def native_adapter2_supports_target(module_name: str) -> bool:
+    """NativeAdapter2 (v2 bundles): the v1 LM-head surface plus the four
+    attention projections, identified by a layers.N.self_attn.*_proj
+    module path. Anything else is refused."""
+    name = str(module_name)
+    if _is_output_target(name):
+        return True
+    return _attention_target_kind(name) is not None
 
 
 def _normalize_a(arr: np.ndarray, rank: int, in_features: int) -> np.ndarray:
@@ -343,3 +367,192 @@ class NativeQW3AdapterCompiler:
             adapter_set_root=qualified.adapter_set_root,
             native_adapter_bundle_root=native_bundle.bundle_root,
         )
+
+
+# ---------------------------------------------------------------------------
+# NativeAdapter2 — v2 bundles with per-layer attention LoRA (Route B).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class NativeAdapterTensorV2:
+    target: str            # "output.weight" or "self_attn.{q,k,v,o}_proj"
+    layer: int             # kNoLayer equivalent for output.weight: -1
+    rank: int
+    in_features: int
+    out_features: int
+    scale: float
+    a: NativeAdapterFile
+    b: NativeAdapterFile
+
+
+@dataclass(frozen=True)
+class NativeAdapter2Bundle:
+    adapter_set_root: str
+    bundle_root: str
+    model_sha256: str
+    foundation_model_digest: str
+    source_adapter_manifest_digest: str
+    qualified_candidate_digest: str
+    tensors: tuple[NativeAdapterTensorV2, ...]
+    directory: str
+    schema: str = "qw3-native-lora-bundle-v2"
+
+    def __post_init__(self) -> None:
+        _hex64(self.adapter_set_root, "adapter_set_root")
+        _hex64(self.bundle_root, "bundle_root")
+        _hex64(self.model_sha256, "model_sha256")
+        for d in (self.foundation_model_digest,
+                  self.source_adapter_manifest_digest,
+                  self.qualified_candidate_digest):
+            validate_digest(d)
+        if not self.tensors:
+            raise ValueError("native adapter v2 bundle requires tensors")
+
+
+# Expected model geometry the bundle must match: hidden (n_embd), q_rows
+# (q_proj output width), kv_rows (k/v output width), n_layers, plus the
+# LM-head pair lm_head_in/lm_head_out when an output.weight entry exists.
+@dataclass(frozen=True)
+class NativeAttentionDims:
+    n_layers: int
+    hidden: int
+    q_rows: int   # q_proj output width (includes gate on gated models)
+    kv_rows: int  # k/v output width
+    o_in: int     # o_proj input width — post-attention mid width
+
+
+class NativeQW3Adapter2Compiler:
+    """Compile a qualified PEFT adapter into a v2 native LoRA bundle.
+
+    Every lora tensor must resolve to either the LM head (v1 target) or a
+    `layers.<n>.self_attn.{q,k,v,o}_proj` module — anything else fails
+    compilation rather than silently dropping weights. Dims are verified
+    against declared model geometry; tensor contents are re-hashed after
+    layout normalization.
+    """
+
+    SCHEMA = "qw3-native-lora-bundle-v2"
+
+    def compile(
+        self,
+        *,
+        adapter_dir: str | Path,
+        output_dir: str | Path,
+        adapter_set_root: str,
+        model_sha256: str,
+        foundation_model_digest: str,
+        source_adapter_manifest_digest: str,
+        qualified_candidate_digest: str,
+        dims: NativeAttentionDims,
+        lm_head_in: int | None = None,
+        lm_head_out: int | None = None,
+        lora_alpha: float,
+    ) -> NativeAdapter2Bundle:
+        _hex64(adapter_set_root, "adapter_set_root")
+        _hex64(model_sha256, "model_sha256")
+        for d in (foundation_model_digest, source_adapter_manifest_digest,
+                  qualified_candidate_digest):
+            validate_digest(d)
+
+        root = Path(adapter_dir).resolve()
+        tensors: dict[str, np.ndarray] = {}
+        for path in sorted(root.iterdir()):
+            if path.suffix == ".safetensors":
+                for name, value in _load_safetensors(path).items():
+                    if name in tensors:
+                        raise ValueError(f"duplicate adapter tensor key: {name}")
+                    tensors[name] = value
+        if not tensors:
+            raise ValueError("NativeAdapter2 requires a safetensors artifact")
+
+        pairs: dict[str, dict[str, np.ndarray]] = {}
+        for key, value in tensors.items():
+            role = _lora_role(key)
+            if role is None:
+                continue  # non-LoRA tensors (e.g. modules_to_save) ignored
+            prefix, side = role
+            slot = pairs.setdefault(prefix, {})
+            if side in slot:
+                raise ValueError(f"duplicate LoRA {side.upper()} for {prefix}")
+            slot[side] = value
+        if not pairs:
+            raise ValueError("no LoRA tensors found in safetensors artifact")
+        if any(set(p) != {"a", "b"} for p in pairs.values()):
+            raise ValueError("incomplete LoRA A/B pair")
+
+        out = Path(output_dir)
+        if out.exists() and any(out.iterdir()):
+            raise FileExistsError("native adapter output dir must be absent/empty")
+        out.mkdir(parents=True, exist_ok=True)
+
+        entries: list[NativeAdapterTensorV2] = []
+        for prefix, pair in sorted(pairs.items()):
+            attn = _attention_target_kind(prefix)
+            if attn is not None:
+                layer, kind = attn
+                if layer >= dims.n_layers:
+                    raise ValueError(f"adapter layer {layer} >= n_layers")
+                want_in = dims.o_in if kind == "o_proj" else dims.hidden
+                want_out = dims.hidden if kind == "o_proj" else (
+                    dims.q_rows if kind == "q_proj" else dims.kv_rows)
+                target = f"self_attn.{kind}"
+                layer_i = layer
+            elif _is_output_target(prefix):
+                if lm_head_in is None or lm_head_out is None:
+                    raise ValueError("output.weight entry requires lm_head dims")
+                want_in, want_out = lm_head_in, lm_head_out
+                target = "output.weight"
+                layer_i = -1
+            else:
+                raise ValueError(
+                    "NativeAdapter2 refuses unsupported LoRA target: " + prefix)
+
+            a_raw, b_raw = pair["a"], pair["b"]
+            rank_candidates = set(a_raw.shape) & set(b_raw.shape)
+            rank_candidates.discard(want_in)
+            rank_candidates.discard(want_out)
+            if len(rank_candidates) != 1:
+                raise ValueError(f"cannot infer unique LoRA rank for {prefix}")
+            rank = int(next(iter(rank_candidates)))
+            a = _normalize_a(a_raw, rank, want_in)
+            b = _normalize_b(b_raw, rank, want_out)
+            scale = float(lora_alpha) / float(rank)
+            stem = (f"L{layer_i}.{kind}" if attn is not None
+                    else "output.weight")
+            a_bytes = a.astype("<f4", copy=False).tobytes(order="C")
+            b_bytes = b.astype("<f4", copy=False).tobytes(order="C")
+            ap, bp = out / f"{stem}.A.f32", out / f"{stem}.B.f32"
+            ap.write_bytes(a_bytes)
+            bp.write_bytes(b_bytes)
+            entries.append(NativeAdapterTensorV2(
+                target=target, layer=layer_i, rank=rank,
+                in_features=want_in, out_features=want_out, scale=scale,
+                a=NativeAdapterFile(ap.name, _sha256_bytes(a_bytes), len(a_bytes)),
+                b=NativeAdapterFile(bp.name, _sha256_bytes(b_bytes), len(b_bytes))))
+
+        manifest = {
+            "schema": self.SCHEMA,
+            "adapter_set_root": adapter_set_root,
+            "model_sha256": model_sha256,
+            "foundation_model_digest": foundation_model_digest,
+            "source_adapter_manifest_digest": source_adapter_manifest_digest,
+            "qualified_candidate_digest": qualified_candidate_digest,
+            "tensors": [
+                ({**{k: getattr(t, k) for k in
+                     ("target", "rank", "in_features", "out_features", "scale")},
+                  **({"layer": t.layer} if t.layer >= 0 else {}),
+                  "a": asdict(t.a), "b": asdict(t.b)})
+                for t in entries],
+        }
+        manifest_bytes = _canonical_json_bytes(manifest)
+        (out / "manifest.json").write_bytes(manifest_bytes)
+        return NativeAdapter2Bundle(
+            adapter_set_root=adapter_set_root,
+            bundle_root=_sha256_bytes(manifest_bytes),
+            model_sha256=model_sha256,
+            foundation_model_digest=foundation_model_digest,
+            source_adapter_manifest_digest=source_adapter_manifest_digest,
+            qualified_candidate_digest=qualified_candidate_digest,
+            tensors=tuple(entries),
+            directory=str(out.resolve()))

@@ -93,8 +93,15 @@ def main() -> int:
     def skip(p):
         rel = p.relative_to(ROOT).as_posix()
         parts = p.relative_to(ROOT).parts
-        return (rel in excluded or '__pycache__' in parts or '.git' in parts
-                or '.pytest_cache' in parts or p.name.endswith('.pyc')
+        # Gitignored build-artifact dirs (see .gitignore: build/,
+        # build-cuda, build-*/) can never be release-controlled —
+        # git ls-files excludes them, so flagging them in a developer
+        # tree is a false positive. A clean extraction never contains
+        # them, so this cannot hide real drift.
+        artifact_dir = parts and parts[0].startswith('build')
+        return (rel in excluded or artifact_dir or '__pycache__' in parts
+                or '.git' in parts or '.pytest_cache' in parts
+                or p.name.endswith('.pyc')
                 or any(part.endswith('.egg-info') for part in parts))
 
     actual = {p.relative_to(ROOT).as_posix(): sha(p)

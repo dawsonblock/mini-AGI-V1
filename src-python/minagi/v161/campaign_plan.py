@@ -250,6 +250,11 @@ class ColabCampaignPlanV166(ColabCampaignPlanV165):
     cluster_unit: str = "family"
     max_false_activation_rate: float = 1.0
     n_comparisons_preregistered: int = 1
+    # Native serving tier the qualified adapter must satisfy: 1 =
+    # NativeAdapter1 (LM head only), 2 = NativeAdapter2 (v2 bundle,
+    # attention projections). Bound in the signed plan so the runner's
+    # servability gate and the compiler claim the same tier.
+    native_adapter_tier: int = 1
     schema: str = "mini-agi-v16.6-colab-campaign-plan-v1"
 
     def __post_init__(self):
@@ -261,3 +266,5 @@ class ColabCampaignPlanV166(ColabCampaignPlanV165):
             raise ValueError("max_false_activation_rate must be in [0,1]")
         if self.n_comparisons_preregistered < 1:
             raise ValueError("n_comparisons_preregistered must be >= 1")
+        if self.native_adapter_tier not in (1, 2):
+            raise ValueError("native_adapter_tier must be 1 or 2")

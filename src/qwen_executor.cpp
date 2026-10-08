@@ -2317,6 +2317,50 @@ void QwenExecutor::apply_native_lora_output(
     }
 }
 
+void QwenExecutor::apply_native_lora_projection(
+        NativeLoraKind kind,
+        uint32_t layer,
+        DeviceTensor &proj_out,
+        const DeviceTensor &input,
+        uint32_t batch,
+        uint32_t input_stride,
+        uint32_t output_stride) {
+    if (!native_lora_ || native_lora_->empty() || batch == 0) return;
+    if (!native_lora_->has_attention()) return;
+    const uint32_t rank = native_lora_->max_rank();
+    if (rank == 0) {
+        throw std::runtime_error("native LoRA bundle has zero rank");
+    }
+    if (!native_lora_rank_scratch_ ||
+        native_lora_rank_batch_capacity_ < batch) {
+        native_lora_rank_scratch_ = backend_.tensor_f32(
+            static_cast<uint64_t>(batch) * rank,
+            "native_lora_rank_scratch");
+        native_lora_rank_batch_capacity_ = batch;
+    }
+    const DeviceStatus st = native_lora_->apply_projection(
+        backend_, kind, layer, proj_out, input, *native_lora_rank_scratch_,
+        batch, input_stride, output_stride);
+    if (!st.ok) {
+        throw std::runtime_error(
+            std::string("native LoRA projection apply failed: ") + st.message);
+    }
+}
+
+void QwenExecutor::require_lora_path_supported(
+        uint32_t layer_index,
+        bool layer_is_recurrent) const {
+    if (!native_lora_ || !native_lora_->has_attention()) return;
+    if (layer_is_recurrent && native_lora_->attention_covers(layer_index)) {
+        throw std::runtime_error(
+            "native LoRA bundle declares an attention entry on a "
+            "recurrent (GDN) layer — the fused qkv path cannot apply "
+            "per-projection deltas; refusing to serve rather than "
+            "silently dropping the adapter (layer " +
+            std::to_string(layer_index) + ")");
+    }
+}
+
 void QwenExecutor::ensure_scratch() {
     if (scratch_ready_) return;
     const QwenConfig &cfg = model_.config();
@@ -6435,6 +6479,10 @@ NativeExecutorReport QwenExecutor::forward_one_token(uint32_t token_id,
         record(report, "layer." + std::to_string(il) + ".attn_norm");
 
         if (layer.recurrent) {
+            // v2 LoRA: per-projection deltas cannot be applied to the
+            // fused GDN qkv fanout — a bundle covering this layer is
+            // refused rather than silently unadapted.
+            require_lora_path_supported(il, /*layer_is_recurrent=*/true);
             {
                 DeviceTensor *outs[4] = {proj_.get(), gate_proj_.get(), alpha_.get(), beta_.get()};
                 const DeviceWeight *ws[4] = {layer.attn_qkv, layer.attn_gate,
@@ -6525,6 +6573,21 @@ NativeExecutorReport QwenExecutor::forward_one_token(uint32_t token_id,
                 DeviceTensor *outs[3] = {q_.get(), k_.get(), v_.get()};
                 const DeviceWeight *ws[3] = {layer.attn_q, layer.attn_k, layer.attn_v};
                 require_status(backend_.q8_0_matvec_fanout(outs, ws, 3, *norm_));
+            }
+            // v2 native LoRA: per-projection deltas apply to the fused
+            // fanout outputs with the same post-norm input. A bundle
+            // entry on a recurrent layer would have been refused below.
+            if (native_lora_ && native_lora_->has_attention()) {
+                require_lora_path_supported(il, /*layer_is_recurrent=*/false);
+                apply_native_lora_projection(
+                    NativeLoraKind::Q, il, *q_, *norm_, 1,
+                    cfg.n_embd, layer.q_rows);
+                apply_native_lora_projection(
+                    NativeLoraKind::K, il, *k_, *norm_, 1,
+                    cfg.n_embd, layer.k_rows);
+                apply_native_lora_projection(
+                    NativeLoraKind::V, il, *v_, *norm_, 1,
+                    cfg.n_embd, layer.v_rows);
             }
             record(report, "layer." + std::to_string(il) + ".attention_qkv_projection");
 
@@ -6665,6 +6728,14 @@ NativeExecutorReport QwenExecutor::forward_one_token(uint32_t token_id,
             if (auto st = backend_.q8_0_matvec_add(*h_, *layer.attn_output, *mid_); !st.ok) {
                 require_status(backend_.q8_0_matvec(*attn_out_, *layer.attn_output, *mid_));
                 require_status(backend_.add(*h_, *h_, *attn_out_));
+            }
+            // v2 o_proj delta: h += scale * B_o * (A_o * mid). The
+            // residual add is linear, so accumulating into h is
+            // equivalent to adding the delta to the projection output.
+            if (native_lora_ && native_lora_->has_attention()) {
+                apply_native_lora_projection(
+                    NativeLoraKind::O, il, *h_, *mid_, 1,
+                    standard_n_heads * standard_head_dim, cfg.n_embd);
             }
         }
         record(report, "layer." + std::to_string(il) + ".attn_residual");
@@ -6982,6 +7053,16 @@ NativeExecutorReport QwenExecutor::forward_n_tokens(const std::vector<uint32_t> 
     if (!plan.supported) {
         report.missing_kernels.push_back("native model plan is incomplete");
         return report;
+    }
+    // v2 attention LoRA applies only on the single-token decode path
+    // (forward_one_token). Batched prefill/MTP-verify would build KV
+    // state without the deltas — refuse rather than silently serve an
+    // unadapted model.
+    if (native_lora_ && native_lora_->has_attention()) {
+        throw std::runtime_error(
+            "native attention LoRA (v2 bundle) requires the single-token "
+            "decode path; batched forward_n_tokens cannot apply "
+            "per-projection deltas");
     }
     ensure_scratch();
     const uint32_t total = static_cast<uint32_t>(tokens.size());

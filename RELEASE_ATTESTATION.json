@@ -57,6 +57,11 @@
    "manifest_sha256": "f891753367c100e8515dfbc7c41601dd788830973d43a54aef43964e48136b7f",
    "reason": "v16.2.1 Phase-6 batch: DatasetPartitionSetV2 sealed final holdout, ColabCampaignPlanV166 (cluster unit + false-activation cap + preregistered comparisons), cluster_bootstrap_ci + false_activation_rate stats, executor-verified scoring dispatch, seal_final_holdout.py, campaign3a/b/c prereg configs, qualifier --holdout + cluster/false-activation gates; 430/430 tests",
    "utc": "2026-10-08T03:20:48.092305+00:00"
+  },
+  {
+   "manifest_sha256": "f7e95fd20e2b46369191cb320e001b4f4cbe51715a0e22c9efe2bf9264f71052",
+   "reason": "v16.2.1 Route-B + Phase 7/8 batch: v2 native LoRA bundles (per-layer attention targets, dims-validated, fail-closed on batched/recurrent paths), NativeQW3Adapter2Compiler with bit-exact F32 parity, v166 native_adapter_tier, governed plasticity proposals + DynamicLoraPolicyV1 rank allocator, promotion-gated generation chain; verify_release skips gitignored build dirs; 454/454 Python + 28/28 CTest",
+   "utc": "2026-10-08T04:09:53.206035+00:00"
   }
  ],
  "reissued_utc": "2026-10-08T02:41:18.288644+00:00",

@@ -2226,21 +2226,42 @@ public:
             }
             const std::string model_sha256 =
                 kvmem_archive_model_sha256(options_.model_path);
+            // v2 attention dims: derive expected per-kind geometry from the
+            // first standard (non-recurrent) attention layer's actual
+            // weights — a bundle entry whose dims don't match the served
+            // model is rejected at load.
+            NativeLoraAttentionDims attn_dims;
+            attn_dims.n_layers = weights_->n_layers();
+            attn_dims.hidden = model_->config().n_embd;
+            for (uint32_t il = 0; il < weights_->n_layers(); ++il) {
+                const QwenLayerWeights &lw = weights_->layer(il);
+                if (!lw.recurrent && lw.attn_q && lw.attn_k && lw.attn_v &&
+                        lw.attn_output) {
+                    attn_dims.q_rows = lw.q_rows;
+                    attn_dims.kv_rows = lw.k_rows;
+                    attn_dims.o_in =
+                        static_cast<uint32_t>(lw.attn_output->cols);
+                    break;
+                }
+            }
             const NativeLoraHostBundle host = NativeLoraHostBundle::load(
                 options_.native_adapter_bundle,
                 options_.state_adapter_set_root,
                 options_.state_native_adapter_bundle_root,
                 model_sha256, model_->config().n_embd,
-                static_cast<uint32_t>(weights_->output().rows));
+                static_cast<uint32_t>(weights_->output().rows),
+                &attn_dims);
             native_lora_ = NativeLoraSet::upload(host, *device_);
             st = device_->synchronize();
             if (!st.ok) {
                 throw std::runtime_error(std::string(
                     "native adapter upload sync failed: ") + st.message);
             }
-            log("native LoRA loaded: target=output.weight tensors=" +
+            log("native LoRA loaded: tensors=" +
                 std::to_string(host.info().tensor_count) +
                 " max_rank=" + std::to_string(host.info().max_rank) +
+                " attention=" +
+                (host.has_attention() ? "v2" : "v1") +
                 " adapter_set_root=" + host.info().adapter_set_root +
                 " bundle_root=" + host.info().bundle_root);
         }
@@ -5350,7 +5371,14 @@ private:
                                DeviceBackend &backend,
                                std::shared_ptr<const NativeLoraSet> native_lora = {})
             : model_(model), weights_(weights), backend_(backend),
-              native_lora_(std::move(native_lora)) {}
+              native_lora_(std::move(native_lora)) {
+            if (native_lora_ && native_lora_->has_attention()) {
+                throw std::runtime_error(
+                    "native attention LoRA (v2 bundle) is not supported on "
+                    "the batched prefill path — refusing rather than "
+                    "serving an unadapted model");
+            }
+        }
 
         const std::string &last_mode() const { return last_mode_; }
         const BatchedPrefillTiming &last_timing() const { return last_timing_; }
@@ -6177,7 +6205,14 @@ private:
                               DeviceBackend &backend,
                               std::shared_ptr<const NativeLoraSet> native_lora = {})
             : model_(model), weights_(weights), backend_(backend),
-              native_lora_(std::move(native_lora)) {}
+              native_lora_(std::move(native_lora)) {
+            if (native_lora_ && native_lora_->has_attention()) {
+                throw std::runtime_error(
+                    "native attention LoRA (v2 bundle) is not supported on "
+                    "the batched decode path — refusing rather than "
+                    "serving an unadapted model");
+            }
+        }
 
         const std::string &last_mode() const { return last_mode_; }
         uint32_t last_kernel_batch() const { return last_kernel_batch_; }

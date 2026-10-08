@@ -99,6 +99,114 @@ int main() {
         }
         if (!rejected) throw std::runtime_error("tampered LoRA payload was accepted");
 
+        // ---- v2 bundle: per-layer attention projections -------------
+        const fs::path root2 = fs::temp_directory_path() / "qw3-native-lora-v2-test";
+        fs::remove_all(root2);
+        fs::create_directories(root2);
+
+        // Model geometry: n_layers=2, hidden=3, q_rows=4, kv_rows=2.
+        // Layer-0 q_proj entry: A [1,3], B [4,1], scale 2.
+        const std::vector<float> qa{1.f, -1.f, 0.5f};
+        const std::vector<float> qb{1.f, 2.f, -1.f, 0.f};
+        const fs::path qap = root2 / "qA.f32";
+        const fs::path qbp = root2 / "qB.f32";
+        write_f32(qap, qa);
+        write_f32(qbp, qb);
+        const std::string qasha = qw3::kvmem_archive_model_sha256(qap.string());
+        const std::string qbsha = qw3::kvmem_archive_model_sha256(qbp.string());
+
+        qw3::NativeLoraAttentionDims dims;
+        dims.n_layers = 2;
+        dims.hidden = 3;
+        dims.q_rows = 4;
+        dims.kv_rows = 2;
+        dims.o_in = 4;  // post-attention mid width feeding o_proj
+
+        json manifest2 = {
+            {"schema", "qw3-native-lora-bundle-v2"},
+            {"adapter_set_root", adapter_root},
+            {"model_sha256", model_sha},
+            {"foundation_model_digest", governance},
+            {"qualified_candidate_digest", qualified},
+            {"tensors", json::array({{
+                {"target", "self_attn.q_proj"},
+                {"layer", 0},
+                {"rank", 1},
+                {"in_features", 3},
+                {"out_features", 4},
+                {"scale", 2.0},
+                {"a", {{"file", "qA.f32"}, {"sha256", qasha}, {"bytes", qa.size() * sizeof(float)}}},
+                {"b", {{"file", "qB.f32"}, {"sha256", qbsha}, {"bytes", qb.size() * sizeof(float)}}}
+            }})}
+        };
+        const fs::path mp2 = root2 / "manifest.json";
+        { std::ofstream out(mp2, std::ios::trunc); out << manifest2.dump(); }
+        const std::string bundle2_root = qw3::kvmem_archive_model_sha256(mp2.string());
+        const auto bundle2 = qw3::NativeLoraHostBundle::load(
+            root2.string(), adapter_root, bundle2_root, model_sha, 3, 4,
+            &dims);
+        if (!bundle2.has_attention()) {
+            throw std::runtime_error("v2 bundle must report attention coverage");
+        }
+        // oracle: q_out += 2 * qb * (qa . input)
+        // input=(2,4,8): qa.x = 1*2 + -1*4 + 0.5*8 = 2; scaled 2 -> 4
+        std::vector<float> qout(4, 0.0f);
+        bundle2.apply_projection_cpu(qw3::NativeLoraKind::Q, 0,
+                                     {2.f, 4.f, 8.f}, qout);
+        require_close(qout[0], 4.f, "q[0]");
+        require_close(qout[1], 8.f, "q[1]");
+        require_close(qout[2], -4.f, "q[2]");
+        require_close(qout[3], 0.f, "q[3]");
+        // no entry on layer 1 -> no-op
+        std::vector<float> qout1(4, 1.0f);
+        bundle2.apply_projection_cpu(qw3::NativeLoraKind::Q, 1,
+                                     {2.f, 4.f, 8.f}, qout1);
+        require_close(qout1[0], 1.f, "q_l1[0]");
+
+        // v2 dims mismatch must fail closed
+        {
+            json bad = manifest2;
+            bad["tensors"][0]["in_features"] = 9;
+            std::ofstream out(mp2, std::ios::trunc); out << bad.dump();
+            bool dim_rejected = false;
+            try {
+                (void)qw3::NativeLoraHostBundle::load(
+                    root2.string(), adapter_root,
+                    qw3::kvmem_archive_model_sha256(mp2.string()),
+                    model_sha, 3, 4, &dims);
+            } catch (const std::exception &) { dim_rejected = true; }
+            if (!dim_rejected) throw std::runtime_error("v2 dims mismatch accepted");
+        }
+        // layer index out of range must fail closed
+        {
+            json bad = manifest2;
+            bad["tensors"][0]["layer"] = 7;
+            std::ofstream out(mp2, std::ios::trunc); out << bad.dump();
+            bool layer_rejected = false;
+            try {
+                (void)qw3::NativeLoraHostBundle::load(
+                    root2.string(), adapter_root,
+                    qw3::kvmem_archive_model_sha256(mp2.string()),
+                    model_sha, 3, 4, &dims);
+            } catch (const std::exception &) { layer_rejected = true; }
+            if (!layer_rejected) throw std::runtime_error("v2 bad layer accepted");
+        }
+        // attention entries under a v1 schema must be rejected
+        {
+            json bad = manifest2;
+            bad["schema"] = "qw3-native-lora-bundle-v1";
+            std::ofstream out(mp2, std::ios::trunc); out << bad.dump();
+            bool schema_rejected = false;
+            try {
+                (void)qw3::NativeLoraHostBundle::load(
+                    root2.string(), adapter_root,
+                    qw3::kvmem_archive_model_sha256(mp2.string()),
+                    model_sha, 3, 4, &dims);
+            } catch (const std::exception &) { schema_rejected = true; }
+            if (!schema_rejected) throw std::runtime_error("attention target accepted under v1 schema");
+        }
+        fs::remove_all(root2);
+
         fs::remove_all(root);
         std::cout << "native LoRA host bundle test passed\n";
         return 0;
