@@ -46,6 +46,9 @@ def main(argv=None):
     ap.add_argument("--adapter", default="L6",
                     help="adapter arm to promote (subject to gates)")
     ap.add_argument("--out", required=True, help="RuntimeManifest path")
+    ap.add_argument("--expires-in-days", type=float, default=30.0,
+                    help="validity window of the promotion decision; "
+                         "runtime admission refuses expired decisions")
     args = ap.parse_args(argv)
 
     storage = Path(args.storage_root).resolve()
@@ -135,6 +138,7 @@ def main(argv=None):
     if not registry.is_authorized("promotion", signer.key_id):
         return _fail("promotion key not registered in trust root")
 
+    now = int(time.time())
     decision = {
         "schema": "mini-agi-v16.5-promotion-decision-v1",
         "campaign_id": args.campaign_id,
@@ -145,10 +149,12 @@ def main(argv=None):
         "adapter_artifact_digests": seeds,
         "runtime_manifest_digests": {k: v["digest"]
                                     for k, v in manifests.items()},
-        "authorized_at": int(time.time()),
+        "authorized_at": now,
+        "expires_at": now + int(args.expires_in_days * 86400),
         "note": "Binds the EXACT qualified adapter digests. Promotion "
                 "authority only; runtime admission control must still "
-                "enforce it.",
+                "enforce it — RuntimeAdmissionController.admit() refuses "
+                "unsigned, expired, revoked, or byte-mismatched artifacts.",
     }
     env = signer.sign(decision)
     doc = {"value": decision, "digest": digest(decision),

@@ -1,12 +1,14 @@
 """v16.5 authority separation — role keys, trust root, authority ledger.
 
-The campaign chain distinguishes five signing roles:
+The campaign chain distinguishes six signing roles:
 
     plan                preregisters immutable experiments
     execution_witness   attests worker executions (receipts)
     evaluation          attests observed predictions and derived metrics
     qualification       applies frozen acceptance criteria
     promotion           authorizes deployment of qualified artifacts
+    runtime             admits artifacts at load time and attests the
+                        activation receipt (v16.4.0)
 
 Each role has its own Ed25519 identity, registered in a trust root
 (TRUST_ROOT.json). The registry fail-closed rejects:
@@ -45,7 +47,7 @@ from egai.common.crypto import (Ed25519Signer, Ed25519Verifier,
                                 SignedEnvelope)
 
 AUTHORITY_ROLES = ("plan", "execution_witness", "evaluation",
-                   "qualification", "promotion")
+                   "qualification", "promotion", "runtime")
 
 # ledger record kind -> the only role permitted to sign it
 RECORD_KIND_ROLE = {
@@ -53,6 +55,7 @@ RECORD_KIND_ROLE = {
     "evaluation_bundle": "evaluation",
     "qualification_record": "qualification",
     "promotion_decision": "promotion",
+    "activation_receipt": "runtime",
 }
 
 TRUST_ROOT_SCHEMA = "mini-agi-v16.5-authority-trust-root-v1"
