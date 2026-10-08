@@ -16,7 +16,10 @@ Pipeline (matching the campaign-2 results-branch pattern):
   4. write a results report (decision, gate reasons, inventory)
   5. optionally publish a results branch with the evidence + signed
      qualification record + report. Private keys are NEVER committed:
-     ``.keys/`` is excluded by construction.
+     ``.keys/`` is excluded by construction. The repository is left
+     checked out on the results branch (evidence lives there, matching
+     the campaign-2 convention); tracked uncommitted changes refuse the
+     branch switch rather than being carried across.
 
 Usage:
   python3 scripts/campaign3a_finalize.py \
@@ -51,6 +54,15 @@ def _run(cmd, cwd=None, timeout=3600):
 
 def _decision_of(doc: dict) -> str:
     return doc["value"]["decision"] if "value" in doc else doc["decision"]
+
+
+def _extract(tf: tarfile.TarFile, dest: Path) -> None:
+    """Path-traversal-safe extraction: the `data` filter where the
+    interpreter supports it (Python >= 3.12), plain extraction on 3.11."""
+    try:
+        tf.extractall(dest, filter="data")
+    except TypeError:  # Python < 3.12
+        tf.extractall(dest)
 
 
 def main(argv=None) -> int:
@@ -102,10 +114,10 @@ def main(argv=None) -> int:
         shutil.rmtree(storage)
     storage.mkdir(parents=True, exist_ok=True)
     with tarfile.open(meta) as tf:
-        tf.extractall(storage)
+        _extract(tf, storage)
     for s in seeds:
         with tarfile.open(ckpt / f"ck_seed-{s}.tar.gz") as tf:
-            tf.extractall(storage)
+            _extract(tf, storage)
     ledger_src = ckpt / "AUTHORITY_LEDGER.jsonl"
     if ledger_src.is_file():
         shutil.copy(ledger_src, storage / "AUTHORITY_LEDGER.jsonl")
@@ -166,19 +178,35 @@ def main(argv=None) -> int:
 
     # --- 5. optional results branch -----------------------------------
     if args.results_branch:
+        # switching branches must not smuggle uncommitted tracked changes
+        rc, out, _ = _run(["git", "status", "--porcelain"], cwd=repo)
+        dirty = [ln for ln in out.splitlines()
+                 if ln and not ln.startswith("??")]
+        if dirty:
+            print("[finalize] refusing to switch branches: worktree has "
+                  "uncommitted tracked changes:\n" + "\n".join(dirty[:10]),
+                  file=sys.stderr)
+            return 4
         target = repo / "results" / args.campaign_id
-        rc, out, err = _run(["git", "rev-parse", "--verify",
-                             args.results_branch], cwd=repo)
-        if rc != 0:
-            rc2, out2, err2 = _run(
+        rc_local, _, _ = _run(["git", "rev-parse", "--verify",
+                               args.results_branch], cwd=repo)
+        rc_remote, _, _ = _run(["git", "rev-parse", "--verify",
+                                f"origin/{args.results_branch}"], cwd=repo)
+        if rc_local == 0:
+            rc2, _, err2 = _run(["git", "checkout", args.results_branch],
+                                cwd=repo)
+        elif rc_remote == 0:
+            rc2, _, err2 = _run(
+                ["git", "checkout", "-b", args.results_branch,
+                 f"origin/{args.results_branch}"], cwd=repo)
+        else:
+            rc2, _, err2 = _run(
                 ["git", "checkout", "-b", args.results_branch, "origin/main"],
                 cwd=repo)
-            if rc2 != 0:
-                print(f"[finalize] branch create failed: {err2[-500:]}",
-                      file=sys.stderr)
-                return 4
-        else:
-            _run(["git", "checkout", args.results_branch], cwd=repo)
+        if rc2 != 0:
+            print(f"[finalize] branch switch failed: {err2[-500:]}",
+                  file=sys.stderr)
+            return 4
         if target.exists():
             shutil.rmtree(target)
         target.mkdir(parents=True)

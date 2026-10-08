@@ -20,7 +20,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "6c85e76064ea8247eba98dccb69477e8c2a89b5c60fc33ec29ccc5cc73a9fbb4",
+ "manifest_sha256": "920654b3a9e28b70974a88c771b1234390c8adca8593983ae9a854da95ee500f",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "571/571 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -70,31 +70,36 @@
   },
   {
    "manifest_sha256": "88431a50b74f76dab049b372b00026baa5421bd3f171975e53cc187f06f0e501",
-   "reason": "v16.4.0 training/admission batch (v17 plan Phases 2.1/3/5-early): explicit microbatch/gradient-accumulation/effective-batch schedule bound in the signed protocol + receipt v2 (sample order, per-update gradient stats, adapter artifact digest, strict malformed policy) — reproduced the 4x sample-presentation defect; RuntimeAdmissionController (full-chain admission, signed activation receipts, rollback, scripts/admit_runtime.py, runtime authority role, decision expires_at) with the plan's four named attacks refused; cost-aware mechanism controller + AttemptReceipts; campaign3 configs pinned to microbatch_size=1 + malformed_policy=fail; 561/561 Python (1 skipped: Linux-only RLIMIT_AS on macOS)",
+   "reason": "v16.4.0 training/admission batch (v17 plan Phases 2.1/3/5-early): explicit microbatch/gradient-accumulation/effective-batch schedule bound in the signed protocol + receipt v2 (sample order, per-update gradient stats, adapter artifact digest, strict malformed policy) \u2014 reproduced the 4x sample-presentation defect; RuntimeAdmissionController (full-chain admission, signed activation receipts, rollback, scripts/admit_runtime.py, runtime authority role, decision expires_at) with the plan's four named attacks refused; cost-aware mechanism controller + AttemptReceipts; campaign3 configs pinned to microbatch_size=1 + malformed_policy=fail; 561/561 Python (1 skipped: Linux-only RLIMIT_AS on macOS)",
    "utc": "2026-10-08T08:46:30.656995+00:00"
   },
   {
    "manifest_sha256": "95fab8e0d2d3fedfda4fecc644f14e56bcb5205d79fa368672b60104e8d5d697",
-   "reason": "v16.4.0 batch 2: native CTest suite rebuilt and rerun (28/28 PASS, macOS CPU/stub; no C++ changes — toolchain re-verification); Campaign 3A preregistration sealed — authority-side holdout generator (refuses in-repo output, fresh vocabulary) + manifest digest bound in configs/campaign3a.yaml (sha256:ff9e4340..., 24 rows / 4 fresh families; file held outside the repository), sealer disjointness re-checked; preregistration regression tests (generator/sealer/binding invariants); 571/571 Python (1 skipped: Linux-only RLIMIT_AS on macOS). Campaign execution remains GPU-blocked",
+   "reason": "v16.4.0 batch 2: native CTest suite rebuilt and rerun (28/28 PASS, macOS CPU/stub; no C++ changes \u2014 toolchain re-verification); Campaign 3A preregistration sealed \u2014 authority-side holdout generator (refuses in-repo output, fresh vocabulary) + manifest digest bound in configs/campaign3a.yaml (sha256:ff9e4340..., 24 rows / 4 fresh families; file held outside the repository), sealer disjointness re-checked; preregistration regression tests (generator/sealer/binding invariants); 571/571 Python (1 skipped: Linux-only RLIMIT_AS on macOS). Campaign execution remains GPU-blocked",
    "utc": "2026-10-08T08:54:45.453869+00:00"
   },
   {
    "manifest_sha256": "cccee0a0a70856467b05cbd2859d6dc85255d73e7e7f2b7833e8a74461985c29",
-   "reason": "v16.4.0 batch 3: Campaign 3A launched on Colab T4 (session v166-c3a-1) under the signed plan — verified the banked plan binds the sealed holdout digest and the corrected schedule (microbatch 1 / gacc 1 / malformed_policy fail, lr 5e-5); scripts/campaign3a_supervisor.py added (resumable per-seed evidence banking + runner relaunch); CHANGELOG/README/RELEASE_VALIDATION record the execution status; 571/571 Python (1 skipped). Results pending independent qualification",
+   "reason": "v16.4.0 batch 3: Campaign 3A launched on Colab T4 (session v166-c3a-1) under the signed plan \u2014 verified the banked plan binds the sealed holdout digest and the corrected schedule (microbatch 1 / gacc 1 / malformed_policy fail, lr 5e-5); scripts/campaign3a_supervisor.py added (resumable per-seed evidence banking + runner relaunch); CHANGELOG/README/RELEASE_VALIDATION record the execution status; 571/571 Python (1 skipped). Results pending independent qualification",
    "utc": "2026-10-08T09:39:10.011031+00:00"
   },
   {
    "manifest_sha256": "cc48fe63eb8344e4cdae2e326bf30d264f936a5de7856beb0f62889148d40025",
-   "reason": "v16.4.0 batch 4: VM reclamation recovery + finalize pipeline — the first Colab VM was reclaimed mid-seed-1 and recovered on a fresh VM from the pushed branch with the model revision pinned to the originally resolved commit; recomputed plan digest byte-identical (sha256:e9ecd87e...), banked seed-0 evidence counted, resume at seed 1; authority ledger reconstructed deterministically; scripts/campaign3a_finalize.py added (assemble -> independent qualification with the authority-held holdout -> results report -> results-branch publication, private keys excluded) and exercised end to end on partial evidence (fail-closed INVALID_EVIDENCE with per-cell reasons); 571/571 Python (1 skipped)",
+   "reason": "v16.4.0 batch 4: VM reclamation recovery + finalize pipeline \u2014 the first Colab VM was reclaimed mid-seed-1 and recovered on a fresh VM from the pushed branch with the model revision pinned to the originally resolved commit; recomputed plan digest byte-identical (sha256:e9ecd87e...), banked seed-0 evidence counted, resume at seed 1; authority ledger reconstructed deterministically; scripts/campaign3a_finalize.py added (assemble -> independent qualification with the authority-held holdout -> results report -> results-branch publication, private keys excluded) and exercised end to end on partial evidence (fail-closed INVALID_EVIDENCE with per-cell reasons); 571/571 Python (1 skipped)",
    "utc": "2026-10-08T21:35:32.993335+00:00"
   },
   {
    "manifest_sha256": "6c85e76064ea8247eba98dccb69477e8c2a89b5c60fc33ec29ccc5cc73a9fbb4",
-   "reason": "v16.4.0 batch 5: supervisor banking fix — the VM-side bank script now creates /content/ck3a on a fresh VM (banking silently failed there after recovery; the local seed-0 copy was unaffected). Verified by re-banking seed 0 + meta on the recovered VM. 571/571 Python (1 skipped)",
+   "reason": "v16.4.0 batch 5: supervisor banking fix \u2014 the VM-side bank script now creates /content/ck3a on a fresh VM (banking silently failed there after recovery; the local seed-0 copy was unaffected). Verified by re-banking seed 0 + meta on the recovered VM. 571/571 Python (1 skipped)",
    "utc": "2026-10-08T21:38:01.406042+00:00"
+  },
+  {
+   "manifest_sha256": "920654b3a9e28b70974a88c771b1234390c8adca8593983ae9a854da95ee500f",
+   "reason": "v16.4.0 batch 6 (review fixes): campaign3a_finalize.py hardened from the review pass \u2014 tracked-uncommitted-changes guard before the results-branch switch (fail closed, verified), path-traversal-safe tar extraction (data filter where supported), results-branch base falls back to origin/<branch> when only the remote exists; docstring records the results-branch checkout convention. 571/571 Python (1 skipped)",
+   "utc": "2026-10-08T21:48:57.452551+00:00"
   }
  ],
- "reissued_utc": "2026-10-08T21:38:01.406042+00:00",
+ "reissued_utc": "2026-10-08T21:48:57.452551+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
