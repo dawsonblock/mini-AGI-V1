@@ -83,16 +83,46 @@ def main(argv=None):
         return _fail(f"campaign decision {record.get('decision')!r} "
                      "— only QUALIFIED evidence may be promoted")
 
-    # adapter must be among the receipts actually qualified
+    # adapter must be among the receipts actually qualified — build a
+    # per-seed runtime manifest binding model/tokenizer/adapter/protocol
+    plan_value = {}
+    plan_doc_path = cdir / "CAMPAIGN_PLAN.json"
+    if plan_doc_path.is_file():
+        plan_value = json.loads(plan_doc_path.read_text()).get(
+            "value", {})
+    protocol_doc = cdir / "EXPERIMENT_PROTOCOL.json"
+    protocol = None
+    if protocol_doc.is_file():
+        try:
+            from minagi.v161.experiment_protocol import \
+                ExperimentProtocolV1
+            protocol = ExperimentProtocolV1(
+                **json.loads(protocol_doc.read_text())["value"])
+        except Exception:
+            protocol = None
+    from minagi.v161.peft_serving import (AdapterClosureError,
+                                          runtime_manifest)
     promoted = {}
     adir = storage / "adapters" / args.campaign_id / args.adapter
     if not adir.is_dir():
         return _fail(f"adapter dir {adir} missing")
-    from egai.common.canonical import sha256_path
     seeds = {}
+    manifests = {}
     for sd in sorted(adir.iterdir()):
-        if sd.is_dir() and sd.name.startswith("seed-"):
-            seeds[sd.name] = sha256_path(sd)
+        if not (sd.is_dir() and sd.name.startswith("seed-")):
+            continue
+        try:
+            manifests[sd.name] = runtime_manifest(
+                model_id=plan_value.get("model_id", ""),
+                model_revision=plan_value.get("model_revision", ""),
+                model_digest=plan_value.get("model_digest", ""),
+                tokenizer_digest=plan_value.get("tokenizer_digest", ""),
+                adapter_dir=sd, protocol=protocol,
+                campaign_digest=record.get("campaign_plan_digest"),
+                qualification_record_digest=qdoc["digest"])
+        except AdapterClosureError as exc:
+            return _fail(f"{sd.name}: adapter closure failed: {exc}")
+        seeds[sd.name] = manifests[sd.name]["adapter_digest"]
     if not seeds:
         return _fail("no adapter seed artifacts found")
     promoted[args.adapter] = seeds
@@ -113,6 +143,8 @@ def main(argv=None):
         "evaluation_bundle_digest": record.get("evaluation_bundle_digest"),
         "adapter": args.adapter,
         "adapter_artifact_digests": seeds,
+        "runtime_manifest_digests": {k: v["digest"]
+                                    for k, v in manifests.items()},
         "authorized_at": int(time.time()),
         "note": "Binds the EXACT qualified adapter digests. Promotion "
                 "authority only; runtime admission control must still "
@@ -121,7 +153,8 @@ def main(argv=None):
     env = signer.sign(decision)
     doc = {"value": decision, "digest": digest(decision),
            "signer_key_id": env.key_id,
-           "signature_b64": env.signature_b64}
+           "signature_b64": env.signature_b64,
+           "runtime_manifests": manifests}
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, indent=2, sort_keys=True))

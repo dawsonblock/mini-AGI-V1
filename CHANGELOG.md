@@ -62,10 +62,41 @@ Atomic, fail-closed execution:
   revocation, ledger tampering, torn atomic commits, and numeric
   injection — 393/393 tests pass.
 
-Not in this release: corrected response-masked LoRA training, PEFT
-serving-path qualification, Campaign 3 redesign/execution, dynamic
-LoRA, recursive-improvement generations — deferred per the v16.2.1
-repair plan until the evidence loop is trustworthy.
+Training correctness (REPAIR-019..024):
+
+- `train_lora` accepts structured `{"prompt","response"}` examples;
+  with `response_only_loss` (default on for the v165 protocol) the
+  chat-template prompt boundary is masked to -100 — supervised loss
+  applies only to response + EOS tokens. Legacy `texts=` mode is
+  retained for historical replay semantics.
+- Padding never contributes to loss (padded positions carry
+  attention_mask=0 and labels=-100); examples whose responses tokenize
+  to nothing or are fully truncated are rejected, never dropped.
+- `LoraTrainSpec` binds `optimizer`, `gradient_accumulation_steps`,
+  and `response_only_loss` — all now signed inside the experiment
+  protocol, not left in unsigned YAML.
+- The v2 training receipt records the per-microbatch loss curve,
+  canonical data-order digest, resolved optimizer, library versions,
+  trainable/total parameter counts, and wall-clock cost.
+
+PEFT serving path (REPAIR-025..029, Route A):
+
+- `minagi.v161.peft_serving`: `adapter_closure` verifies the saved
+  artifact (peft type, declared targets, weight files),
+  `assert_adapter_matches_protocol` rejects rank/alpha/dropout/target
+  divergence from the signed protocol, `runtime_manifest` binds the
+  exact model/tokenizer/adapter/protocol/qualification digests, and
+  `logits_digest` supports save/reload output-parity probes (CPU
+  bit-exact in tests).
+- `scripts/promote.py` emits per-seed runtime manifests inside the
+  signed promotion decision — promotion binds artifact digests,
+  never mutable names. Native qw3 parity remains Route B and is a
+  separate, unclaimed gate.
+
+Not in this release: response-masked GPU campaign execution, Campaign
+3 redesign/execution, dynamic LoRA, recursive-improvement generations,
+native attention-projection serving — deferred per the repair plan
+until exercised under the new evidence loop.
 
 # v16.2.0-post — Campaign 2 Scale/Generalization Result (2026-10-07)
 

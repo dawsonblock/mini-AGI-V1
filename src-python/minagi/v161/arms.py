@@ -256,6 +256,24 @@ def shuffled_label_texts(rows: Sequence[Mapping], seed: int) -> list[str]:
     return [f"{r['prompt']} {answers[perm[i]]}" for i, r in enumerate(rows)]
 
 
+def shuffled_label_examples(rows: Sequence[Mapping], seed: int) -> list[dict]:
+    """Structured NC variant for the corrected trainer: real prompts,
+    deranged responses (same permutation semantics as
+    shuffled_label_texts)."""
+    answers = [str(r["expected"]) for r in rows]
+    n = len(rows)
+    rnd = random.Random(seed)
+    for _ in range(64):
+        perm = list(range(n))
+        rnd.shuffle(perm)
+        if all(perm[i] != i for i in range(n)):
+            break
+    else:
+        perm = [(i + 1) % n for i in range(n)]
+    return [{"prompt": str(r["prompt"]), "response": answers[perm[i]]}
+            for i, r in enumerate(rows)]
+
+
 def dir_size_bytes(path: Path) -> int:
     total = 0
     for p in sorted(Path(path).rglob("*")):

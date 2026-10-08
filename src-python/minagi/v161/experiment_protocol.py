@@ -40,7 +40,9 @@ class ExperimentProtocolV1:
     learning_rate: float
     train_steps: int
     train_max_length: int
-    optimizer: str = "adamw-torch"
+    optimizer: str = "adamw"
+    gradient_accumulation_steps: int = 1
+    response_only_loss: bool = True
     # memory / replay arms
     retrieval_k: int = 3
     memory_k: int = 2
@@ -94,7 +96,11 @@ class ExperimentProtocolV1:
                 "target_modules": self.lora_target_modules,
                 "learning_rate": float(self.learning_rate),
                 "steps": int(self.train_steps),
-                "max_length": int(self.train_max_length)}
+                "max_length": int(self.train_max_length),
+                "optimizer": str(self.optimizer),
+                "gradient_accumulation_steps":
+                    int(self.gradient_accumulation_steps),
+                "response_only_loss": bool(self.response_only_loss)}
 
     @classmethod
     def from_config(cls, cfg: Mapping[str, Any]) -> "ExperimentProtocolV1":
@@ -118,6 +124,10 @@ class ExperimentProtocolV1:
             learning_rate=float(lora["learning_rate"]),
             train_steps=int(lora["steps"]),
             train_max_length=int(lora["max_length"]),
+            optimizer=str(lora.get("optimizer", "adamw")),
+            gradient_accumulation_steps=int(
+                lora.get("gradient_accumulation_steps", 1)),
+            response_only_loss=bool(lora.get("response_only_loss", True)),
             retrieval_k=int(cfg.get("retrieval_k", 3)),
             memory_k=int(cfg.get("memory_k", 2)),
             replay_k=int(cfg.get("replay_k", 2)),

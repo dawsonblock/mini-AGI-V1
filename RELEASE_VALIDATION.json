@@ -3,10 +3,12 @@
   "evidence_integrity": "v165 path: canonical per-task predictions bound inside EvidenceReceiptV3 signatures; qualifier recomputes every metric from prediction records joined to the committed corpus; tamper => INVALID_EVIDENCE",
   "execution_atomicity": "v165 seeds publish via staging dir + atomic rename + COMMIT_MANIFEST; torn or grafted evidence is quarantined and never adopted",
   "gpu_smoke": "NOT_RUN_CPU_OFFLINE_ENVIRONMENT (v165 GPU campaign remains unexercised; Campaign 3 is drafted/unrun)",
-  "python_tests": "393/393",
+  "python_tests": "409/409",
   "release_integrity": "source manifest/signature verifier with pinned trusted-key fingerprint + external --trusted-key override; tag-gated clean-extraction CI check; final result recorded in RELEASE_ATTESTATION.json",
   "schema": "mini-agi-v16.2.1-release-validation-v1",
   "scientific_claims": "UNCHANGED from v16.2: Campaign 1b QUALIFIED+reproduced; Campaign 2 (v164) REFUSE. This release repairs trust boundaries only.",
+  "serving_path": "Route A PEFT: adapter closure verifies rank/targets/bytes vs protocol; runtime manifest binds exact model/tokenizer/adapter/qualification digests; reload parity CPU bit-exact in tests; native qw3 parity unclaimed",
   "status": "PASS_WITH_GPU_SMOKE_PENDING",
+  "training_correctness": "v165 path: structured {prompt,response} examples, response-only -100 masking via chat-template boundary, padding excluded, malformed examples rejected; optimizer/grad-accum/response-masking bound in protocol; receipt records loss curve + data-order digest + versions",
   "version": "16.2.1"
 }

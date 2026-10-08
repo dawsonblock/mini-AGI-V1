@@ -49,6 +49,7 @@ from minagi.platforms.colab.storage import ColabStorage
 from minagi.platforms.cuda.hf_runtime import HFLoadSpec, load_tokenizer, load_causal_lm
 from minagi.platforms.cuda.peft_trainer import LoraTrainSpec, train_lora
 from minagi.v161.arms import (ARMS, ARM_IDS, ZERO_DIGEST, dir_size_bytes,
+                              shuffled_label_examples,
                               shuffled_label_texts)
 from minagi.v161.dataset_manifest import (DatasetMember,
                                           DatasetMembershipManifest,
@@ -645,7 +646,7 @@ def main() -> int:
                 im = input_manifest_digest(preds or [])
                 bundle = evaluation_bundle(
                     plan.digest, protocol.digest, seed, arm_id, name,
-                    im, pd, metrics)
+                    im, pd, metrics, aux=extra)
                 r = EvidenceReceiptV3.sign(
                     signer=signer, campaign_digest=plan.digest,
                     protocol_digest=protocol.digest, seed=seed, arm=arm_id,
@@ -734,9 +735,18 @@ def main() -> int:
         free_model(model)
 
         # ---- parametric arms: train -> save -> destroy -> reload -> eval ----
+        # v165+: structured {prompt,response} examples with response-only
+        # supervision (REPAIR-019..021); legacy plans keep concatenated
+        # texts so historical replay semantics are unchanged.
         adapter_dirs = {}
-        for arm_id, texts in (("L6", train_texts),
-                              ("NC", shuffled_label_texts(train, seed))):
+        nc_examples = (shuffled_label_examples(train, seed) if v3
+                       else None)
+        train_examples = ([{"prompt": str(r["prompt"]),
+                            "response": str(r["expected"])}
+                           for r in train] if v3 else None)
+        for arm_id, texts, examples in (
+                ("L6", train_texts, train_examples),
+                ("NC", shuffled_label_texts(train, seed), nc_examples)):
             if arm_id not in plan.arms:
                 continue
             arm_t0 = time.time()
@@ -746,7 +756,9 @@ def main() -> int:
                    else cfg.get("lora", {})), seed=seed)
             adir = storage.root / "adapters" / cfg["campaign_id"] / arm_id / f"seed-{seed}"
             model, train_receipt = train_lora(model=model, tokenizer=tokenizer,
-                                              texts=texts, output_dir=adir, spec=ts)
+                                              texts=(None if v3 else texts),
+                                              examples=examples,
+                                              output_dir=adir, spec=ts)
             adapter_digest = sha256_path(adir)
             adapter_dirs[arm_id] = adir
             train_secs = round(

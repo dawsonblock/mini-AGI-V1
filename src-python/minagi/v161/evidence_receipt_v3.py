@@ -119,15 +119,21 @@ def input_manifest_digest(records: Iterable[Mapping]) -> str:
 def evaluation_bundle(campaign_digest: str, protocol_digest: str,
                       seed: int, arm: str, cell: str,
                       input_manifest_d: str, predictions_d: str,
-                      metrics_reported: Mapping) -> dict:
-    """The unsigned worker-side bundle body the receipt binds."""
-    return {"schema": BUNDLE_V3_SCHEMA,
+                      metrics_reported: Mapping,
+                      aux: Mapping | None = None) -> dict:
+    """The unsigned worker-side bundle body the receipt binds. `aux`
+    carries provenance artifacts (e.g. the training receipt) inside the
+    signed digest."""
+    body = {"schema": BUNDLE_V3_SCHEMA,
             "campaign_digest": campaign_digest,
             "protocol_digest": protocol_digest,
             "seed": int(seed), "arm": arm, "cell": cell,
             "input_manifest_digest": input_manifest_d,
             "predictions_digest": predictions_d,
             "metrics_reported": dict(metrics_reported)}
+    if aux:
+        body["aux"] = dict(aux)
+    return body
 
 
 @dataclass(frozen=True)
