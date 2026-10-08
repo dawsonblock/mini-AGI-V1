@@ -77,6 +77,21 @@ v16.4.0 batch 2 — native suite + Campaign 3A preregistration:
   re-derives from the authority-held file when present). Suite:
   571 passed, 1 skipped.
 
+v16.4.0 batch 3 — Campaign 3A launched on Colab:
+
+- The preregistered 3A matrix (10 seeds x 7 arms) is executing on a
+  Colab T4 under the signed plan. Verified from the banked plan: the
+  campaign binds the sealed holdout digest (sha256:ff9e4340...) and
+  the corrected schedule (microbatch 1 / gacc 1 / malformed_policy
+  fail; lr 5e-5 as the single lever vs Campaign 2).
+- Per-seed evidence banking is armed: completed seeds are tarballed
+  (seed evidence + L6/NC adapters + arm states) and pulled locally;
+  `scripts/campaign3a_supervisor.py` is the resumable lane supervisor
+  (banks completed seeds, relaunches the runner if it dies — COMPLETE
+  seeds are skipped by the runner's per-seed atomicity).
+- Execution is in progress; independent qualification with the
+  authority-held `--holdout` file follows when all seeds are banked.
+
 # v16.2.2 — Security and Correctness Repair (Phase 1)
 
 Phase 1 of the v17 plan: the six security/correctness defects from the

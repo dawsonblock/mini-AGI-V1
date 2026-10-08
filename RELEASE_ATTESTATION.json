@@ -20,7 +20,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "95fab8e0d2d3fedfda4fecc644f14e56bcb5205d79fa368672b60104e8d5d697",
+ "manifest_sha256": "cccee0a0a70856467b05cbd2859d6dc85255d73e7e7f2b7833e8a74461985c29",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "571/571 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -77,9 +77,14 @@
    "manifest_sha256": "95fab8e0d2d3fedfda4fecc644f14e56bcb5205d79fa368672b60104e8d5d697",
    "reason": "v16.4.0 batch 2: native CTest suite rebuilt and rerun (28/28 PASS, macOS CPU/stub; no C++ changes — toolchain re-verification); Campaign 3A preregistration sealed — authority-side holdout generator (refuses in-repo output, fresh vocabulary) + manifest digest bound in configs/campaign3a.yaml (sha256:ff9e4340..., 24 rows / 4 fresh families; file held outside the repository), sealer disjointness re-checked; preregistration regression tests (generator/sealer/binding invariants); 571/571 Python (1 skipped: Linux-only RLIMIT_AS on macOS). Campaign execution remains GPU-blocked",
    "utc": "2026-10-08T08:54:45.453869+00:00"
+  },
+  {
+   "manifest_sha256": "cccee0a0a70856467b05cbd2859d6dc85255d73e7e7f2b7833e8a74461985c29",
+   "reason": "v16.4.0 batch 3: Campaign 3A launched on Colab T4 (session v166-c3a-1) under the signed plan — verified the banked plan binds the sealed holdout digest and the corrected schedule (microbatch 1 / gacc 1 / malformed_policy fail, lr 5e-5); scripts/campaign3a_supervisor.py added (resumable per-seed evidence banking + runner relaunch); CHANGELOG/README/RELEASE_VALIDATION record the execution status; 571/571 Python (1 skipped). Results pending independent qualification",
+   "utc": "2026-10-08T09:39:10.011031+00:00"
   }
  ],
- "reissued_utc": "2026-10-08T08:54:45.453869+00:00",
+ "reissued_utc": "2026-10-08T09:39:10.011031+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
