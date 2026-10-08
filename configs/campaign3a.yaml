@@ -31,7 +31,9 @@ require_family_disjoint_hidden: true
 require_native_servable_adapter: false
 model:
   id: Qwen/Qwen2.5-0.5B-Instruct
-  revision: auto
+  revision: 7ae557604adf67be50417f59c2c2f167def9a775
+  # pinned: the executed 3A plan resolved this commit (2026-10-08);
+  # the signed plan binds the resolved revision either way
   dtype: bfloat16
   quantization: none
   trust_remote_code: false

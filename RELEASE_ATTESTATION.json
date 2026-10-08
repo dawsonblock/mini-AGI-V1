@@ -20,7 +20,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "920654b3a9e28b70974a88c771b1234390c8adca8593983ae9a854da95ee500f",
+ "manifest_sha256": "b7b82c28f23ca7e8c26a2611eab82f9dc1b26ec22957a5c67534a258a60e22e4",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "571/571 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -97,9 +97,14 @@
    "manifest_sha256": "920654b3a9e28b70974a88c771b1234390c8adca8593983ae9a854da95ee500f",
    "reason": "v16.4.0 batch 6 (review fixes): campaign3a_finalize.py hardened from the review pass \u2014 tracked-uncommitted-changes guard before the results-branch switch (fail closed, verified), path-traversal-safe tar extraction (data filter where supported), results-branch base falls back to origin/<branch> when only the remote exists; docstring records the results-branch checkout convention. 571/571 Python (1 skipped)",
    "utc": "2026-10-08T21:48:57.452551+00:00"
+  },
+  {
+   "manifest_sha256": "b7b82c28f23ca7e8c26a2611eab82f9dc1b26ec22957a5c67534a258a60e22e4",
+   "reason": "v16.4.0 batch 7 (review finding): campaign3a/b/c configs pin the model revision to 7ae55760... \u2014 the commit the executed 3A plan resolved \u2014 so the repository matches the executed plan and future runs (3B/3C, reproductions) cannot silently resolve a different upstream commit. 571/571 Python (1 skipped)",
+   "utc": "2026-10-08T21:49:19.591241+00:00"
   }
  ],
- "reissued_utc": "2026-10-08T21:48:57.452551+00:00",
+ "reissued_utc": "2026-10-08T21:49:19.591241+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
