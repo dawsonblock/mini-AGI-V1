@@ -69,22 +69,44 @@ def cluster_bootstrap_ci(samples, clusters, resamples: int, alpha: float,
 
 def false_activation_rate(base_outputs: dict, arm_outputs: dict,
                           golds: dict, scorer) -> dict:
-    """Rows where adaptation fired in error: baseline (L1) produced the
-    correct answer and the adapted arm changed its output to an
-    incorrect one — learned behavior applying to a non-target task.
+    """Rows where adaptation fired in error — conditioned on the
+    baseline (L1) having been correct (FIX-004).
+
+    The denominator is the set of previously-correct baseline cases,
+    matching the preregistered bound ("off-target harmful flips <= 1%
+    of previously correct baseline cases"). The original implementation
+    divided by all pairs, diluting the rate by rows L1 already failed.
+
+    A harmful flip requires the adapted arm to have CHANGED an
+    L1-correct output to an incorrect one — learned behavior applying
+    to a non-target task. `conditional_regression_rate` reports the
+    broader P(arm incorrect | L1 correct): under a graded scorer a
+    score can drop without a discrete output change, so regression is
+    counted by score and flips additionally by output change.
 
     base_outputs / arm_outputs / golds: {task_id: text} over the same
     hidden partition. scorer(pred, gold) -> float; a row scores 1.0-ish
-    correct. Returns {"n_pairs", "n_false_activation",
-    "false_activation_rate", "changed_ids"}."""
+    correct. Returns {"n_pairs", "n_baseline_correct",
+    "n_false_activation", "false_activation_rate",
+    "n_conditional_regression", "conditional_regression_rate",
+    "changed_ids"}."""
     ids = sorted(set(base_outputs) & set(arm_outputs) & set(golds))
+    baseline_correct = [i for i in ids
+                        if float(scorer(base_outputs[i], golds[i])) >= 1.0]
     hits = []
-    for i in ids:
-        if arm_outputs[i] == base_outputs[i]:
+    regressed = []
+    for i in baseline_correct:
+        if float(scorer(arm_outputs[i], golds[i])) >= 1.0:
             continue
-        if float(scorer(base_outputs[i], golds[i])) >= 1.0 \
-                and float(scorer(arm_outputs[i], golds[i])) < 1.0:
+        regressed.append(i)
+        if arm_outputs[i] != base_outputs[i]:
             hits.append(i)
-    return {"n_pairs": len(ids), "n_false_activation": len(hits),
-            "false_activation_rate": (len(hits) / len(ids)) if ids else 0.0,
+    n_correct = len(baseline_correct)
+    return {"n_pairs": len(ids), "n_baseline_correct": n_correct,
+            "n_false_activation": len(hits),
+            "false_activation_rate": (len(hits) / n_correct)
+                                    if n_correct else 0.0,
+            "n_conditional_regression": len(regressed),
+            "conditional_regression_rate": (len(regressed) / n_correct)
+                                           if n_correct else 0.0,
             "changed_ids": hits}

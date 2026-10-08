@@ -5,6 +5,11 @@ Checks that every governed file on disk exactly matches SOURCE_MANIFEST.json
 (missing / extra / changed all fail) and that the manifest carries a valid
 Ed25519 signature from a TRUSTED release key.
 
+FIX-006: also checks release-metadata reconciliation — the attestation's
+manifest_sha256 / reissued_utc must agree with the signed manifest (top
+level and last reissue_history entry) and the attestation release name
+must name the VERSION. Drift fails with exit 5.
+
 Trust model (REPAIR-004): the bundled RELEASE_PUBLIC_KEY.pem is NOT trusted
 merely because it sits inside the package. Its fingerprint must equal a
 pinned fingerprint — otherwise an attacker could replace manifest + public
@@ -143,11 +148,44 @@ def main() -> int:
                          indent=2))
         return 4
 
+    # FIX-006: release metadata reconciliation — the attestation must
+    # agree with the signed manifest and the version identities, and
+    # the signature must cover the manifest the attestation names.
+    manifest_sha = hashlib.sha256(canonical_manifest_bytes(doc)).hexdigest()
+    att_path = ROOT / 'RELEASE_ATTESTATION.json'
+    problems = []
+    att = None
+    if not att_path.is_file():
+        problems.append('RELEASE_ATTESTATION.json missing')
+    else:
+        att = json.loads(att_path.read_text())
+        if att.get('manifest_sha256') != manifest_sha:
+            problems.append(
+                'attestation manifest_sha256 != signed manifest digest')
+        history = att.get('reissue_history') or []
+        if not history or history[-1].get('manifest_sha256') != manifest_sha:
+            problems.append(
+                'last reissue_history entry != signed manifest digest')
+        if history and att.get('reissued_utc') != history[-1].get('utc'):
+            problems.append('reissued_utc != last reissue_history utc')
+    version_path = ROOT / 'VERSION'
+    if version_path.is_file() and att is not None:
+        number = version_path.read_text().strip().split('-', 1)[0]
+        if f'v{number}' not in str(att.get('release', '')):
+            problems.append(
+                f"attestation release {att.get('release')!r} does not "
+                f"name VERSION {number}")
+    if problems:
+        print(json.dumps({'status': 'FAIL',
+                          'reason': 'release_metadata_inconsistent',
+                          'problems': problems}, indent=2))
+        return 5
+
     print(json.dumps({
         'status': 'PASS', 'files_verified': len(actual),
         'key_source': source, 'key_fingerprint': fp,
-        'manifest_sha256': hashlib.sha256(
-            canonical_manifest_bytes(doc)).hexdigest()}, indent=2))
+        'manifest_sha256': manifest_sha,
+        'release': (att or {}).get('release')}, indent=2))
     return 0
 
 

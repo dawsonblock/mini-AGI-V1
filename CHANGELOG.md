@@ -1,4 +1,64 @@
+# v16.2.2 — Security and Correctness Repair (Phase 1)
+
+Phase 1 of the v17 plan: the six security/correctness defects from the
+audit are repaired, each with a reproducing test that fails on v16.2.1
+and passes here. No scientific claims change — Campaign 1b's
+qualification and Campaign 2's qualified-negative result stand under
+their original schemas; Campaign 3 remains drafted/unexecuted.
+
+Evaluator isolation (FIX-001):
+
+- `executor_score` no longer runs corpus python with the evaluator's
+  environment and privileges. Deterministic tasks prefer a declarative
+  evaluator (allowlisted ops — equals/contains/numeric/json/regex
+  composition — no code execution); `python_assert` checkers run only
+  under an OS-enforced sandbox (`minagi.v161.execution_sandbox`):
+  macOS `sandbox-exec` SBPL profile or Linux `bwrap --unshare-all`,
+  minimal environment (os.environ never inherited), workspace-only
+  writes, no network, rlimits, process-group termination on timeout.
+- No sandbox backend => `SandboxUnavailable` (fail closed; there is no
+  unsandboxed fallback). `MINIAGI_SANDBOX_BACKEND` pins a backend or
+  forces the fail-closed path.
+- Adversarial suite: secret read, authority-state read, outside write,
+  network, env visibility, orphaned-process survival, read-only
+  reference inputs, workspace cleanup, fail-closed paths. Residual
+  risks (macOS memory-cap best-effort, deprecated sandbox-exec,
+  bwrap/userns availability, regex bounds): see
+  `docs/research/SECURITY_REPAIR_V1622.md`.
+
+Mathematical correctness:
+
+- FIX-002 — `RankAllocator.grow()` clamps to
+  `min(per_task, max_rank, current + headroom)`; growth is strictly
+  non-decreasing and blocked growth leaves state unchanged (the
+  original could drive a task's rank to zero on budget exhaustion).
+  Randomized invariant test added.
+- FIX-004 — false-activation rate divides by previously-correct
+  baseline cases (matching the preregistered bound); conditional
+  regression reported alongside and surfaced in qualifier stats.
+
+Authority and promotion:
+
+- FIX-005 — `not_before`/`not_after` validity windows are enforced at
+  an explicit verification time in `is_authorized`/`assert_authorized`/
+  `verifier()` and `AuthorityLedger.verify`; expired or not-yet-valid
+  keys fail closed; malformed bounds and naive datetimes are rejected.
+- FIX-003 — generation promotion is an append-only `PromotionEvent`
+  validated against the promotion authority: signed envelope, bound
+  generation record/campaign/qualification digests, authorized signer
+  valid at verification time, unexpired, unrevoked. A bare
+  digest-shaped string no longer unlocks the next generation; the
+  chain re-verifies every event on `verify()`.
+
+Release metadata (FIX-006):
+
+- Attestation reconciled with the signed manifest and version
+  identities (VERSION, pyproject, package, SBOM, validation docs);
+  `scripts/verify_release.py` fails on attestation/manifest/version
+  drift (exit 5); reconciliation regression-tested.
+
 # v16.2.1 — Evidence-Verified Research Baseline (integrity repair)
+
 
 Integrity repair release — no scientific claims changed; Campaign 2's
 qualified-negative result stands unchanged under its original V164

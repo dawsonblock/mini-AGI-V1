@@ -29,8 +29,10 @@ nothing more.
 
 | Item | State |
 |---|---|
-| Release integrity (`scripts/verify_release.py`) | **PASS** — 1,401 governed files + Ed25519 signature |
-| Unified Python suite (`tests-python/`) | **PASS** — 335 tests |
+| Current release | **v16.2.2** — security/correctness repair (Phase 1 of the v17 plan); scientific claims unchanged |
+| Release integrity (`scripts/verify_release.py`) | **PASS** — 1,429 governed files + Ed25519 signature + attestation/version reconciliation |
+| Unified Python suite (`tests-python/`) | **PASS** — 510 passed (1 skipped: Linux-only RLIMIT_AS test on the macOS host) |
+| Security repair (FIX-001..006) | **IMPLEMENTED + TESTED** — reproducing test per defect, adversarial suites (sandbox escape, forged/expired/revoked promotion, rank-budget exhaustion, chain manipulation); residual risks in `docs/research/SECURITY_REPAIR_V1622.md` |
 | Native CTest suite | **PASS** — 28/28 (CPU/stub build; CUDA paths unverified offline) |
 | Adversarial boundary checks | **PASS** — 16/16 rejections (artifact/evaluator/dataset substitution) |
 | Campaign 1 — `campaign1-v162`, 5 seeds | **EXECUTED — REFUSE** — ΔFT(L6−L5) = +0.20 but retention/security floors tripped on documented calibration artifacts |
@@ -194,8 +196,11 @@ environment digests are refused by the qualifier.
   administered.
 - **Resume is epoch-scoped.** A runtime restart produces a new
   environment digest; cross-epoch resume is refused by design.
-- **Metadata drift.** `minagi.__version__` and some docs lag VERSION
-  (`16.2.0-colab-converged`); the signed manifest is authoritative.
+- **Metadata drift (repaired in v16.2.2).** Version identities are
+  reconciled across VERSION, pyproject, package, SBOM and validation
+  docs; `scripts/verify_release.py` fails on
+  attestation/manifest/version drift and the reconciliation is
+  regression-tested. The signed manifest remains authoritative.
 
 ## License
 

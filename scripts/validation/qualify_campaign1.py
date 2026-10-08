@@ -623,8 +623,11 @@ def main() -> int:
                             f"{cci['lower']:.4f} <= "
                             f"{plan.min_delta_ft_ci_lower}")
                 # false activation: L6 changed a correct L1 answer to a
-                # wrong one — learned behavior firing off-task
+                # wrong one — learned behavior firing off-task. The rate
+                # is conditioned on previously-correct L1 cases; the
+                # broader conditional regression is reported alongside.
                 fa_rates = []
+                cr_rates = []
                 for seed in plan.seeds:
                     base = hidden_outputs.get((seed, "L1"), {})
                     armed = hidden_outputs.get((seed, "L6"), {})
@@ -634,9 +637,12 @@ def main() -> int:
                     fa = false_activation_rate(base, armed, golds,
                                                exact_match)
                     fa_rates.append(fa["false_activation_rate"])
+                    cr_rates.append(fa["conditional_regression_rate"])
                 if fa_rates:
                     stats["false_activation_rate_mean"] = \
                         statistics.fmean(fa_rates)
+                    stats["conditional_regression_rate_mean"] = \
+                        statistics.fmean(cr_rates)
                     if statistics.fmean(fa_rates) > \
                             plan.max_false_activation_rate:
                         reasons.append(

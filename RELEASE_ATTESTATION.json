@@ -20,10 +20,10 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "1e8ee9cacd461faf5eda8c22db6f7bea343fc3c2caabf7681b88a2c12f270ddb",
+ "manifest_sha256": "855a79e08c0be64ebec39f57009940d6f6d2a74dce064ba795595507b20fd544",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
- "python_validation": "409/409 PASS (local, pre-commit)",
+ "python_validation": "510/510 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
  "reissue": {
   "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)",
   "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
@@ -62,9 +62,14 @@
    "manifest_sha256": "f7e95fd20e2b46369191cb320e001b4f4cbe51715a0e22c9efe2bf9264f71052",
    "reason": "v16.2.1 Route-B + Phase 7/8 batch: v2 native LoRA bundles (per-layer attention targets, dims-validated, fail-closed on batched/recurrent paths), NativeQW3Adapter2Compiler with bit-exact F32 parity, v166 native_adapter_tier, governed plasticity proposals + DynamicLoraPolicyV1 rank allocator, promotion-gated generation chain; verify_release skips gitignored build dirs; 454/454 Python + 28/28 CTest",
    "utc": "2026-10-08T04:09:53.206035+00:00"
+  },
+  {
+   "manifest_sha256": "855a79e08c0be64ebec39f57009940d6f6d2a74dce064ba795595507b20fd544",
+   "reason": "v16.2.2 security/correctness repair (v17 plan Phase 1, FIX-001..006): OS-enforced evaluator sandbox + declarative evaluator (fail closed without a backend), rank-allocator growth arithmetic, verified append-only generation promotion, corrected false-activation denominator + conditional regression, authority validity-window enforcement, release-metadata reconciliation enforced by verify_release.py; every defect carries a reproducing test; 510/510 Python (1 skipped: Linux-only RLIMIT_AS on macOS)",
+   "utc": "2026-10-08T08:31:01.566860+00:00"
   }
  ],
- "reissued_utc": "2026-10-08T02:41:18.288644+00:00",
+ "reissued_utc": "2026-10-08T08:31:01.566860+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -79,8 +84,8 @@
    "reason": "runner --execute-seeds: parallel-VM campaign execution under one signed plan"
   }
  ],
- "release": "mini-AGI-v16.2.1-Colab-Converged",
+ "release": "mini-AGI-v16.2.2-Colab-Converged",
  "schema": "mini-agi-v16.1-release-attestation-v1",
  "signature_algorithm": "Ed25519",
- "status": "PASS_INTEGRITY_REPAIR_GPU_SMOKE_PENDING"
+ "status": "PASS_SECURITY_REPAIR_GPU_SMOKE_PENDING"
 }

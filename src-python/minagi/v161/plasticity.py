@@ -199,15 +199,31 @@ class RankAllocator:
         return granted
 
     def grow(self, task_id: str, *, false_activation_breach: bool = False) -> int:
+        """Increase an existing allocation by at most rank_growth_step,
+        bounded by the per-task budget and by what the total budget can
+        still fund *on top of the current rank*:
+
+            headroom = total_rank_budget - spent
+            maximum_allowed = min(per_task_rank_budget, max_rank,
+                                  current_rank + headroom)
+
+        FIX-002: clamping to `headroom` alone let a task's rank fall
+        (even to zero) when the total budget was exhausted, violating
+        the no-decrease invariant. Growth is now strictly
+        non-decreasing; when nothing can be granted, the allocation is
+        returned unchanged."""
         if task_id not in self._alloc:
             raise KeyError(f"no allocation for task {task_id}")
-        if self.policy.activation_protection and false_activation_breach:
-            return self._alloc[task_id]  # refuse growth while misfiring
         cur = self._alloc[task_id]
-        head = min(self.policy.per_task_rank_budget,
-                   self.policy.max_rank,
-                   self.policy.total_rank_budget - self._spent)
-        new = min(cur + self.policy.rank_growth_step, head)
+        if self.policy.activation_protection and false_activation_breach:
+            return cur  # refuse growth while misfiring
+        headroom = self.policy.total_rank_budget - self._spent
+        maximum_allowed = min(self.policy.per_task_rank_budget,
+                              self.policy.max_rank,
+                              cur + headroom)
+        new = min(cur + self.policy.rank_growth_step, maximum_allowed)
+        if new <= cur:  # blocked growth leaves state unchanged
+            return cur
         self._alloc[task_id] = new
         self._spent += new - cur
         return new

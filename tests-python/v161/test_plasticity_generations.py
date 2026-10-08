@@ -6,8 +6,14 @@ and skill compilation first; nothing here authorizes execution.
 
 Generations: G(n+1) may only be preregistered after the promotion
 authority signs off on G(n); fresh evaluation corpora per generation.
+FIX-003: promotion is an append-only event validated against the
+independent promotion authority — a bare digest, a forged signature, an
+expired or revoked decision, or a decision bound to a different
+record/campaign never promotes anything.
 """
+import base64
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -16,8 +22,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src-python"))
 
 from egai.common.canonical import digest  # noqa: E402
-from minagi.v161.generations import (GenerationChain,  # noqa: E402
-                                     GenerationRecord)
+from egai.common.crypto import Ed25519Signer  # noqa: E402
+from minagi.v161.authority import (AuthorityRecord,  # noqa: E402
+                                   AuthorityRegistry)
+from minagi.v161.generations import (PROMOTION_DECISION_SCHEMA,  # noqa: E402
+                                     GenerationChain, GenerationRecord)
 from minagi.v161.plasticity import (DynamicLoraPolicyV1,  # noqa: E402
                                     FailureEvidence, FailureKind,
                                     Mechanism, PlasticityProposal,
@@ -127,71 +136,164 @@ def test_growth_clamped_and_protected():
     assert ra.grow("t1") == 12  # no further growth
 
 
+# ---------- FIX-002: growth arithmetic --------------------------------
+
+def test_growth_cannot_decrease_rank_when_budget_exhausted():
+    """Reproduces the FIX-002 defect: with the total budget fully spent
+    the original grow() clamped to `total - spent == 0`, driving the
+    rank to zero. Growth must be blocked instead."""
+    policy = DynamicLoraPolicyV1(base_rank=8, max_rank=16, rank_growth_step=4,
+                                 per_task_rank_budget=16, total_rank_budget=16)
+    ra = RankAllocator(policy)
+    assert ra.allocate("t1") == 8
+    assert ra.allocate("t2") == 8          # spent == total: headroom 0
+    assert ra.grow("t1") == 8              # original code returned 0
+    assert ra.allocations == {"t1": 8, "t2": 8}
+    assert ra.spent == 16
+
+
+def test_growth_uses_current_rank_plus_headroom():
+    """maximum_allowed = current + headroom, not headroom alone: a task
+    holding 8 of a 24-rank budget with 8 left may reach 16."""
+    policy = DynamicLoraPolicyV1(base_rank=8, max_rank=16, rank_growth_step=8,
+                                 per_task_rank_budget=16, total_rank_budget=24)
+    ra = RankAllocator(policy)
+    ra.allocate("t1")                      # 8
+    ra.allocate("t2")                      # 8, spent 16, headroom 8
+    assert ra.grow("t1") == 16             # original code returned 8
+    assert ra.spent == 24
+
+
+def test_growth_invariants_hold_under_random_sequences():
+    """Rank never decreases; spent == sum(allocations); global and
+    per-task budgets never exceeded — over arbitrary operation orders."""
+    import random
+    rng = random.Random(7)
+    policy = DynamicLoraPolicyV1(base_rank=4, max_rank=32, rank_growth_step=3,
+                                 per_task_rank_budget=20, total_rank_budget=48)
+    ra = RankAllocator(policy)
+    tasks = [f"t{i}" for i in range(8)]
+    for _ in range(500):
+        t = rng.choice(tasks)
+        if t in ra.allocations:
+            before = ra.allocations[t]
+            got = ra.grow(t, false_activation_breach=rng.random() < 0.3)
+            assert got >= before
+            assert ra.allocations[t] >= before
+        else:
+            try:
+                ra.allocate(t, requested=rng.randrange(0, 30))
+            except RuntimeError:
+                pass
+        assert ra.spent == sum(ra.allocations.values())
+        assert ra.spent <= policy.total_rank_budget
+        assert all(0 < v <= policy.per_task_rank_budget
+                   for v in ra.allocations.values())
+
+
 # ---------- generation chain -----------------------------------------
 
-def _gen(i, parent_dig="", corpus_tag=None, promo=""):
+NOW = datetime(2026, 10, 8, 12, 0, tzinfo=timezone.utc)
+NOW_TS = int(NOW.timestamp())
+
+
+def _gen(i, parent_dig="", corpus_tag=None):
     return GenerationRecord(
         generation=i, campaign_digest=D(f"camp{i}"),
         corpus_digest=D(f"corpus-{corpus_tag or i}"),
         control_arm_digest=D(f"ctrl{i}"),
-        parent_generation_digest=parent_dig,
-        promotion_decision_digest=promo)
+        parent_generation_digest=parent_dig)
+
+
+def _promotion_registry(*extra_roles):
+    signer = Ed25519Signer.generate()
+    records = [AuthorityRecord(
+        role="promotion", key_id=signer.key_id,
+        public_key_b64=base64.b64encode(
+            signer.public_bytes()).decode())]
+    records.extend(extra_roles)
+    return signer, AuthorityRegistry(records)
+
+
+def _decision(signer, record, *, authorized_at=None, expires_at=None,
+              **overrides):
+    value = {
+        "schema": PROMOTION_DECISION_SCHEMA,
+        "generation": record.generation,
+        "generation_record_digest": record.digest,
+        "campaign_digest": record.campaign_digest,
+        "qualification_digest": D(f"qualification-{record.generation}"),
+        "authorized_at": NOW_TS - 60 if authorized_at is None else authorized_at,
+        "expires_at": NOW_TS + 3600 if expires_at is None else expires_at,
+    }
+    value.update(overrides)
+    env = signer.sign(value)
+    return {"value": value, "digest": digest(value),
+            "signer_key_id": env.key_id, "signature_b64": env.signature_b64}
+
+
+def _promoted_chain(n=1):
+    """Chain with generations 0..n-1, each promoted by a valid signed
+    decision."""
+    signer, registry = _promotion_registry()
+    chain = GenerationChain()
+    for i in range(n):
+        parent = chain.tip.digest if chain.tip else ""
+        chain.append(_gen(i, parent_dig=parent))
+        chain.record_promotion(
+            i, _decision(signer, chain.tip), registry=registry, now=NOW)
+    return chain, signer, registry
 
 
 def test_genesis_then_promotion_gated_child():
-    chain = GenerationChain()
-    chain.append(_gen(0))
+    chain, signer, registry = _promoted_chain(1)
     # child cannot be preregistered before parent promotion
+    unpromoted = GenerationChain()
+    unpromoted.append(_gen(0))
     with pytest.raises(PermissionError, match="not promoted"):
-        chain.append(_gen(1, parent_dig=chain.tip.digest))
-    chain.record_promotion(0, D("promotion-decision-0"))
+        unpromoted.append(_gen(1, parent_dig=unpromoted.tip.digest))
     chain.append(_gen(1, parent_dig=chain.tip.digest))
     assert len(chain.records) == 2
-    assert chain.verify() == []
+    assert chain.verify(registry, now=NOW) == []
 
 
 def test_corpus_reuse_rejected():
-    chain = GenerationChain()
-    chain.append(_gen(0))
-    chain.record_promotion(0, D("pd0"))
+    chain, signer, registry = _promoted_chain(1)
     with pytest.raises(ValueError, match="corpus reuse"):
         chain.append(_gen(1, parent_dig=chain.tip.digest, corpus_tag="0"))
 
 
 def test_wrong_parent_digest_rejected():
-    chain = GenerationChain()
-    chain.append(_gen(0))
-    chain.record_promotion(0, D("pd0"))
+    chain, signer, registry = _promoted_chain(1)
     with pytest.raises(ValueError, match="parent digest"):
         chain.append(_gen(1, parent_dig=D("wrong-parent")))
 
 
 def test_skipped_generation_rejected():
-    chain = GenerationChain()
-    chain.append(_gen(0))
-    chain.record_promotion(0, D("pd0"))
-    chain.append(_gen(1, parent_dig=chain.tip.digest))
+    chain, signer, registry = _promoted_chain(2)
     with pytest.raises(ValueError, match="next generation"):
         chain.append(_gen(3, parent_dig=chain.tip.digest))
 
 
 def test_promotion_only_at_tip():
-    chain = GenerationChain()
-    chain.append(_gen(0))
-    chain.record_promotion(0, D("pd0"))
+    chain, signer, registry = _promoted_chain(1)
     chain.append(_gen(1, parent_dig=chain.tip.digest))
     # non-tip promotion refused
     with pytest.raises(ValueError, match="chain tip"):
-        chain.record_promotion(0, D("pd0-again"))
-    # the parent's record digest is pinned by the child's linkage — the
-    # parent object itself is unchanged by the child's promotion state
+        chain.record_promotion(
+            0, _decision(signer, chain.records[0]), registry=registry,
+            now=NOW)
+    # records are immutable evidence: a child's promotion never rewrites
+    # the parent
     g0_digest = chain.records[0].digest
-    chain.record_promotion(1, D("pd1"))
+    chain.record_promotion(
+        1, _decision(signer, chain.tip), registry=registry, now=NOW)
     assert chain.records[0].digest == g0_digest
     # double-promotion refused
     with pytest.raises(ValueError, match="already promoted"):
-        chain.record_promotion(1, D("pd1-again"))
-    assert chain.verify() == []
+        chain.record_promotion(
+            1, _decision(signer, chain.tip), registry=registry, now=NOW)
+    assert chain.verify(registry, now=NOW) == []
 
 
 def test_verify_catches_tampered_sequence():
@@ -202,3 +304,177 @@ def test_verify_catches_tampered_sequence():
                            parent_generation_digest=D("nobody"))
     chain._records.append(bad)  # bypass append to simulate grafting
     assert chain.verify() != []
+
+
+# ---------- FIX-003: verified promotion authorization ------------------
+
+def test_bare_digest_is_not_authorization():
+    """The original record_promotion accepted any digest-shaped string;
+    promotion now requires a signed decision envelope."""
+    signer, registry = _promotion_registry()
+    chain = GenerationChain()
+    chain.append(_gen(0))
+    with pytest.raises(PermissionError, match="signed envelope"):
+        chain.record_promotion(0, D("promotion-decision-0"),
+                               registry=registry, now=NOW)
+    assert chain.is_promoted(0) is False
+
+
+def test_unregistered_signer_rejected():
+    signer, registry = _promotion_registry()
+    outsider = Ed25519Signer.generate()
+    chain = GenerationChain()
+    chain.append(_gen(0))
+    with pytest.raises(PermissionError, match="not an authorized"):
+        chain.record_promotion(
+            0, _decision(outsider, chain.tip), registry=registry, now=NOW)
+
+
+def test_wrong_role_signer_rejected():
+    """A plan-role key — even a registered one — cannot promote."""
+    plan_signer = Ed25519Signer.generate()
+    plan_rec = AuthorityRecord(
+        role="plan", key_id=plan_signer.key_id,
+        public_key_b64=base64.b64encode(
+            plan_signer.public_bytes()).decode())
+    signer, registry = _promotion_registry(plan_rec)
+    chain = GenerationChain()
+    chain.append(_gen(0))
+    with pytest.raises(PermissionError, match="not an authorized"):
+        chain.record_promotion(
+            0, _decision(plan_signer, chain.tip), registry=registry,
+            now=NOW)
+
+
+def test_tampered_decision_value_rejected():
+    signer, registry = _promotion_registry()
+    chain = GenerationChain()
+    chain.append(_gen(0))
+    doc = _decision(signer, chain.tip)
+    doc["value"]["generation"] = 99  # tamper after signing
+    with pytest.raises(ValueError, match="digest mismatch"):
+        chain.record_promotion(0, doc, registry=registry, now=NOW)
+
+
+def test_decision_bound_to_other_record_rejected():
+    signer, registry = _promotion_registry()
+    chain = GenerationChain()
+    chain.append(_gen(0))
+    other = _gen(0, corpus_tag="other")  # different campaign/corpus binding
+    with pytest.raises(ValueError, match="bind this generation record"):
+        chain.record_promotion(
+            0, _decision(signer, other), registry=registry, now=NOW)
+    # a decision whose campaign digest disagrees with the bound record
+    doc = _decision(signer, chain.tip, campaign_digest=D("some-other-campaign"))
+    with pytest.raises(ValueError, match="campaign"):
+        chain.record_promotion(0, doc, registry=registry, now=NOW)
+
+
+def test_decision_generation_mismatch_rejected():
+    signer, registry = _promotion_registry()
+    chain = GenerationChain()
+    chain.append(_gen(0))
+    doc = _decision(signer, chain.tip, generation=1)
+    with pytest.raises(ValueError, match="generation mismatch"):
+        chain.record_promotion(0, doc, registry=registry, now=NOW)
+
+
+def test_expired_promotion_decision_rejected():
+    signer, registry = _promotion_registry()
+    chain = GenerationChain()
+    chain.append(_gen(0))
+    doc = _decision(signer, chain.tip, authorized_at=NOW_TS - 7200,
+                    expires_at=NOW_TS - 3600)
+    with pytest.raises(PermissionError, match="expired"):
+        chain.record_promotion(0, doc, registry=registry, now=NOW)
+
+
+def test_future_promotion_decision_rejected():
+    signer, registry = _promotion_registry()
+    chain = GenerationChain()
+    chain.append(_gen(0))
+    doc = _decision(signer, chain.tip, authorized_at=NOW_TS + 3600,
+                    expires_at=NOW_TS + 7200)
+    with pytest.raises(PermissionError, match="not yet valid"):
+        chain.record_promotion(0, doc, registry=registry, now=NOW)
+
+
+def test_missing_expiry_rejected():
+    signer, registry = _promotion_registry()
+    chain = GenerationChain()
+    chain.append(_gen(0))
+    doc = _decision(signer, chain.tip)
+    del doc["value"]["expires_at"]
+    env = signer.sign(doc["value"])
+    doc["digest"] = digest(doc["value"])
+    doc["signer_key_id"] = env.key_id
+    doc["signature_b64"] = env.signature_b64
+    with pytest.raises(ValueError, match="authorized_at/expires_at"):
+        chain.record_promotion(0, doc, registry=registry, now=NOW)
+
+
+def test_revoked_promotion_decision_rejected():
+    signer, registry = _promotion_registry()
+    chain = GenerationChain()
+    chain.append(_gen(0))
+    doc = _decision(signer, chain.tip)
+    with pytest.raises(PermissionError, match="revoked"):
+        chain.record_promotion(
+            0, doc, registry=registry, now=NOW,
+            revoked_decision_digests=[doc["digest"]])
+
+
+def test_valid_signed_promotion_unlocks_child():
+    chain, signer, registry = _promoted_chain(1)
+    assert chain.is_promoted(0) is True
+    assert len(chain.promotion_events) == 1
+    chain.append(_gen(1, parent_dig=chain.tip.digest))
+    assert chain.verify(registry, now=NOW) == []
+
+
+def test_chain_verify_rechecks_signatures_and_expiry():
+    chain, signer, registry = _promoted_chain(1)
+    # a decision that expires later must be flagged when verification
+    # happens after expiry
+    later = NOW_TS + 7200
+    late = datetime.fromtimestamp(later, tz=timezone.utc)
+    problems = chain.verify(registry, now=late)
+    assert any("expired" in p for p in problems)
+
+
+def test_chain_verify_flags_mutated_event_decision():
+    chain, signer, registry = _promoted_chain(1)
+    # events carry the signed value; mutating it after the fact is
+    # detected by digest re-verification
+    chain._events[0].decision["expires_at"] = NOW_TS + 999999
+    problems = chain.verify(registry, now=NOW)
+    assert any("digest mismatch" in p or "signature invalid" in p
+               for p in problems)
+
+
+def test_chain_verify_flags_grafted_event():
+    """An event whose record does not exist in the chain is a violation."""
+    chain, signer, registry = _promoted_chain(1)
+    ghost_record = _gen(7, parent_dig=D("ghost-parent"), corpus_tag="ghost")
+    doc = _decision(signer, ghost_record)
+    from minagi.v161.generations import check_promotion_decision
+    ghost = check_promotion_decision(
+        ghost_record, doc, registry=registry, now=NOW)
+    chain._events.append(ghost)
+    problems = chain.verify(registry, now=NOW)
+    assert any("no such generation record" in p for p in problems)
+
+
+def test_chain_verify_flags_duplicate_promotion_events():
+    """Two independently signed decisions for one record is still an
+    invalid chain — exactly one promotion per generation."""
+    chain, signer, registry = _promoted_chain(1)
+    doc = _decision(signer, chain.records[0],
+                    qualification_digest=D("second-qualification"))
+    from minagi.v161.generations import check_promotion_decision
+    duplicate = check_promotion_decision(
+        chain.records[0], doc, registry=registry, now=NOW)
+    chain._events.append(duplicate)
+    problems = chain.verify(registry, now=NOW)
+    assert any("only one promotion per generation" in p
+               for p in problems)
