@@ -29,11 +29,12 @@ nothing more.
 
 | Item | State |
 |---|---|
-| Current release | **v16.4.0** — training-schedule repair, runtime admission, mechanism controller (Phases 2/3/5 of the v17 plan); scientific claims unchanged |
-| Release integrity (`scripts/verify_release.py`) | **PASS** — 1,440 governed files + Ed25519 signature + attestation/version reconciliation |
-| Unified Python suite (`tests-python/`) | **PASS** — 571 passed (1 skipped: Linux-only RLIMIT_AS test on the macOS host) |
+| Current release | **v16.4.1** — runtime security closure: mandatory admission, canonical artifact closure, immutable snapshots, signed production receipts, strict schemas; scientific claims unchanged |
+| Release integrity (`scripts/verify_release.py`) | **PASS** — governed files + Ed25519 signature + attestation/version reconciliation |
+| Unified Python suite (`tests-python/`) | **PASS** — 631 passed (1 skipped: Linux-only RLIMIT_AS test on the macOS host) |
 | Training schedule (Phase 2.1) | **FIXED + TESTED** — effective batch = microbatch × accumulation bound in the signed protocol; engine-level counts assert it (the original ran 4× the declared sample presentations for accumulation > 1); strict `malformed_policy: fail` invalidates runs on unapproved rejections |
 | Runtime admission (Phase 3) | **IMPLEMENTED + TESTED** — full-chain admission (plan → qualification → promotion → manifest → exact bytes) with signed activation receipts and rollback; the plan's four named attacks (altered byte, substituted qualification, revoked replay, research-plane identity) are refused by an adversarial suite |
+| Runtime security closure (v16.4.1) | **IMPLEMENTED + TESTED** — `TrustedRuntimeLauncher` makes admission mandatory (physical measurement, immutable snapshot, snapshot-only loading, signed production receipt with load-measured digests and replay nonce); symlinks/special files/unlisted files are refused, not skipped; unsigned receipts are refused; strict versioned schemas and revocation freshness. Open items: `docs/research/REMAINING_DEFECTS_V1641.md` |
 | Security repair (FIX-001..006) | **IMPLEMENTED + TESTED** — reproducing test per defect, adversarial suites (sandbox escape, forged/expired/revoked promotion, rank-budget exhaustion, chain manipulation); residual risks in `docs/research/SECURITY_REPAIR_V1622.md` |
 | Native CTest suite | **PASS** — 28/28 rebuilt and rerun for v16.4.0 (macOS CPU/stub build; CUDA paths unverified offline) |
 | Adversarial boundary checks | **PASS** — 16/16 rejections (artifact/evaluator/dataset substitution) |

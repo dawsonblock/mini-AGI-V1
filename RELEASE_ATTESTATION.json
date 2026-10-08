@@ -20,10 +20,10 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "b7b82c28f23ca7e8c26a2611eab82f9dc1b26ec22957a5c67534a258a60e22e4",
+ "manifest_sha256": "1a76811e6907fd657094f2f03f5d665a5cc57d29332b098b17a9dd957eee23d3",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
- "python_validation": "571/571 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
+ "python_validation": "631/631 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
  "reissue": {
   "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)",
   "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
@@ -102,9 +102,14 @@
    "manifest_sha256": "b7b82c28f23ca7e8c26a2611eab82f9dc1b26ec22957a5c67534a258a60e22e4",
    "reason": "v16.4.0 batch 7 (review finding): campaign3a/b/c configs pin the model revision to 7ae55760... \u2014 the commit the executed 3A plan resolved \u2014 so the repository matches the executed plan and future runs (3B/3C, reproductions) cannot silently resolve a different upstream commit. 571/571 Python (1 skipped)",
    "utc": "2026-10-08T21:49:19.591241+00:00"
+  },
+  {
+   "manifest_sha256": "1a76811e6907fd657094f2f03f5d665a5cc57d29332b098b17a9dd957eee23d3",
+   "reason": "v16.4.1 runtime security closure (v17 plan Phase 1 follow-up, audit SEC-001..SEC-004): mandatory admission via TrustedRuntimeLauncher (physical measurement, immutable single-pass-verified snapshot, snapshot-only backend loading, signed production receipt binding load-measured artifact digests + replay nonce); canonical artifact closure refuses symlinks/special files/unlisted files instead of skipping them; unsigned receipts refused (schema v2, require_production); strict versioned schemas + mandatory protocol/evaluation bindings + revocation freshness; +60 adversarial tests (631/631 Python, 1 skipped); release change manifest + remaining-defects register included",
+   "utc": "2026-10-08T23:14:30.507210+00:00"
   }
  ],
- "reissued_utc": "2026-10-08T21:49:19.591241+00:00",
+ "reissued_utc": "2026-10-08T23:14:30.507210+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -119,8 +124,20 @@
    "reason": "runner --execute-seeds: parallel-VM campaign execution under one signed plan"
   }
  ],
- "release": "mini-AGI-v16.4.0-Colab-Converged",
+ "release": "mini-AGI-v16.4.1-Runtime-Security-Closure",
+ "runtime_security_closure": {
+  "audit_defects_closed": [
+   "SEC-001 admission mandatory",
+   "SEC-002 symlink/unlisted-file closure",
+   "SEC-003 unsigned activation receipts",
+   "SEC-004 optional schema/protocol requirements"
+  ],
+  "change_manifest": "RELEASE_CHANGE_MANIFEST.json",
+  "detail": "docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md",
+  "remaining_defects": "docs/research/REMAINING_DEFECTS_V1641.md",
+  "tests": "tests-python/v161/test_v1641_artifact_closure.py, test_v1641_trusted_launcher.py, test_v1641_strict_schema.py, test_v1641_cli.py"
+ },
  "schema": "mini-agi-v16.1-release-attestation-v1",
  "signature_algorithm": "Ed25519",
- "status": "PASS_TRAINING_ADMISSION_GPU_SMOKE_PENDING"
+ "status": "PASS_RUNTIME_SECURITY_CLOSURE_GPU_SMOKE_PENDING"
 }

@@ -1,29 +1,38 @@
+"""v16.1 runtime artifact closure — now backed by the v16.4.1 canonical
+closure (`minagi.v161.artifact_closure`).
+
+`sha256_path` keeps its historical digest semantics (sorted
+(relpath, size, sha256) rows for directories, content digest for
+files), so evidence recorded before v16.4.1 still verifies — but the
+audit defect is closed: symbolic links and unsupported special files
+inside an authorized tree are REFUSED instead of being silently
+skipped, and the full authorized file listing is available to
+manifests via `TreeClosure.manifest()`.
+
+New callers should use `artifact_closure.close_tree` directly (it
+returns the entries as well as the digest).
+"""
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
-import hashlib
-from typing import Iterable
+
 from egai.common.canonical import digest, validate_digest
+
+from .artifact_closure import (ArtifactClosureError, TreeClosure,
+                               close_tree)
 
 ZERO = "sha256:" + "0" * 64
 
 
 def sha256_path(path: str | Path) -> str:
-    p = Path(path)
-    if p.is_symlink():
-        raise ValueError(f"runtime artifact cannot be a symlink: {p}")
-    if p.is_file():
-        h = hashlib.sha256()
-        with p.open("rb") as f:
-            for block in iter(lambda: f.read(1 << 20), b""):
-                h.update(block)
-        return "sha256:" + h.hexdigest()
-    if not p.is_dir():
-        raise ValueError(f"runtime artifact path missing: {p}")
-    rows = []
-    for f in sorted(x for x in p.rglob("*") if x.is_file() and not x.is_symlink()):
-        rows.append((f.relative_to(p).as_posix(), f.stat().st_size, sha256_path(f)))
-    return digest(rows)
+    """Canonical digest of a file or directory tree. Symlinks and
+    special files anywhere in the tree are refused (v16.4.1)."""
+    return close_tree(path).digest
+
+
+def close_path(path: str | Path) -> TreeClosure:
+    """Digest plus the complete authorized entry listing."""
+    return close_tree(path)
 
 
 @dataclass(frozen=True)

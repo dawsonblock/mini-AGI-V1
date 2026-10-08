@@ -1,3 +1,83 @@
+# v16.4.1 — Runtime Security Closure
+
+Closes the four runtime-security defects from the v16.4.0 audit at the
+source, with executable adversarial regression tests for each. No
+scientific claim changes (Campaign 1b QUALIFIED, Campaign 2 REFUSE,
+Campaign 3A still executing). Details:
+`docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md`; open items:
+`docs/research/REMAINING_DEFECTS_V1641.md`.
+
+Admission is now mandatory (SEC-001):
+
+- New `TrustedRuntimeLauncher` (`minagi/v161/trusted_launcher.py`) +
+  `scripts/trusted_launch.py`: resolves the signed plan/qualification/
+  promotion decision and the authorized runtime manifest, verifies every
+  signature, role, validity window, expiry, and revocation entry,
+  physically measures the model, tokenizer, and adapter, stages an
+  immutable snapshot, loads the backend ONLY from that snapshot, and
+  emits a signed production activation receipt after the load succeeds.
+  Any failure refuses and no receipt exists.
+- `PeftServingBackend.load()` accepts only an `ApprovedSnapshot`
+  (constructible solely by the staging function); raw paths are
+  refused. `minagi/platforms/cuda/hf_runtime.load_causal_lm()` refuses
+  `adapter_path=` in serving mode — the research plane must pass
+  `purpose="research"` explicitly (the reviewable record that the load
+  evaluates a candidate rather than serving it). Call sites updated.
+
+Artifact closure repaired (SEC-002):
+
+- New `artifact_closure.close_tree()`: symlinks and unsupported special
+  files anywhere in an authorized tree are REFUSED, not skipped (the
+  v16.4.0 walker silently skipped them, so adding a symlink did not
+  change the digest); path traversal is rejected; the complete
+  (path, size, sha256) listing is returned. `verify_entries()` fails on
+  missing, unexpected, resized, or modified files individually.
+- Digest compatibility with v16.4.0 semantics is preserved for clean
+  trees (existing recorded evidence still verifies); trees that
+  previously hashed incompletely are now refused. HF-cache snapshot
+  symlinks use the documented `resolve_symlinks=True` policy.
+- Runtime manifest v2 (`mini-agi-v16.5-peft-runtime-manifest-v2`) binds
+  the explicit authorized `adapter_files` listing; serving requires v2.
+
+Signed activation evidence enforced (SEC-003):
+
+- Receipt schema v2 binds candidate/qualification/promotion/manifest
+  digests, the artifact digests actually measured at load, backend id,
+  a 128-bit replay nonce, activation time, runtime signer, and
+  signature. `write_activation_receipt` refuses unsigned receipts;
+  `check_activation_receipt` reports unsigned receipts as problems by
+  default and `require_production=True` refuses admission-only
+  receipts (signature validity alone is not enough — the signer must
+  have measured and loaded the artifacts). `admit_runtime.py` lost its
+  unsigned mode and now requires physical `--runtime-model-path` /
+  `--runtime-tokenizer-path` measurements.
+
+Protocol made strict (SEC-004):
+
+- New `strict_schema.py`: one versioned validator per authority-bearing
+  artifact; unknown versions, absent/malformed digests, unsupported
+  backend identifiers, and unsafe listing paths are refused. Admission
+  now requires the signed plan's `experiment_protocol_digest` to equal
+  the manifest's `protocol_digest` and the qualification's
+  `evaluation_bundle_digest` to equal the decision's; `promote.py`
+  refuses to sign decisions with unbound evaluation or protocol.
+- `RevocationList` carries a generation time; the launcher requires a
+  revocation list and refuses a stale one (default 7 days); the
+  admission CLI accepts `--max-revocation-age-days`. Production
+  receipts carry replay nonces recorded in an append-only journal.
+
+Time-of-check/time-of-use: `immutable_snapshot.stage_snapshot()`
+copies-and-verifies in a single pass (the staged bytes are the hashed
+bytes), requires the staged digest to equal the authorized digest,
+freezes the tree read-only, and re-measures it immediately before load.
+
+Tests: +60 (571 → 631 passing, 1 skipped — Linux-only `RLIMIT_AS` on
+the macOS host). New suites: `test_v1641_artifact_closure.py` (21),
+`test_v1641_trusted_launcher.py` (20), `test_v1641_strict_schema.py`
+(11), `test_v1641_cli.py` (8); `test_v164_runtime_admission.py` updated
+to the measured-artifact CLI contract. Release change manifest:
+`RELEASE_CHANGE_MANIFEST.json`.
+
 # v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
 
 Phases 2, 3, and (early) 5 of the v17 plan. Scientific claims unchanged

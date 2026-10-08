@@ -1,4 +1,4 @@
-"""v16.5 PEFT serving path (REPAIR-025..029, Route A).
+"""v16.5/v16.4.1 PEFT serving path (REPAIR-025..029, Route A).
 
 The first complete learning->serving loop trains, saves, reloads, and
 serves the SAME adapter through the HF/PEFT stack. The runtime manifest
@@ -9,11 +9,20 @@ Checks enforced here:
 
   * adapter_config.json exists and its LoRA config matches the signed
     protocol (rank/alpha/dropout/every declared target module)
-  * the adapter directory digest matches the digest the campaign
-    evidence committed (exact bytes, not just a path)
+  * the adapter directory closure matches the digest the campaign
+    evidence committed (exact bytes, not just a path); symbolic links
+    and special files anywhere in the tree are refused (v16.4.1)
+  * manifest v2 additionally binds the complete authorized file listing
+    (`adapter_files`): missing, unexpected, resized, or modified files
+    are refused individually, not just via the aggregate digest
   * reload parity: a saved adapter re-loaded onto the base model must
     reproduce the training-instance outputs within the preregistered
     tolerance (verified by the caller's generation/forward probe)
+
+Loading for serving goes through `PeftServingBackend.load()`, which
+accepts ONLY an `ApprovedSnapshot` staged by the trusted launcher — a
+raw directory path is not a loadable artifact. There is no public
+function here that opens a mutable adapter directory for serving.
 
 Native-runtime (qw3) parity is Route B and remains a separate gate —
 PEFT qualification does NOT transitively qualify the native path.
@@ -26,9 +35,12 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 from egai.common.canonical import digest, sha256_bytes
-from minagi.v161.runtime_closure3 import sha256_path
+from minagi.v161.artifact_closure import (ArtifactClosureError, TreeEntry,
+                                          close_tree, expected_from_manifest,
+                                          verify_entries)
+from minagi.v161.immutable_snapshot import ApprovedSnapshot
 
-RUNTIME_MANIFEST_SCHEMA = "mini-agi-v16.5-peft-runtime-manifest-v1"
+RUNTIME_MANIFEST_SCHEMA = "mini-agi-v16.5-peft-runtime-manifest-v2"
 
 
 class AdapterClosureError(ValueError):
@@ -43,22 +55,41 @@ class AdapterClosure:
     dropout: float
     target_modules: tuple[str, ...]
     files: int
+    entries: tuple[TreeEntry, ...] = ()
 
     @property
     def digest(self) -> str:
         return digest(self)
 
+    def manifest(self) -> list[dict]:
+        """The complete authorized file listing (v2 manifests bind
+        this; admission verifies it entry by entry)."""
+        return [e.to_doc() for e in self.entries]
 
-def adapter_closure(adapter_dir) -> AdapterClosure:
-    """Read + verify the PEFT adapter artifact on disk."""
+
+def adapter_closure(adapter_dir, *,
+                    expected_files: Iterable[dict] | None = None
+                    ) -> AdapterClosure:
+    """Read + verify the PEFT adapter artifact on disk.
+
+    v16.4.1: the tree is closed canonically — symlinks/special files are
+    refused (never skipped), and when `expected_files` (the signed
+    listing) is supplied the on-disk entries must match it exactly."""
     d = Path(adapter_dir)
     if not d.is_dir():
         raise AdapterClosureError(f"adapter dir missing: {d}")
     cfg_path = d / "adapter_config.json"
+    if cfg_path.is_symlink():
+        raise AdapterClosureError(
+            "adapter_config.json is a symbolic link — refused")
     if not cfg_path.is_file():
         raise AdapterClosureError("adapter_config.json missing — "
                                   "not a PEFT adapter artifact")
-    cfg = json.loads(cfg_path.read_text())
+    try:
+        cfg = json.loads(cfg_path.read_text())
+    except (OSError, ValueError) as exc:
+        raise AdapterClosureError(
+            f"adapter_config.json unreadable: {exc}") from exc
     if cfg.get("peft_type") != "LORA" or cfg.get("task_type") not in (
             "CAUSAL_LM", "SEQ_2_SEQ_LM", None):
         raise AdapterClosureError(
@@ -66,17 +97,29 @@ def adapter_closure(adapter_dir) -> AdapterClosure:
     targets = tuple(sorted(str(t) for t in cfg.get("target_modules") or ()))
     if not targets:
         raise AdapterClosureError("adapter declares no target modules")
-    weights = [p for p in d.iterdir()
-               if p.name.startswith("adapter_model")]
+    try:
+        closure = close_tree(d)
+    except ArtifactClosureError as exc:
+        raise AdapterClosureError(f"adapter closure failed: {exc}") from exc
+    weights = [e for e in closure.entries
+               if Path(e.path).name.startswith("adapter_model")]
     if not weights:
         raise AdapterClosureError("adapter weight files missing")
+    if expected_files is not None:
+        try:
+            verify_entries(closure.entries,
+                           expected_from_manifest(expected_files),
+                           what="adapter")
+        except ArtifactClosureError as exc:
+            raise AdapterClosureError(str(exc)) from exc
     return AdapterClosure(
-        adapter_digest=sha256_path(d),
+        adapter_digest=closure.digest,
         rank=int(cfg.get("r", 0)),
         alpha=float(cfg.get("lora_alpha", 0)),
         dropout=float(cfg.get("lora_dropout", 0.0)),
         target_modules=targets,
-        files=sum(1 for p in d.rglob("*") if p.is_file()))
+        files=len(closure.entries),
+        entries=closure.entries)
 
 
 def assert_adapter_matches_protocol(adapter_dir,
@@ -117,8 +160,9 @@ def runtime_manifest(*, model_id: str, model_revision: str,
     Binds: exact model snapshot/config identity, tokenizer identity,
     the adapter bytes, the LoRA footprint actually on disk, the
     protocol digest (when the adapter was produced under a signed
-    protocol), and the qualification record authorizing it. Promotion
-    and serving must both consume this — never a mutable name like
+    protocol), the qualification record authorizing it, and — since
+    v16.4.1 — the complete authorized adapter file listing. Promotion
+    and serving must both consume this; never a mutable name like
     'latest'."""
     closure = adapter_closure(adapter_dir)
     if expected_adapter_digest is not None \
@@ -134,6 +178,7 @@ def runtime_manifest(*, model_id: str, model_revision: str,
             "model_digest": model_digest,
             "tokenizer_digest": tokenizer_digest,
             "adapter_digest": closure.adapter_digest,
+            "adapter_files": closure.manifest(),
             "lora": {"rank": closure.rank, "alpha": closure.alpha,
                      "dropout": closure.dropout,
                      "target_modules": list(closure.target_modules)},
@@ -142,10 +187,45 @@ def runtime_manifest(*, model_id: str, model_revision: str,
             "campaign_digest": campaign_digest,
             "qualification_record_digest": qualification_record_digest,
             "serving_stack": "hf-peft",
-            "note": "exact-artifact binding; runtime admission control "
-                    "must re-verify adapter_digest before serving"}
+            "note": "exact-artifact binding; the trusted runtime launcher "
+                    "must re-verify adapter_digest and adapter_files "
+                    "against a staged immutable snapshot before serving"}
     body["digest"] = digest(body)
     return body
+
+
+class PeftServingBackend:
+    """The only supported PEFT serving entry point.
+
+    `load()` accepts an `ApprovedSnapshot` (staged, verified, frozen by
+    the trusted launcher) and refuses anything else — including a raw
+    path, a str, or a mutable directory. The model and adapter are
+    opened exclusively from the snapshot root."""
+
+    backend_id = "hf-peft"
+
+    def load(self, snapshot: ApprovedSnapshot):
+        if not isinstance(snapshot, ApprovedSnapshot):
+            raise PermissionError(
+                "PeftServingBackend.load() requires an ApprovedSnapshot "
+                "staged by TrustedRuntimeLauncher — raw paths are not "
+                "loadable artifacts")
+        import torch
+        from peft import PeftModel
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        model = AutoModelForCausalLM.from_pretrained(
+            str(snapshot.path("model")), local_files_only=True)
+        tokenizer = AutoTokenizer.from_pretrained(
+            str(snapshot.path("tokenizer")), local_files_only=True)
+        served = PeftModel.from_pretrained(
+            model, str(snapshot.path("adapter")))
+        served.eval()
+        with torch.inference_mode():
+            probe = tokenizer("runtime admission probe", return_tensors="pt")
+            served(**probe)
+        return {"model": served, "tokenizer": tokenizer,
+                "snapshot_manifest_digest": snapshot.manifest_digest}
 
 
 def logits_digest(model, tokenizer, prompts: Iterable[str],

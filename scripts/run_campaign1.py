@@ -819,7 +819,8 @@ def main() -> int:
             # fully frozen (requires_grad=False), which would report 0.
             trainable = int(sum(p.numel() for p in model.parameters() if p.requires_grad))
             free_model(model)
-            model = load_causal_lm(spec, adapter_path=str(adir))
+            model = load_causal_lm(spec, adapter_path=str(adir),
+                                   purpose="research")
             metrics, outputs, preds = run_eval_block(None, arm_id)
             metrics["arm_state_bytes"] = dir_size_bytes(adir)
             metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
@@ -849,7 +850,9 @@ def main() -> int:
                  {"probe_kind": "delayed"}, out_name="L1_delayed",
                  preds=d1_preds)
             if "L6" in adapter_dirs:
-                model = load_causal_lm(spec, adapter_path=str(adapter_dirs["L6"]))
+                model = load_causal_lm(spec,
+                                       adapter_path=str(adapter_dirs["L6"]),
+                                       purpose="research")
                 d6, d6_out, _, _, d6_preds = evaluate(
                     model, tokenizer, delayed_rows, max_new, retention_fn,
                     block=dblock)

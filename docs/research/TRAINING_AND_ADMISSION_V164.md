@@ -1,5 +1,12 @@
 # v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
 
+> Superseded for the admission/security surface by v16.4.1
+> (`docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md`): admission is now
+> mandatory via `TrustedRuntimeLauncher`, artifact closure refuses
+> symlinks/special/unlisted files, receipts are never unsigned, and
+> schemas/protocol bindings are strict. This document remains the record
+> of what v16.4.0 shipped and why.
+
 Phases 2, 3, and (early) 5 of the v17 plan. Scientific claims are
 unchanged: Campaign 1b remains QUALIFIED, Campaign 2 remains REFUSE,
 Campaign 3 remains drafted/unexecuted (its execution is GPU-blocked and

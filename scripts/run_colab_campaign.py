@@ -107,7 +107,7 @@ def main():
             import torch
             if torch.cuda.is_available(): torch.cuda.empty_cache()
         except Exception: pass
-        model=load_causal_lm(spec,adapter_path=str(adapter_dir)); a1_score,a1_outputs=evaluate(model,tokenizer,hidden,int(cfg.get("max_new_tokens",8)),score_fn)
+        model=load_causal_lm(spec,adapter_path=str(adapter_dir),purpose="research"); a1_score,a1_outputs=evaluate(model,tokenizer,hidden,int(cfg.get("max_new_tokens",8)),score_fn)
         retention_rows=train[:max(1,min(len(train),int(cfg.get("retention_samples",2))))]
         retention,ret_outputs=evaluate(model,tokenizer,retention_rows,int(cfg.get("max_new_tokens",8)),retention_fn)
         security_count=sum(int(security_fn(x["prediction"],x["expected"])) for x in a1_outputs)

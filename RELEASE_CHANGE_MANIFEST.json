@@ -1,0 +1,154 @@
+{
+  "schema": "mini-agi-v16.4.1-change-manifest-v1",
+  "release": "mini-AGI-v16.4.1-Runtime-Security-Closure",
+  "version": "16.4.1",
+  "base_version": "16.4.0",
+  "summary": "Runtime security closure: mandatory admission, canonical artifact closure (symlinks/special files/unlisted files refused), immutable snapshots, signed production activation receipts with load-measured artifact digests, strict versioned schemas, revocation freshness, replay nonces.",
+  "audit_mapping": {
+    "admission_not_mandatory": "SEC-001",
+    "artifact_hashing_overlooks_symlinks": "SEC-002",
+    "unsigned_activation_receipts_pass": "SEC-003",
+    "schema_and_protocol_requirements_optional": "SEC-004",
+    "controller_accepts_unsupported_prerequisite_evidence": "SEC-005 (v16.4.2, open)",
+    "controller_can_recommend_negative_utility": "SEC-006 (v16.4.2, open)",
+    "real_model_learning_and_serving_qualification_incomplete": "SEC-007 (v16.5.0, open)"
+  },
+  "repairs": [
+    {
+      "id": "SEC-001",
+      "title": "Make runtime admission mandatory in every supported model-loading path",
+      "files": [
+        "src-python/minagi/v161/trusted_launcher.py",
+        "src-python/minagi/v161/peft_serving.py",
+        "src-python/minagi/platforms/cuda/hf_runtime.py",
+        "scripts/trusted_launch.py",
+        "scripts/run_campaign1.py",
+        "scripts/run_colab_campaign.py",
+        "scripts/validation/adapter_effect_check.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_trusted_launcher.py",
+        "tests-python/v161/test_v1641_cli.py"
+      ],
+      "behavior": "TrustedRuntimeLauncher verifies the full signed chain, measures artifacts physically, stages an immutable snapshot, loads the backend from the snapshot only, and emits a signed production receipt after a successful load. PeftServingBackend refuses anything but an ApprovedSnapshot; the CUDA loader refuses adapter_path in serving mode."
+    },
+    {
+      "id": "SEC-002",
+      "title": "Canonical artifact closure: refuse symlinks/special files, bind the complete authorized listing",
+      "files": [
+        "src-python/minagi/v161/artifact_closure.py",
+        "src-python/minagi/v161/runtime_closure3.py",
+        "src-python/minagi/v161/peft_serving.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_artifact_closure.py"
+      ],
+      "behavior": "close_tree() refuses symbolic links and unsupported special files (never skips them), rejects path traversal, and returns (path, size, sha256) entries. verify_entries() fails on missing, unexpected, resized, or modified files. Digest compatibility with v16.4.0 semantics is preserved for clean trees; trees that previously hashed incompletely are refused."
+    },
+    {
+      "id": "SEC-003",
+      "title": "Signed production activation receipts with load-measured artifacts",
+      "files": [
+        "src-python/minagi/v161/runtime_admission.py",
+        "scripts/admit_runtime.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_trusted_launcher.py",
+        "tests-python/v161/test_v1641_cli.py"
+      ],
+      "behavior": "Receipt schema v2 binds candidate_digest, qualification/promotion/manifest digests, loaded_artifact_digests measured at load, backend_id, activation_nonce, activated_at, signer_key_id and signature. check_activation_receipt requires a signature by default and require_production=True refuses admission-only receipts. write_activation_receipt refuses unsigned receipts; the admission CLI has no unsigned mode."
+    },
+    {
+      "id": "SEC-004",
+      "title": "Strict versioned schemas, mandatory protocol identity, revocation freshness",
+      "files": [
+        "src-python/minagi/v161/strict_schema.py",
+        "src-python/minagi/v161/runtime_admission.py",
+        "scripts/promote.py",
+        "scripts/admit_runtime.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_strict_schema.py",
+        "tests-python/v161/test_v164_runtime_admission.py"
+      ],
+      "behavior": "One validator per authority-bearing artifact; unknown versions, absent/malformed digests, unsupported backends, and unsafe listing paths are refused. Admission requires the plan's experiment_protocol_digest to equal the manifest's protocol_digest and the qualification's evaluation_bundle_digest to equal the decision's. promote.py refuses to sign decisions whose evaluation or protocol binding is missing."
+    },
+    {
+      "id": "TOCTOU",
+      "title": "Immutable snapshots close the time-of-check/time-of-use window",
+      "files": [
+        "src-python/minagi/v161/immutable_snapshot.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_artifact_closure.py",
+        "tests-python/v161/test_v1641_trusted_launcher.py"
+      ],
+      "behavior": "Single-pass copy-and-verify stages exactly the bytes that were hashed; the staged digest must equal the authorized digest; the tree is frozen read-only and re-measured immediately before load. ApprovedSnapshot is constructible only by stage_snapshot."
+    }
+  ],
+  "features": [
+    {
+      "id": "FEAT-001",
+      "title": "v2 runtime manifest with explicit authorized file listing",
+      "files": [
+        "src-python/minagi/v161/peft_serving.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_peft_trainer_v1621.py",
+        "tests-python/v161/test_v1641_strict_schema.py"
+      ],
+      "note": "mini-agi-v16.5-peft-runtime-manifest-v2 binds adapter_files; serving requires v2 (the launcher refuses aggregate-digest-only manifests)."
+    },
+    {
+      "id": "FEAT-002",
+      "title": "RevocationList with generation time and freshness enforcement",
+      "files": [
+        "src-python/minagi/v161/runtime_admission.py",
+        "src-python/minagi/v161/trusted_launcher.py",
+        "scripts/admit_runtime.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_strict_schema.py",
+        "tests-python/v161/test_v1641_trusted_launcher.py",
+        "tests-python/v161/test_v1641_cli.py"
+      ],
+      "note": "The launcher requires a revocation list (default max age 7 days); a stale list refuses instead of being treated as empty."
+    },
+    {
+      "id": "FEAT-003",
+      "title": "Replay nonces recorded in an append-only journal",
+      "files": [
+        "src-python/minagi/v161/trusted_launcher.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_trusted_launcher.py"
+      ],
+      "note": "Each production receipt carries a fresh 128-bit nonce; the journal makes reuse detectable."
+    },
+    {
+      "id": "FEAT-004",
+      "title": "Trusted launch CLI and launcher rollback lineage",
+      "files": [
+        "scripts/trusted_launch.py",
+        "src-python/minagi/v161/trusted_launcher.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_cli.py",
+        "tests-python/v161/test_v1641_trusted_launcher.py"
+      ],
+      "note": "scripts/trusted_launch.py --backend-factory module:callable; rollback re-admits a previously receipted release and records rollback_of in the receipt."
+    }
+  ],
+  "verification": {
+    "python_suite": "python -m pytest tests-python -q",
+    "release_integrity": "python scripts/verify_release.py",
+    "adversarial_acceptance": [
+      "adding a symlink to an approved adapter prevents activation",
+      "changing one byte of an approved adapter prevents activation",
+      "an unsigned or admission-only receipt cannot authorize serving",
+      "an unknown schema version, absent digest, or unsupported backend is refused",
+      "a stale revocation list refuses; a revoked decision replay refuses",
+      "no receipt is written when admission, staging, or the backend load fails"
+    ]
+  }
+}

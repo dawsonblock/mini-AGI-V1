@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from egai.common.canonical import digest  # noqa: E402
 from egai.common.crypto import Ed25519Signer  # noqa: E402
+from minagi.v161.artifact_closure import close_tree  # noqa: E402
 from minagi.v161.authority import (AUTHORITY_ROLES, AuthorityLedger,  # noqa: E402
                                    AuthorityRegistry, write_trust_root)
 from minagi.v161.experiment_protocol import ExperimentProtocolV1  # noqa: E402
@@ -71,6 +72,16 @@ def _build_chain(tmp_path, *, expires_at=None, authorized_at=None,
     (adir / "adapter_model.safetensors").write_bytes(b"adapter-weights")
     (adir / "TRAINING_RECEIPT.json").write_text("{}")
 
+    model_dir = storage / "models" / "base"
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text('{"model_type": "gpt2"}')
+    (model_dir / "model.safetensors").write_bytes(b"base-model-weights")
+    tok_dir = storage / "models" / "tok"
+    tok_dir.mkdir(parents=True)
+    (tok_dir / "tokenizer.json").write_text('{"vocab": []}')
+    model_d = close_tree(model_dir, resolve_symlinks=True).digest
+    tokenizer_d = close_tree(tok_dir, resolve_symlinks=True).digest
+
     proto = _protocol()
     plan_doc = _signed(signers["plan"], {
         "schema": "mini-agi-v16.6-colab-campaign-plan-v1",
@@ -86,8 +97,8 @@ def _build_chain(tmp_path, *, expires_at=None, authorized_at=None,
         "runtime_backends": ["hf-peft"]})
 
     manifest = runtime_manifest(
-        model_id="m", model_revision="r1", model_digest=MODEL_D,
-        tokenizer_digest=TOKENIZER_D, adapter_dir=adir, protocol=proto,
+        model_id="m", model_revision="r1", model_digest=model_d,
+        tokenizer_digest=tokenizer_d, adapter_dir=adir, protocol=proto,
         campaign_digest=plan_doc["digest"],
         qualification_record_digest=qual_doc["digest"])
 
@@ -109,8 +120,9 @@ def _build_chain(tmp_path, *, expires_at=None, authorized_at=None,
 
     return SimpleNamespace(
         storage=storage, registry=registry, signers=signers, adir=adir,
-        proto=proto, plan_doc=plan_doc, qual_doc=qual_doc,
-        manifest=manifest, decision_doc=decision_doc,
+        model_dir=model_dir, tok_dir=tok_dir, model_digest=model_d,
+        tokenizer_digest=tokenizer_d, proto=proto, plan_doc=plan_doc,
+        qual_doc=qual_doc, manifest=manifest, decision_doc=decision_doc,
         manifest_backend=backend)
 
 
@@ -140,8 +152,8 @@ def _admit_kwargs(chain):
                 plan_doc=chain.plan_doc,
                 runtime_manifest=chain.manifest,
                 adapter_dir=chain.adir, seed="seed-0",
-                runtime_model_digest=MODEL_D,
-                runtime_tokenizer_digest=TOKENIZER_D,
+                runtime_model_digest=chain.model_digest,
+                runtime_tokenizer_digest=chain.tokenizer_digest,
                 expected_backend="hf-peft")
 
 
@@ -392,8 +404,8 @@ def _run_cli(chain, cdir, out):
          "--campaign-id", "camp", "--seed", "seed-0",
          "--adapter-dir", str(chain.adir),
          "--decision", str(cdir / "RUNTIME_MANIFEST.json"),
-         "--runtime-model-digest", MODEL_D,
-         "--runtime-tokenizer-digest", TOKENIZER_D,
+         "--runtime-model-path", str(chain.model_dir),
+         "--runtime-tokenizer-path", str(chain.tok_dir),
          "--out", str(out)], capture_output=True, text=True)
 
 
