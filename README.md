@@ -30,7 +30,7 @@ nothing more.
 | Item | State |
 |---|---|
 | Current release | **v16.4.0** — training-schedule repair, runtime admission, mechanism controller (Phases 2/3/5 of the v17 plan); scientific claims unchanged |
-| Release integrity (`scripts/verify_release.py`) | **PASS** — 1,439 governed files + Ed25519 signature + attestation/version reconciliation |
+| Release integrity (`scripts/verify_release.py`) | **PASS** — 1,440 governed files + Ed25519 signature + attestation/version reconciliation |
 | Unified Python suite (`tests-python/`) | **PASS** — 571 passed (1 skipped: Linux-only RLIMIT_AS test on the macOS host) |
 | Training schedule (Phase 2.1) | **FIXED + TESTED** — effective batch = microbatch × accumulation bound in the signed protocol; engine-level counts assert it (the original ran 4× the declared sample presentations for accumulation > 1); strict `malformed_policy: fail` invalidates runs on unapproved rejections |
 | Runtime admission (Phase 3) | **IMPLEMENTED + TESTED** — full-chain admission (plan → qualification → promotion → manifest → exact bytes) with signed activation receipts and rollback; the plan's four named attacks (altered byte, substituted qualification, revoked replay, research-plane identity) are refused by an adversarial suite |
@@ -40,7 +40,7 @@ nothing more.
 | Campaign 1 — `campaign1-v162`, 5 seeds | **EXECUTED — REFUSE** — ΔFT(L6−L5) = +0.20 but retention/security floors tripped on documented calibration artifacts |
 | Campaign 1b — `campaign1b-v163`, 5 seeds | **EXECUTED — QUALIFIED** — ΔFT = +0.20, 5/5 positive, reproduced bit-for-metric on a second fresh T4 runtime |
 | Campaign 2 — `campaign2-v164`, 10 seeds | **EXECUTED — REFUSE** — ΔFT = +0.01125 (95% CI [+0.00531, +0.01719] excludes zero but fails the ≥0.02 floor); security guardrail breached (−0.125 vs bound −0.10) |
-| Campaign 3 — `campaign3-v165` | **3A PREREGISTERED + EXECUTING** — adaptation-footprint experiment (single lever: halved optimization pressure, identical gates); sealed holdout digest-bound in `configs/campaign3a.yaml`; running on Colab T4 under the signed plan with per-seed evidence banking; qualification pending |
+| Campaign 3 — `campaign3-v165` | **3A PREREGISTERED + EXECUTING** — adaptation-footprint experiment (single lever: halved optimization pressure, identical gates); sealed holdout digest-bound in `configs/campaign3a.yaml`; running on Colab T4 with per-seed evidence banking (seed 0 banked + verified; recovered from one VM reclamation with a byte-identical plan digest); qualification pending |
 | Validated designation | **v16.2** — the v16.3 promotion gate required Campaign 2 to qualify; it did not |
 
 A campaign `QUALIFIED` is an *experimental qualification* under a

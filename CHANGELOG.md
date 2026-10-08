@@ -92,6 +92,25 @@ v16.4.0 batch 3 — Campaign 3A launched on Colab:
 - Execution is in progress; independent qualification with the
   authority-held `--holdout` file follows when all seeds are banked.
 
+v16.4.0 batch 4 — VM reclamation recovery + finalize pipeline:
+
+- The first Colab VM was reclaimed mid-seed-1. Recovery validated the
+  resume design end to end: the runner was relaunched on a fresh VM
+  from the pushed branch with the model revision pinned to the
+  originally resolved commit; the recomputed plan digest is
+  byte-identical (sha256:e9ecd87e...), so the banked seed-0 evidence
+  verifies under it and was counted, and execution resumed at seed 1.
+  The authority ledger was reconstructed deterministically (same key +
+  same plan doc -> identical signed entry), and restoring it makes any
+  plan mismatch fail closed ("refusing to mix campaign identities").
+- `scripts/campaign3a_finalize.py`: assemble banked evidence -> run the
+  independent qualifier with the authority-held holdout -> write the
+  results report -> publish a results branch (evidence force-added per
+  repo convention; private keys never committed). Exercised end to end
+  on partial evidence: the qualifier failed closed with
+  INVALID_EVIDENCE and explicit per-cell reasons, and the results
+  branch mechanics were verified on a throwaway branch.
+
 # v16.2.2 — Security and Correctness Repair (Phase 1)
 
 Phase 1 of the v17 plan: the six security/correctness defects from the
