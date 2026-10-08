@@ -34,6 +34,7 @@ LOG = "/content/campaign3a.log"
 VM_BASH = r'''
 CD={remote}
 CID={cid}
+mkdir -p /content/ck3a
 echo "== status =="
 if pgrep -f "scripts/run_campaign1.py" >/dev/null; then
   echo "runner: RUNNING ($(ps -o etime= -p $(pgrep -f 'scripts/run_campaign1.py' | head -1) | tr -d ' '))"

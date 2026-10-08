@@ -569,7 +569,7 @@
     "scripts/attention_step_kl_group_summary.py": "418ec03c53aa97d42c89375ea854b4188d617564bf6735a905a40f030e6c7a41",
     "scripts/authority_bootstrap.py": "24d680435037dc75fa7deb264a676a537d47589577956acf327ac4ad8fbee6f6",
     "scripts/campaign3a_finalize.py": "726e985a61006df3d532201076b468e5cfe17ec54546195ceb6cbdd916be2f9a",
-    "scripts/campaign3a_supervisor.py": "5ce79ddbfee6c9fbb2d25989efc90eed76dbdaf0cefcfd34170d94e55b2a3075",
+    "scripts/campaign3a_supervisor.py": "36027073caed5a60488e1054407799afa0fd166346511180646f4ac19694ad91",
     "scripts/colab_install.sh": "926bc650a5558a717b6f766ad44e09f73d82562968cf1590f6207dc11cef4b8a",
     "scripts/continuous_batching_benchmark.py": "2c7051471064b782c762db1a664daf751e68d7bd40dda31da2bede0bf97ec22b",
     "scripts/continuous_batching_regression.py": "c9b2f7293389f540a66374be7e8dc960eeae7d340ec3a06f93eb5bb482c1f398",

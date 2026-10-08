@@ -20,7 +20,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "cc48fe63eb8344e4cdae2e326bf30d264f936a5de7856beb0f62889148d40025",
+ "manifest_sha256": "6c85e76064ea8247eba98dccb69477e8c2a89b5c60fc33ec29ccc5cc73a9fbb4",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "571/571 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -87,9 +87,14 @@
    "manifest_sha256": "cc48fe63eb8344e4cdae2e326bf30d264f936a5de7856beb0f62889148d40025",
    "reason": "v16.4.0 batch 4: VM reclamation recovery + finalize pipeline — the first Colab VM was reclaimed mid-seed-1 and recovered on a fresh VM from the pushed branch with the model revision pinned to the originally resolved commit; recomputed plan digest byte-identical (sha256:e9ecd87e...), banked seed-0 evidence counted, resume at seed 1; authority ledger reconstructed deterministically; scripts/campaign3a_finalize.py added (assemble -> independent qualification with the authority-held holdout -> results report -> results-branch publication, private keys excluded) and exercised end to end on partial evidence (fail-closed INVALID_EVIDENCE with per-cell reasons); 571/571 Python (1 skipped)",
    "utc": "2026-10-08T21:35:32.993335+00:00"
+  },
+  {
+   "manifest_sha256": "6c85e76064ea8247eba98dccb69477e8c2a89b5c60fc33ec29ccc5cc73a9fbb4",
+   "reason": "v16.4.0 batch 5: supervisor banking fix — the VM-side bank script now creates /content/ck3a on a fresh VM (banking silently failed there after recovery; the local seed-0 copy was unaffected). Verified by re-banking seed 0 + meta on the recovered VM. 571/571 Python (1 skipped)",
+   "utc": "2026-10-08T21:38:01.406042+00:00"
   }
  ],
- "reissued_utc": "2026-10-08T21:35:32.993335+00:00",
+ "reissued_utc": "2026-10-08T21:38:01.406042+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
