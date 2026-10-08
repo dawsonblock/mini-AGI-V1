@@ -44,7 +44,8 @@ def main() -> int:
 
     from egai.common.crypto import Ed25519Verifier, SignedEnvelope
     from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
-                                           ColabCampaignPlanV163)
+                                           ColabCampaignPlanV163,
+                                           ColabCampaignPlanV164)
     from minagi.v161.executed_run import ExecutedRunReceiptV162
     from minagi.v161.runtime_closure3 import sha256_path
 
@@ -59,9 +60,9 @@ def main() -> int:
 
     # --- Plan: digest AND signature ---
     plan_doc = json.loads((campaign_dir / "CAMPAIGN_PLAN.json").read_text())
-    plan_cls = (ColabCampaignPlanV163
-                if plan_doc["value"].get("schema") == "mini-agi-v16.3-colab-campaign-plan-v1"
-                else ColabCampaignPlanV162)
+    plan_cls = {"mini-agi-v16.3-colab-campaign-plan-v1": ColabCampaignPlanV163,
+                "mini-agi-v16.4-colab-campaign-plan-v1": ColabCampaignPlanV164,
+                }.get(plan_doc["value"].get("schema"), ColabCampaignPlanV162)
     plan = plan_cls(**plan_doc["value"])
     if plan.digest != plan_doc["digest"]:
         fail("plan", "CAMPAIGN_PLAN.json digest field does not match recomputed plan digest")
@@ -75,6 +76,25 @@ def main() -> int:
                            SignedEnvelope(plan_doc["signer_key_id"],
                                           plan_doc["signature_b64"])):
         fail("plan", "plan signature verification failed")
+
+    # v164: the signed experiment protocol must be present and digest-bound
+    if isinstance(plan, ColabCampaignPlanV164):
+        from minagi.v161.experiment_protocol import ExperimentProtocolV1
+        proto_path = campaign_dir / "EXPERIMENT_PROTOCOL.json"
+        if not proto_path.is_file():
+            fail("protocol", "EXPERIMENT_PROTOCOL.json missing for v164 plan")
+        else:
+            try:
+                pdoc = json.loads(proto_path.read_text())
+                proto = ExperimentProtocolV1(**pdoc["value"])
+                if pdoc.get("digest") != proto.digest:
+                    fail("protocol", "EXPERIMENT_PROTOCOL.json digest field "
+                                     "does not match recomputed digest")
+                if proto.digest != plan.experiment_protocol_digest:
+                    fail("protocol", "experiment protocol digest != "
+                                     "preregistered plan binding")
+            except Exception as exc:  # noqa: BLE001
+                fail("protocol", f"protocol parse: {type(exc).__name__}: {exc}")
 
     proof = json.loads((campaign_dir / "DATASET_PROOF.json").read_text())
     hidden_digest = proof["hidden_digest"]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""v16.2 Campaign 1 — six-arm x multi-seed experimental campaign.
+"""v16.4 Campaign 1 — six-arm x multi-seed experimental campaign.
 
 Arm ladder: L1 frozen -> L2 retrieval -> L3 semantic-memory -> L4 skills
 -> L5 grounded-replay -> L6 neural-adapter, plus NC negative control
@@ -10,14 +10,27 @@ Flow per run:
   2. register evaluator artifacts
   3. resolve+pins the immutable model revision
   4. build + persist non-parametric arm states
-  5. create AND SIGN the campaign plan BEFORE any model evaluation
+  5. create AND SIGN the campaign plan BEFORE any model evaluation;
+     plan_version=v164 additionally binds an ExperimentProtocolV1
+     (every learning/memory/generation hyperparameter) and PHYSICAL
+     model/tokenizer artifact digests
   6. per seed: execute every arm, emit a signed ExecutedRunReceiptV162
      per (seed, arm), with adapter/state digests bound to disk
   7. emit RESULT.json with per-arm metrics and the primary comparison
      mean(L6 - L5)
 
-Resume semantics: a seed directory counts as evidence only when it
-contains COMPLETE + SEED_RESULT.json; partial seeds are re-executed.
+Resume semantics: a seed directory counts as evidence only when
+COMPLETE + SEED_RESULT.json exist AND every arm receipt verifies under
+the persisted campaign witness key and is bound to this plan digest;
+partial, stale, or forged seeds are re-executed. An incomplete planned
+matrix can never produce PASS.
+
+Lane-parallel execution: --execute-seeds <csv> restricts execution to a
+subset of the preregistered seeds. Each lane emits verified seed
+evidence under the shared witness key (<storage>/.keys/); merging the
+lanes' seed directories and re-running without the flag produces the
+complete-matrix decision. A subset run itself emits INCOMPLETE — never
+PASS — because only the full preregistered matrix may qualify.
 """
 from __future__ import annotations
 
@@ -44,9 +57,13 @@ from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
 from minagi.v161.evaluators import (containment_match, exact_match,
                                     retention_score, security_regression)
 from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
-                                       ColabCampaignPlanV163)
-from minagi.v161.executed_run import ExecutedRunReceiptV162
+                                       ColabCampaignPlanV163,
+                                       ColabCampaignPlanV164)
+from minagi.v161.executed_run import (ExecutedRunReceiptV162,
+                                      load_verified_seed_result)
+from minagi.v161.experiment_protocol import ExperimentProtocolV1
 from minagi.v161.runtime_closure3 import sha256_path
+from minagi.v15.native_adapter import native_adapter_supports_target
 
 
 def load_rows(path: Path):
@@ -131,6 +148,72 @@ def identity_digests(spec: HFLoadSpec):
     return model_d, tok_d, gen_d
 
 
+def _snapshot_files(root: Path):
+    """Yield (relative_name, real_path) for every artifact, resolving
+    Hugging Face cache symlinks to their blob targets. A snapshot dir is
+    all symlinks; hashing it naively would bind an empty file set."""
+    for f in sorted(root.rglob("*")):
+        if f.is_symlink():
+            real = f.resolve()
+            if real.is_file():
+                yield f.relative_to(root).as_posix(), real
+        elif f.is_file():
+            yield f.relative_to(root).as_posix(), f
+
+
+def _artifact_root(spec) -> Path:
+    p = Path(spec.model_id)
+    if p.is_dir():
+        return p
+    from huggingface_hub import snapshot_download
+    try:
+        return Path(snapshot_download(spec.model_id, revision=spec.revision,
+                                      local_files_only=True))
+    except Exception:
+        return Path(snapshot_download(spec.model_id, revision=spec.revision))
+
+
+_TOKENIZER_FILES = frozenset({
+    "tokenizer.json", "tokenizer_config.json", "vocab.json", "vocab.txt",
+    "merges.txt", "special_tokens_map.json", "added_tokens.json",
+    "chat_template.jinja", "tokenizer.model", "spiece.model"})
+
+
+def sha256_snapshot(root: Path) -> str:
+    rows = [(rel, real.stat().st_size, sha256_path(real))
+            for rel, real in _snapshot_files(root)]
+    if not rows:
+        raise FileNotFoundError(f"empty artifact snapshot: {root}")
+    return digest(rows)
+
+
+def tokenizer_artifact_digest(root: Path) -> str:
+    arts = {rel: sha256_path(real) for rel, real in _snapshot_files(root)
+            if Path(rel).name in _TOKENIZER_FILES}
+    if not arts:
+        raise FileNotFoundError(f"no tokenizer artifacts under {root}")
+    return digest(arts)
+
+
+def physical_identity_digests(spec: HFLoadSpec):
+    """v164 physical artifact identity: sha256 over the resolved model
+    snapshot (every weight shard, config, and metadata file) and over
+    the tokenizer artifact files.
+
+    Unlike the v163 semantic identity (model id + revision + config
+    dict), this detects a modified local weight file masquerading under
+    a pinned revision — and does not require instantiating weights at
+    plan-signing time.
+    """
+    root = _artifact_root(spec)
+    tok = load_tokenizer(spec)
+    template = getattr(tok, "chat_template", "") or ""
+    del tok
+    gc.collect()
+    return sha256_snapshot(root), tokenizer_artifact_digest(root), \
+        sha256_bytes(template.encode())
+
+
 def security_eval(model, tokenizer, rows, max_new_tokens, security_fn, arm=None):
     outputs, count, tokens = [], 0, 0
     for row in rows:
@@ -156,10 +239,32 @@ def free_model(model):
         pass
 
 
+def parse_seed_subset(raw, planned):
+    """CSV subset of preregistered seeds for lane/worker execution.
+
+    Fail-closed: anything outside the signed plan's seed set is an
+    error, never a silent expansion of the preregistered matrix."""
+    try:
+        wanted = frozenset(int(x) for x in str(raw).split(",") if str(x).strip())
+    except ValueError:
+        raise SystemExit(f"--execute-seeds must be comma-separated ints: {raw!r}")
+    if not wanted:
+        raise SystemExit("--execute-seeds produced an empty seed set")
+    extra = sorted(wanted - set(int(s) for s in planned))
+    if extra:
+        raise SystemExit(f"--execute-seeds outside the signed plan: {extra}")
+    return wanted
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/campaign1.yaml")
     ap.add_argument("--storage", default="/content/minagi_campaign1")
+    ap.add_argument("--execute-seeds", default=None,
+                    help="lane mode: comma-separated subset of the "
+                         "preregistered seeds to execute locally; "
+                         "already-verified seeds on disk are still "
+                         "counted, all others are left for other lanes")
     args = ap.parse_args()
     cfg = yaml.safe_load((ROOT / args.config).read_text())
 
@@ -184,9 +289,19 @@ def main() -> int:
     # --- Scorer calibration (v163): run the frozen labeled set and bind
     # the record digest into the retention evaluator artifact config ---
     plan_version = str(cfg.get("plan_version", "v162"))
-    retention_scorer = str(cfg.get("retention_scorer", "retention_score"))
+    protocol = (ExperimentProtocolV1.from_config(cfg)
+                if plan_version == "v164" else None)
+    if protocol is not None:
+        unsupported = [t for t in protocol.lora_target_modules
+                       if not native_adapter_supports_target(t)]
+        if unsupported:
+            raise SystemExit(
+                "v164 requires every trained adapter to be servable by the "
+                f"native runtime; unsupported LoRA targets: {unsupported}")
+    retention_scorer = (protocol.retention_scorer if protocol is not None
+                        else str(cfg.get("retention_scorer", "retention_score")))
     calib_cfg: dict = {}
-    if plan_version == "v163":
+    if plan_version in ("v163", "v164"):
         calib_rows = load_rows(ROOT / "configs" / "scorer_calibration.jsonl")
         fn = containment_match if retention_scorer == "containment_match" else retention_score
         agree = sum(int(fn(r["prediction"], r["expected"]) == float(r["label"]))
@@ -217,12 +332,18 @@ def main() -> int:
 
     model_cfg = cfg["model"]
     revision = resolve_revision(model_cfg["id"], str(model_cfg.get("revision", "auto")))
-    spec = HFLoadSpec(model_cfg["id"], revision, str(model_cfg.get("dtype", "auto")),
-                      str(model_cfg.get("quantization", "none")),
-                      bool(model_cfg.get("trust_remote_code", False)))
+    if protocol is not None:
+        spec = HFLoadSpec(model_cfg["id"], revision, protocol.dtype,
+                          protocol.quantization, protocol.trust_remote_code)
+    else:
+        spec = HFLoadSpec(model_cfg["id"], revision,
+                          str(model_cfg.get("dtype", "auto")),
+                          str(model_cfg.get("quantization", "none")),
+                          bool(model_cfg.get("trust_remote_code", False)))
     seeds = tuple(int(x) for x in cfg.get("seeds", [0]))
     arms_in_plan = tuple(str(a) for a in cfg.get("arms", list(ARM_IDS)))
-    max_new = int(cfg.get("max_new_tokens", 32))
+    max_new = int(protocol.max_new_tokens if protocol is not None
+                  else cfg.get("max_new_tokens", 32))
 
     # --- Build + persist non-parametric arm states (before signing) ---
     arms_state_root = storage.root / "arms" / cfg["campaign_id"]
@@ -232,16 +353,40 @@ def main() -> int:
             continue
         arm = ARMS[arm_id]()
         if arm_id == "L2":
-            arm.k = int(cfg.get("retrieval_k", 3))
+            arm.k = int(protocol.retrieval_k if protocol is not None
+                        else cfg.get("retrieval_k", 3))
         if arm_id == "L3":
-            arm.k = int(cfg.get("memory_k", 2))
+            arm.k = int(protocol.memory_k if protocol is not None
+                        else cfg.get("memory_k", 2))
         sdir = arms_state_root / arm_id
         arm.build_state(sdir, train)
         arm_instances[arm_id] = arm
         arm_state_dirs[arm_id] = sdir
 
     # --- Plan: created and SIGNED before any model evaluation ---
-    if plan_version == "v163":
+    if plan_version == "v164":
+        m_d, t_d, g_d = physical_identity_digests(spec)
+        plan = ColabCampaignPlanV164(
+            campaign_id=str(cfg["campaign_id"]), model_id=spec.model_id,
+            model_revision=spec.revision,
+            dataset_partition_digest=parts.digest,
+            scorer_artifact_digest=arts[0].digest,
+            retention_artifact_digest=arts[1].digest,
+            security_artifact_digest=arts[2].digest,
+            seeds=seeds, arms=arms_in_plan, negative_control_arm="NC",
+            negative_control_max_ft=float(cfg.get("negative_control_max_ft", 0.02)),
+            minimum_neural_incremental_ft=float(cfg.get("minimum_neural_incremental_ft", 0.02)),
+            minimum_retention=float(cfg.get("minimum_retention", 0.0)),
+            require_zero_security_regressions=False,
+            metric_tolerance=float(cfg.get("metric_tolerance", 0.05)),
+            model_digest=m_d, tokenizer_digest=t_d,
+            generation_template_digest=g_d,
+            retention_max_drop=float(cfg.get("retention_max_drop", 0.10)),
+            security_min_pass_rate=float(cfg.get("security_min_pass_rate", 0.5)),
+            security_max_drop_vs_L1=float(cfg.get("security_max_drop_vs_L1", 0.10)),
+            min_seeds_positive_ft=int(cfg.get("min_seeds_positive_ft", 4)),
+            experiment_protocol_digest=protocol.digest)
+    elif plan_version == "v163":
         m_d, t_d, g_d = identity_digests(spec)
         plan = ColabCampaignPlanV163(
             campaign_id=str(cfg["campaign_id"]), model_id=spec.model_id,
@@ -275,7 +420,21 @@ def main() -> int:
 
     campaign_dir = storage.root / "campaigns" / cfg["campaign_id"]
     campaign_dir.mkdir(parents=True, exist_ok=True)
-    signer = Ed25519Signer.generate("campaign1-execution-witness")
+    # The witness key persists under the storage-root .keys/ so resumed
+    # seed evidence — including seeds restored from other lanes —
+    # verifies under the same key. It attests execution lineage, not
+    # root trust — the signed plan digest is the binding anchor.
+    keys_dir = storage.root / ".keys"
+    keys_dir.mkdir(parents=True, exist_ok=True)
+    legacy_key = campaign_dir / "EXECUTION_PRIVATE_KEY.bin"
+    key_path = (legacy_key if legacy_key.is_file()
+                else keys_dir / "EXECUTION_PRIVATE_KEY.bin")
+    if key_path.is_file():
+        signer = Ed25519Signer.from_private_bytes(
+            key_path.read_bytes(), "campaign1-execution-witness")
+    else:
+        signer = Ed25519Signer.generate("campaign1-execution-witness")
+        key_path.write_bytes(signer.private_bytes())
     verifier = Ed25519Verifier()
     verifier.register(signer.key_id, signer.public_bytes())
     plan_sig = signer.sign(asdict(plan))
@@ -287,26 +446,43 @@ def main() -> int:
     (campaign_dir / "DATASET_PROOF.json").write_text(json.dumps(parts.proof(), indent=2, sort_keys=True))
     (campaign_dir / "EXECUTION_PUBLIC_KEY.bin").write_bytes(signer.public_bytes())
     (campaign_dir / "EXECUTION_KEY_ID.txt").write_text(signer.key_id + "\n")
+    if protocol is not None:
+        (campaign_dir / "EXPERIMENT_PROTOCOL.json").write_text(json.dumps(
+            {"value": asdict(protocol), "digest": protocol.digest},
+            indent=2, sort_keys=True))
 
     train_texts = [str(r.get("train_text") or (str(r["prompt"]) + " " + str(r["expected"])))
                    for r in train]
-    practice_rows = train[:max(1, min(len(train), int(cfg.get("practice_samples", 8))))]
-    retention_eval_rows = retention_rows[:max(1, min(len(retention_rows),
-                                                   int(cfg.get("retention_samples", len(retention_rows)))))]
+    practice_n = int(protocol.practice_samples if protocol is not None
+                     else cfg.get("practice_samples", 8))
+    retention_n = int(protocol.retention_samples if protocol is not None
+                      else cfg.get("retention_samples", len(retention_rows)))
+    practice_rows = train[:max(1, min(len(train), practice_n))]
+    retention_eval_rows = retention_rows[:max(1, min(len(retention_rows), retention_n))]
+
+    execute_set = (parse_seed_subset(args.execute_seeds, plan.seeds)
+                   if args.execute_seeds else None)
 
     all_seeds = []
-    for seed in seeds:
+    for seed in plan.seeds:
         run_dir = campaign_dir / f"seed-{seed}"
-        run_dir.mkdir(parents=True, exist_ok=True)
         seed_result_path = run_dir / "SEED_RESULT.json"
-        if (run_dir / "COMPLETE").is_file() and seed_result_path.is_file():
-            all_seeds.append(json.loads(seed_result_path.read_text()))
+        sd = load_verified_seed_result(run_dir, seed, plan.digest,
+                                       plan.arms, verifier)
+        if sd is not None:
+            all_seeds.append(sd)
             continue
+        if execute_set is not None and seed not in execute_set:
+            continue  # another lane's seed; not our evidence to make
+        run_dir.mkdir(parents=True, exist_ok=True)
         random.seed(seed)
         tokenizer = load_tokenizer(spec)
         model = load_causal_lm(spec)
-        model_digest = model_identity(model, spec)
-        tok_digest = tokenizer_identity(tokenizer, spec)
+        if isinstance(plan, ColabCampaignPlanV164):
+            model_digest, tok_digest = plan.model_digest, plan.tokenizer_digest
+        else:
+            model_digest = model_identity(model, spec)
+            tok_digest = tokenizer_identity(tokenizer, spec)
         seed_receipts = {}
 
         def emit(arm_id, adapter_digest, state_digest, metrics, outputs, extra=None):
@@ -339,7 +515,7 @@ def main() -> int:
             return metrics, {"hidden": h_out, "retention": ret_out, "security": sec_out}
 
         # ---- non-parametric arms on one base instance ----
-        for arm_id in arms_in_plan:
+        for arm_id in plan.arms:
             if arm_id in ("L6", "NC"):
                 continue
             if arm_id == "L1":
@@ -347,7 +523,8 @@ def main() -> int:
                 sd = ZERO_DIGEST
             elif arm_id == "L5":
                 arm = ARMS["L5"]()
-                arm.k = int(cfg.get("replay_k", 2))
+                arm.k = int(protocol.replay_k if protocol is not None
+                            else cfg.get("replay_k", 2))
                 sdir = arms_state_root / f"seed-{seed}" / "L5"
                 arm.build_state(sdir, train)
                 # labeled practice phase: replay only verified train traces
@@ -368,10 +545,12 @@ def main() -> int:
         # ---- parametric arms: train -> save -> destroy -> reload -> eval ----
         for arm_id, texts in (("L6", train_texts),
                               ("NC", shuffled_label_texts(train, seed))):
-            if arm_id not in arms_in_plan:
+            if arm_id not in plan.arms:
                 continue
             model = load_causal_lm(spec)
-            ts = LoraTrainSpec(**cfg.get("lora", {}), seed=seed)
+            ts = LoraTrainSpec(
+                **(protocol.lora_train_spec_kwargs() if protocol is not None
+                   else cfg.get("lora", {})), seed=seed)
             adir = storage.root / "adapters" / cfg["campaign_id"] / arm_id / f"seed-{seed}"
             model, train_receipt = train_lora(model=model, tokenizer=tokenizer,
                                               texts=texts, output_dir=adir, spec=ts)
@@ -403,12 +582,12 @@ def main() -> int:
                 vals.append(float(doc["receipt"]["metrics"].get(metric, 0.0)))
         return sum(vals) / len(vals) if vals else 0.0
 
-    arm_hidden = {a: arm_mean(a, "hidden_exact_match") for a in arms_in_plan}
-    arm_ret = {a: arm_mean(a, "retention") for a in arms_in_plan}
+    arm_hidden = {a: arm_mean(a, "hidden_exact_match") for a in plan.arms}
+    arm_ret = {a: arm_mean(a, "retention") for a in plan.arms}
     n_sec = max(1, len(security_rows))
     arm_sec_rate = {a: 1.0 - arm_mean(a, "security_regressions") / n_sec
-                    for a in arms_in_plan}
-    ft = {a: arm_hidden[a] - arm_hidden["L1"] for a in arms_in_plan if a != "L1"}
+                    for a in plan.arms}
+    ft = {a: arm_hidden[a] - arm_hidden["L1"] for a in plan.arms if a != "L1"}
     delta_neural = arm_hidden["L6"] - arm_hidden["L5"]
     nc_ft = ft.get("NC", 0.0)
     nc_violation = nc_ft > plan.negative_control_max_ft
@@ -451,19 +630,35 @@ def main() -> int:
         if arm_ret["L6"] < plan.minimum_retention:
             reasons.append(f"L6 retention {arm_ret['L6']:.4f} < {plan.minimum_retention}")
         if plan.require_zero_security_regressions:
-            sec_total = sum(arm_mean(a, "security_regressions") for a in arms_in_plan)
+            sec_total = sum(arm_mean(a, "security_regressions") for a in plan.arms)
             if sec_total > 0:
                 reasons.append(f"{sec_total} security regressions across arms")
         if nc_violation:
             reasons.append(f"negative control FT {nc_ft:.4f} exceeded bound "
                            f"{plan.negative_control_max_ft} — pipeline suspect")
 
-    decision = "PASS" if not reasons else "BLOCK"
-    summary = {"schema": "mini-agi-v16.2-campaign1-result-v1",
+    # invariant: a campaign decision exists only over the COMPLETE
+    # preregistered seed x arm matrix — partial evidence is never PASS
+    completed_seeds = sorted(int(s["seed"]) for s in all_seeds)
+    matrix_complete = completed_seeds == sorted(int(s) for s in plan.seeds) \
+        and all(set(s.get("receipt_digests") or {}) == set(plan.arms)
+                for s in all_seeds)
+    if not matrix_complete:
+        reasons.insert(0, f"incomplete evidence matrix: seeds {completed_seeds}")
+    decision = ("INCOMPLETE" if not matrix_complete
+                else "PASS" if not reasons else "BLOCK")
+    summary = {"schema": "mini-agi-v16.4-campaign1-result-v1",
                "campaign_plan_digest": plan.digest,
+               "experiment_protocol_digest":
+                   plan.experiment_protocol_digest
+                   if isinstance(plan, ColabCampaignPlanV164) else "",
                "environment_digest": env.digest,
-               "arms": list(arms_in_plan),
-               "seeds": list(seeds),
+               "witness_key_id": signer.key_id,
+               "arms": list(plan.arms),
+               "seeds": list(plan.seeds),
+               "completed_seeds": completed_seeds,
+               "execute_subset": (sorted(execute_set)
+                                  if execute_set is not None else None),
                "arm_hidden_exact_match": arm_hidden,
                "arm_retention": arm_ret,
                "arm_security_pass_rate": arm_sec_rate,
