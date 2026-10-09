@@ -153,7 +153,10 @@ harness: `egai/bench/sequential_governed.py` constructed
 dataclass (every other call site — including its sibling
 `egai/bench/sequential.py` — passes 12), so the verified-repair branch
 raised `TypeError` before it could run. Fixed to the 12-argument form
-and exercised with a probe harness; the branch now executes. A further
+and exercised with a probe harness; the branch now executes. The same
+harness reached into the ledger's private `_head()`; `EvidenceLedger`
+now exposes a documented `head()` accessor and the harness uses it
+(the private helper stays for internal use). A further
 pre-existing issue remains in the same path — `SandboxSkillMemory` has
 no `health()`, which the harness calls at the end of a run — reported,
 not fixed: the intended degraded/retired semantics do not exist in the

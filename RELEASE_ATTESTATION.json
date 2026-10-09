@@ -20,7 +20,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "21502601d2fa7a337164e4ecb0812c96c56d57e0f7e8e83a5f1f8cbbf9039eb9",
+ "manifest_sha256": "2392e5fe28c082e9f6fa6802d400d3b82faf459d4c81f3d481a1f7cf435c3117",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "639/639 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -122,9 +122,14 @@
    "manifest_sha256": "21502601d2fa7a337164e4ecb0812c96c56d57e0f7e8e83a5f1f8cbbf9039eb9",
    "reason": "lint contract follow-up: fixed a latent arity defect surfaced by the same pass \u2014 egai/bench/sequential_governed.py called VerifiedEpisode with 14 positional args against a 12-field dataclass (every other call site passes 12), so the verified-repair branch raised TypeError; now 12 and exercised with a probe. Also dropped an unused unpacked variable in the same file. Remaining pre-existing issue in that untested path (reported, not fixed \u2014 would require inventing semantics): SandboxSkillMemory has no health(), called at the end of a run. Tests unchanged: 639 passed, 1 skipped",
    "utc": "2026-10-09T01:39:16.192567+00:00"
+  },
+  {
+   "manifest_sha256": "2392e5fe28c082e9f6fa6802d400d3b82faf459d4c81f3d481a1f7cf435c3117",
+   "reason": "lint follow-up: EvidenceLedger gains a documented public head() accessor (the private _head() stays for internal use) and egai/bench/sequential_governed.py uses it \u2014 removes the last protected-access warning in that harness. Behavior-identical (head() == _head(), verified). Tests unchanged: 639 passed, 1 skipped; ruff/flake8 zero findings",
+   "utc": "2026-10-09T01:40:56.754481+00:00"
   }
  ],
- "reissued_utc": "2026-10-09T01:39:16.192567+00:00",
+ "reissued_utc": "2026-10-09T01:40:56.754481+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",

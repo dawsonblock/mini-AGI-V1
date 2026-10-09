@@ -66,5 +66,5 @@ class GovernedSequentialExperiment:
             guard.assert_unchanged(model)
             if i in cp:checkpoint(i)
         beliefs=BeliefCompiler().compile(self.evidence_ledger.eligible('belief'));from egai.common.canonical import digest
-        _,head=self.evidence_ledger._head();health=learner.skills.health()
+        _,head=self.evidence_ledger.head();health=learner.skills.health()
         return GovernedReport(tuple(points),True,all(x.model_digest==guard.expected for x in points),len(learner.skills.all()),repairs,failures,tuple(traces),max((x.negative_transfer_rate for x in points),default=0.),head,digest([b.derivation_receipt for b in beliefs]),health.get('degraded',0),health.get('retired',0))
