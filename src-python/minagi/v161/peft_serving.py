@@ -199,8 +199,11 @@ class PeftServingBackend:
 
     `load()` accepts an `ApprovedSnapshot` (staged, verified, frozen by
     the trusted launcher) and refuses anything else — including a raw
-    path, a str, or a mutable directory. The model and adapter are
-    opened exclusively from the snapshot root."""
+    path, a str, or a mutable directory. The model, tokenizer, and
+    adapter are opened exclusively from the snapshot root; the
+    tokenizer is loaded from the verified model artifact, where the
+    signed plan binds it (there is no separately substitutable
+    tokenizer path in the served set)."""
 
     backend_id = "hf-peft"
 
@@ -217,7 +220,7 @@ class PeftServingBackend:
         model = AutoModelForCausalLM.from_pretrained(
             str(snapshot.path("model")), local_files_only=True)
         tokenizer = AutoTokenizer.from_pretrained(
-            str(snapshot.path("tokenizer")), local_files_only=True)
+            str(snapshot.path("model")), local_files_only=True)
         served = PeftModel.from_pretrained(
             model, str(snapshot.path("adapter")))
         served.eval()

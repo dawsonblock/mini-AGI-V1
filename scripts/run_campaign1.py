@@ -75,6 +75,7 @@ from minagi.v161.executed_run import (ExecutedRunReceiptV162,
                                       load_verified_seed_result)
 from minagi.v161.experiment_protocol import ExperimentProtocolV1
 from minagi.v161.stats import bootstrap_ci
+from minagi.v161.artifact_closure import tokenizer_artifact_digest
 from minagi.v161.runtime_closure3 import sha256_path
 from minagi.v15.native_adapter import (native_adapter2_supports_target,
                                        native_adapter_supports_target)
@@ -159,7 +160,7 @@ def identity_digests(spec: HFLoadSpec):
     generation call, so identity digests match what receipts compute.
     """
     tok = load_tokenizer(spec)
-    model = load_causal_lm(spec)
+    model = load_causal_lm(spec, purpose="research")
     model_d = model_identity(model, spec)
     tok_d = tokenizer_identity(tok, spec)
     template = getattr(tok, "chat_template", "") or ""
@@ -195,26 +196,12 @@ def _artifact_root(spec) -> Path:
         return Path(snapshot_download(spec.model_id, revision=spec.revision))
 
 
-_TOKENIZER_FILES = frozenset({
-    "tokenizer.json", "tokenizer_config.json", "vocab.json", "vocab.txt",
-    "merges.txt", "special_tokens_map.json", "added_tokens.json",
-    "chat_template.jinja", "tokenizer.model", "spiece.model"})
-
-
 def sha256_snapshot(root: Path) -> str:
     rows = [(rel, real.stat().st_size, sha256_path(real))
             for rel, real in _snapshot_files(root)]
     if not rows:
         raise FileNotFoundError(f"empty artifact snapshot: {root}")
     return digest(rows)
-
-
-def tokenizer_artifact_digest(root: Path) -> str:
-    arts = {rel: sha256_path(real) for rel, real in _snapshot_files(root)
-            if Path(rel).name in _TOKENIZER_FILES}
-    if not arts:
-        raise FileNotFoundError(f"no tokenizer artifacts under {root}")
-    return digest(arts)
 
 
 def physical_identity_digests(spec: HFLoadSpec):
@@ -677,7 +664,7 @@ def main() -> int:
             stale.unlink()
         random.seed(seed)
         tokenizer = load_tokenizer(spec)
-        model = load_causal_lm(spec)
+        model = load_causal_lm(spec, purpose="research")
         if isinstance(plan, ColabCampaignPlanV164):
             model_digest, tok_digest = plan.model_digest, plan.tokenizer_digest
         else:
@@ -801,7 +788,7 @@ def main() -> int:
             if arm_id not in plan.arms:
                 continue
             arm_t0 = time.time()
-            model = load_causal_lm(spec)
+            model = load_causal_lm(spec, purpose="research")
             ts = LoraTrainSpec(
                 **(protocol.lora_train_spec_kwargs() if protocol is not None
                    else cfg.get("lora", {})), seed=seed)
@@ -839,7 +826,7 @@ def main() -> int:
         if isinstance(plan, ColabCampaignPlanV164) and delayed_rows:
             v3 = isinstance(plan, ColabCampaignPlanV165)
             dblock = "retention_delayed" if v3 else None
-            model = load_causal_lm(spec)
+            model = load_causal_lm(spec, purpose="research")
             d1, d1_out, _, _, d1_preds = evaluate(
                 model, tokenizer, delayed_rows, max_new, retention_fn,
                 block=dblock)

@@ -129,6 +129,45 @@ def test_missing_file_fails(tmp_path):
     assert doc["missing"] == ["sub/b.txt"]
 
 
+def test_symlink_in_tree_fails(tmp_path):
+    """v16.4.1 closure policy: symbolic links are refused, not
+    silently skipped — an extra link is not an extra file."""
+    tree, pub, _ = _build_tree(tmp_path)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret\n")
+    (tree / "link.txt").symlink_to(outside)
+    rc, doc = _verify(tree, pub)
+    assert rc == 2
+    assert doc["reason"] == "symlinks_in_tree"
+    assert doc["symlinks"] == ["link.txt"]
+
+
+def test_symlink_at_governed_path_fails(tmp_path):
+    """A governed file replaced by a symlink is refused (the symlink
+    policy fires before the missing/changed comparison)."""
+    tree, pub, _ = _build_tree(tmp_path)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret\n")
+    (tree / "a.txt").unlink()
+    (tree / "a.txt").symlink_to(outside)
+    rc, doc = _verify(tree, pub)
+    assert rc == 2
+    assert doc["reason"] == "symlinks_in_tree"
+
+
+def test_tool_caches_are_skipped(tmp_path):
+    """Dev-tool caches (pytest, ruff) are skipped like the other
+    gitignored artifacts — a local ruff run must not break release
+    verification."""
+    tree, pub, _ = _build_tree(tmp_path)
+    for name in (".pytest_cache", ".ruff_cache"):
+        cache = tree / name
+        cache.mkdir()
+        (cache / "data").write_text("cache\n")
+    rc, doc = _verify(tree, pub)
+    assert rc == 0, doc
+
+
 def test_forged_signature_fails(tmp_path):
     tree, pub, _ = _build_tree(tmp_path)
     rogue = Ed25519PrivateKey.generate()

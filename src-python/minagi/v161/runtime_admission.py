@@ -21,6 +21,13 @@ artifacts change):
                                files refused; authorized file listing
                                enforced when the manifest carries one)
 
+The tokenizer identity uses the plan's convention: the tokenizer-named
+files inside the model snapshot root, re-measured from whichever
+physical root is supplied (`artifact_closure.tokenizer_artifact_digest`).
+An explicit tokenizer path is an optional cross-check, and the serving
+backend loads the tokenizer from the verified model artifact itself —
+there is no separately substitutable tokenizer path in the served set.
+
 Admission REFUSES (fail closed, never partially admits):
 
   * an unsigned, forged, expired, or revoked promotion decision
@@ -56,7 +63,8 @@ from egai.common.canonical import digest, validate_digest
 from egai.common.crypto import Ed25519Signer, SignedEnvelope
 
 from . import strict_schema
-from .artifact_closure import ArtifactClosureError, close_tree
+from .artifact_closure import (ArtifactClosureError, close_tree,
+                               tokenizer_artifact_digest)
 from .authority import as_utc
 from .peft_serving import AdapterClosureError, adapter_closure
 
@@ -462,11 +470,20 @@ class RuntimeAdmissionController:
         # --- base model / tokenizer identity ------------------------
         model_digest = self._resolve_identity(
             "base model", runtime_model_digest, runtime_model_path)
-        tokenizer_digest = self._resolve_identity(
-            "tokenizer", runtime_tokenizer_digest, runtime_tokenizer_path)
         if model_digest != str(runtime_manifest.get("model_digest")):
             raise AdmissionRefused(
                 "base model digest differs from the manifest")
+        # The signed plan binds the tokenizer as the tokenizer-named
+        # files inside the model snapshot root
+        # (`artifact_closure.tokenizer_artifact_digest` — the same
+        # convention `physical_identity_digests` records in the plan).
+        # Measure that convention from whichever physical root is
+        # supplied: the model snapshot and/or an explicit tokenizer
+        # path (a cross-check). A claimed digest is never trusted when
+        # a root is available.
+        tokenizer_digest = self._resolve_tokenizer_identity(
+            runtime_tokenizer_digest, runtime_tokenizer_path,
+            runtime_model_path)
         if tokenizer_digest != str(runtime_manifest.get("tokenizer_digest")):
             raise AdmissionRefused(
                 "tokenizer digest differs from the manifest")
@@ -517,6 +534,39 @@ class RuntimeAdmissionController:
                 f"{what}: caller-provided digest disagrees with the "
                 "physically measured bytes")
         return measured
+
+    def _resolve_tokenizer_identity(self, claimed: str | None,
+                                    tokenizer_path,
+                                    model_path) -> str:
+        """Measure the plan's tokenizer convention (the tokenizer-named
+        files inside a snapshot root) from the supplied physical roots.
+        The model snapshot and an explicit tokenizer path must agree
+        when both are supplied; a claimed digest is only a cross-check
+        and is refused when it disagrees with measured bytes."""
+        measured: list[tuple[str, str]] = []
+        for what, root in (("tokenizer path", tokenizer_path),
+                           ("model snapshot", model_path)):
+            if root is None:
+                continue
+            try:
+                measured.append((what, tokenizer_artifact_digest(
+                    root, resolve_symlinks=True)))
+            except ArtifactClosureError as exc:
+                raise AdmissionRefused(
+                    f"{what} tokenizer closure failed: {exc}") from exc
+        if not measured:
+            return self._resolve_identity("tokenizer", claimed, None)
+        first_what, first = measured[0]
+        for what, other in measured[1:]:
+            if other != first:
+                raise AdmissionRefused(
+                    f"tokenizer artifact differs between the {first_what} "
+                    f"and the {what}")
+        if claimed and str(claimed) != first:
+            raise AdmissionRefused(
+                "tokenizer: caller-provided digest disagrees with the "
+                "physically measured bytes")
+        return first
 
     def rollback(self, *, current_decision_digest: str,
                  **previous_release) -> ActivationReceipt:

@@ -239,6 +239,67 @@ def expected_from_manifest(entries: Iterable[dict]) -> tuple[TreeEntry, ...]:
     return expected
 
 
+# ---------------------------------------------------------------------------
+# Tokenizer artifact identity (the signed plan's convention).
+#
+# The campaign plan binds the tokenizer as the tokenizer-named files
+# inside the model snapshot root (`scripts/run_campaign1.py::
+# physical_identity_digests`), as a map of relative path -> content
+# digest. The runtime re-measures exactly this convention from the
+# staged model artifact, so the tokenizer bytes the serving backend
+# opens are the bytes the plan bound — and there is no separate
+# tokenizer artifact to substitute.
+#
+# WARNING: changing the name set or the digest shape changes every plan
+# digest. Recorded plans must keep verifying — do not edit casually.
+# ---------------------------------------------------------------------------
+
+TOKENIZER_ARTIFACT_NAMES = frozenset({
+    "tokenizer.json", "tokenizer_config.json", "vocab.json", "vocab.txt",
+    "merges.txt", "special_tokens_map.json", "added_tokens.json",
+    "chat_template.jinja", "tokenizer.model", "spiece.model"})
+
+
+def tokenizer_artifact_files(root, *,
+                             resolve_symlinks: bool = True
+                             ) -> list[tuple[str, Path]]:
+    """(relative path, target) for every tokenizer artifact file under
+    `root`, enumerated exactly like the plan's identity digest."""
+    r = Path(root)
+    if not r.is_dir():
+        raise ArtifactClosureError(f"tokenizer artifact root missing: {r}")
+    out: list[tuple[str, Path]] = []
+    for f in sorted(r.rglob("*")):
+        rel = f.relative_to(r).as_posix()
+        if Path(rel).name not in TOKENIZER_ARTIFACT_NAMES:
+            continue
+        if f.is_symlink():
+            if not resolve_symlinks:
+                raise ArtifactClosureError(
+                    "symbolic link inside tokenizer artifact tree "
+                    f"(refused, not skipped): {rel}")
+            target = f.resolve()
+            if target.is_file():
+                out.append((rel, target))
+        elif f.is_file():
+            out.append((rel, f))
+    return out
+
+
+def tokenizer_artifact_digest(root, *,
+                              resolve_symlinks: bool = True) -> str:
+    """Digest of the tokenizer artifact files under `root` — the
+    convention the signed campaign plan binds (a map of relative path ->
+    content digest). Refuses a root with no tokenizer artifacts."""
+    rows = {rel: sha256_file(target)
+            for rel, target in tokenizer_artifact_files(
+                root, resolve_symlinks=resolve_symlinks)}
+    if not rows:
+        raise ArtifactClosureError(
+            f"no tokenizer artifact files under {root}")
+    return digest(rows)
+
+
 def copy_closure(src, dst, *, resolve_symlinks: bool = False) -> TreeClosure:
     """Copy `src` to `dst` while hashing the bytes actually written.
 

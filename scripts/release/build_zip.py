@@ -21,7 +21,8 @@ import json
 import zipfile
 from pathlib import Path
 
-BANNED_PARTS = {"__pycache__", ".pytest_cache", ".git", "dist"}
+BANNED_PARTS = {"__pycache__", ".pytest_cache", ".ruff_cache", ".git",
+                "dist"}
 BANNED_SUFFIXES = {".pyc", ".pyo", ".whl", ".o", ".a", ".so", ".dylib"}
 
 

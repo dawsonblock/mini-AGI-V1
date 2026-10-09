@@ -21,7 +21,8 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from egai.common.canonical import digest  # noqa: E402
 from egai.common.crypto import Ed25519Signer  # noqa: E402
-from minagi.v161.artifact_closure import close_tree  # noqa: E402
+from minagi.v161.artifact_closure import (close_tree,  # noqa: E402
+                                          tokenizer_artifact_digest)
 from minagi.v161.authority import (AUTHORITY_ROLES, AuthorityLedger,  # noqa: E402
                                    AuthorityRegistry, write_trust_root)
 from minagi.v161.experiment_protocol import ExperimentProtocolV1  # noqa: E402
@@ -83,9 +84,16 @@ def _build_chain(tmp_path, *, expires_at=None, generated_at=None):
     model.mkdir(parents=True)
     (model / "config.json").write_text('{"model_type": "gpt2"}')
     (model / "model.safetensors").write_bytes(b"base-model-weights")
+    # the signed plan binds the tokenizer as the tokenizer-named files
+    # inside the model snapshot (physical_identity_digests convention)
+    (model / "tokenizer.json").write_text('{"vocab": []}')
+    (model / "tokenizer_config.json").write_text('{"chat_template": "x"}')
+    # an operator's tokenizer-only cross-check root (same files)
     tokenizer = storage / "models" / "tok"
     tokenizer.mkdir(parents=True)
     (tokenizer / "tokenizer.json").write_text('{"vocab": []}')
+    (tokenizer / "tokenizer_config.json").write_text(
+        '{"chat_template": "x"}')
 
     proto = ExperimentProtocolV1.from_config({
         "model": {"dtype": "bfloat16", "quantization": "none",
@@ -111,7 +119,7 @@ def _build_chain(tmp_path, *, expires_at=None, generated_at=None):
     manifest = runtime_manifest(
         model_id="tiny", model_revision="r1",
         model_digest=close_tree(model, resolve_symlinks=True).digest,
-        tokenizer_digest=close_tree(tokenizer, resolve_symlinks=True).digest,
+        tokenizer_digest=tokenizer_artifact_digest(model),
         adapter_dir=adir, protocol=proto,
         campaign_digest=plan_doc["digest"],
         qualification_record_digest=qual_doc["digest"])
@@ -263,6 +271,56 @@ def test_substituted_model_refuses_launch(tmp_path):
     launcher = _launcher(chain, tmp_path)
     with pytest.raises(LaunchRefused, match="base model digest differs"):
         launcher.launch(_request(chain), FakeBackend())
+
+
+def test_manifest_tokenizer_binding_must_match_model_snapshot(tmp_path):
+    """The plan binds the tokenizer inside the model snapshot; a
+    manifest whose tokenizer digest does not re-derive from the model
+    bytes is refused — there is no separately substitutable tokenizer."""
+    chain = _build_chain(tmp_path)
+    manifest = dict(chain.manifest)
+    manifest["tokenizer_digest"] = "sha256:" + "5" * 64
+    manifest["digest"] = digest(
+        {k: v for k, v in manifest.items() if k != "digest"})
+    decision = _signed(chain.signers["promotion"], {
+        **chain.decision_doc["value"],
+        "runtime_manifest_digests": {"seed-0": manifest["digest"]}})
+    decision["runtime_manifests"] = {"seed-0": manifest}
+    launcher = _launcher(chain, tmp_path)
+    with pytest.raises(LaunchRefused, match="tokenizer digest differs"):
+        launcher.launch(_request(chain, runtime_manifest=manifest,
+                                 decision_doc=decision), FakeBackend())
+
+
+def test_tokenizer_cross_check_path_mismatch_refused(tmp_path):
+    """An explicit tokenizer root is a cross-check: one whose tokenizer
+    files differ from the model snapshot's is refused."""
+    chain = _build_chain(tmp_path)
+    (chain.tokenizer / "tokenizer.json").write_text('{"vocab": ["evil"]}')
+    launcher = _launcher(chain, tmp_path)
+    with pytest.raises(LaunchRefused, match="tokenizer artifact differs"):
+        launcher.launch(_request(chain), FakeBackend())
+
+
+def test_model_snapshot_without_tokenizer_refused(tmp_path):
+    """A model snapshot carrying no tokenizer artifacts cannot satisfy
+    the plan's tokenizer binding — refused, not served."""
+    chain = _build_chain(tmp_path)
+    for name in ("tokenizer.json", "tokenizer_config.json"):
+        (chain.model / name).unlink()
+    manifest = dict(chain.manifest)
+    manifest["model_digest"] = close_tree(
+        chain.model, resolve_symlinks=True).digest
+    manifest["digest"] = digest(
+        {k: v for k, v in manifest.items() if k != "digest"})
+    decision = _signed(chain.signers["promotion"], {
+        **chain.decision_doc["value"],
+        "runtime_manifest_digests": {"seed-0": manifest["digest"]}})
+    decision["runtime_manifests"] = {"seed-0": manifest}
+    launcher = _launcher(chain, tmp_path)
+    with pytest.raises(LaunchRefused, match="no tokenizer artifact files"):
+        launcher.launch(_request(chain, runtime_manifest=manifest,
+                                 decision_doc=decision), FakeBackend())
 
 
 def test_caller_supplied_digest_never_trusted(tmp_path):
@@ -429,11 +487,14 @@ def test_peft_backend_refuses_raw_paths(tmp_path):
 
 def test_cuda_loader_refuses_serving_a_raw_adapter_path(tmp_path):
     """The CUDA/HF loader is a second model-loading entry; serving
-    through it with a raw adapter path must be refused, and the
-    research plane must opt in explicitly."""
+    through it with a raw adapter path (or no snapshot at all) must be
+    refused, and the research plane must opt in explicitly."""
     from minagi.platforms.cuda.hf_runtime import HFLoadSpec, load_causal_lm
     spec = HFLoadSpec(model_id="tiny", revision="r1")
     with pytest.raises(PermissionError, match="ApprovedSnapshot"):
         load_causal_lm(spec, adapter_path=str(tmp_path / "adapter"))
     with pytest.raises(ValueError, match="purpose"):
         load_causal_lm(spec, purpose="whatever")
+    # serving without a snapshot is a bare load of an unadmitted model
+    with pytest.raises(PermissionError, match="snapshot"):
+        load_causal_lm(spec)

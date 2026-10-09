@@ -23,7 +23,6 @@ A failed stage/verify removes the snapshot directory and raises
 from __future__ import annotations
 
 import shutil
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
@@ -108,6 +107,11 @@ def stage_snapshot(dest, artifacts: Mapping[str, object], *,
     if missing:
         raise SnapshotError(
             f"authorized artifacts not supplied for staging: {sorted(missing)}")
+    extra = set(artifacts) - set(expected_digests)
+    if extra:
+        raise SnapshotError(
+            "artifacts not authorized by the manifest cannot be staged: "
+            f"{sorted(extra)}")
     policy = dict(resolve_symlinks or {})
     closures: dict[str, TreeClosure] = {}
     try:
@@ -129,7 +133,8 @@ def stage_snapshot(dest, artifacts: Mapping[str, object], *,
             closures=closures, _sentinel=_SENTINEL)
         verify_snapshot(snapshot)
         return snapshot
-    except (ArtifactClosureError, SnapshotError, OSError) as exc:
+    except (ArtifactClosureError, SnapshotError, OSError, KeyError,
+            ValueError) as exc:
         _discard(dest)
         if isinstance(exc, SnapshotError):
             raise

@@ -78,6 +78,48 @@ the macOS host). New suites: `test_v1641_artifact_closure.py` (21),
 to the measured-artifact CLI contract. Release change manifest:
 `RELEASE_CHANGE_MANIFEST.json`.
 
+## Review repairs (post-release audit)
+
+A review of this release found four defects, each fixed with a
+regression test; no scientific claim changes.
+
+- **Tokenizer identity convention.** The signed plan binds the
+  tokenizer as the tokenizer-named files inside the model snapshot
+  (`physical_identity_digests`), but the launcher expected a tree
+  closure of a separate `--tokenizer-path` — different digests, so no
+  plan-derived manifest could ever be admitted (fail-closed, but the
+  sanctioned serving path was unusable end-to-end, and the tests
+  encoded the launcher's convention only). The convention is now one
+  shared implementation (`artifact_closure.tokenizer_artifact_digest`,
+  byte-identical to the recorded plans); the launcher re-measures it
+  from the staged model, the serving backend loads the tokenizer from
+  the verified model artifact, and `--tokenizer-path` /
+  `--runtime-tokenizer-path` are optional cross-checks. The runner
+  delegates to the shared implementation — plan digests are unchanged,
+  so the in-flight Campaign 3A resume semantics are preserved.
+- **CUDA loader serving default.** `load_causal_lm()` with the default
+  `purpose="serving"` silently loaded a bare base model when no
+  snapshot was passed. A serving load without an `ApprovedSnapshot` is
+  now refused, and the research-plane base-model call sites pass
+  `purpose="research"` explicitly (the flag is now the reviewable
+  record for every research-plane load, not only adapter loads).
+- **Release verifier symlinks.** `verify_release.py` silently ignored
+  symbolic links in the verified tree (the same "skipped, not refused"
+  pattern SEC-002 fixed in the artifact closure). Links are now refused
+  (`symlinks_in_tree`, exit 2); the builder already excludes them. Tool
+  caches are also skipped consistently (`.ruff_cache` joins
+  `.pytest_cache` in the verifier, the reseal enumerator, the builder,
+  and `.gitignore`), so a local `ruff` run cannot produce a false
+  release failure.
+- **Snapshot staging cleanup.** `stage_snapshot()` raised a raw
+  `KeyError` and left a partially staged, unfrozen tree behind when
+  handed an artifact name the manifest did not authorize. Names are now
+  validated up front (`SnapshotError`, nothing staged), and any
+  staging failure discards the destination.
+
+Docs: `docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md` (tokenizer
+convention, verifier policy). Tests: +8 (631 → 639 passing, 1 skipped).
+
 # v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
 
 Phases 2, 3, and (early) 5 of the v17 plan. Scientific claims unchanged

@@ -126,6 +126,6 @@ training receipt.
 |---|------|--------|
 | O1 | Campaign 3A/3B/3C execution | GPU-blocked; requires the sealed-campaign procedure |
 | O2 | Estimate calibration for the mechanism controller | v16.6.0 work; needs campaign evidence |
-| O3 | Activation receipt signing | Optional (signed when a runtime key exists; unsigned receipts carry digest only) |
+| O3 | Activation receipt signing | **Closed by v16.4.1 (SEC-003)** — receipts are always signed; an unsigned receipt is refused by `write_activation_receipt`/`check_activation_receipt` |
 | O4 | Native (qw3) backend admission | Refused by design — the qualification plane has not covered it |
 | O5 | Native CTest suite | Not rerun (no C++ changes in this release) |

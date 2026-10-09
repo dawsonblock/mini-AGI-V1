@@ -20,7 +20,8 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from egai.common.canonical import digest  # noqa: E402
 from egai.common.crypto import Ed25519Signer  # noqa: E402
-from minagi.v161.artifact_closure import close_tree  # noqa: E402
+from minagi.v161.artifact_closure import (close_tree,  # noqa: E402
+                                          tokenizer_artifact_digest)
 from minagi.v161.authority import (AUTHORITY_ROLES, AuthorityLedger,  # noqa: E402
                                    AuthorityRegistry, write_trust_root)
 from minagi.v161.experiment_protocol import ExperimentProtocolV1  # noqa: E402
@@ -76,11 +77,13 @@ def _build_chain(tmp_path, *, expires_at=None, authorized_at=None,
     model_dir.mkdir(parents=True)
     (model_dir / "config.json").write_text('{"model_type": "gpt2"}')
     (model_dir / "model.safetensors").write_bytes(b"base-model-weights")
+    # the signed plan binds the tokenizer inside the model snapshot
+    (model_dir / "tokenizer.json").write_text('{"vocab": []}')
     tok_dir = storage / "models" / "tok"
     tok_dir.mkdir(parents=True)
     (tok_dir / "tokenizer.json").write_text('{"vocab": []}')
     model_d = close_tree(model_dir, resolve_symlinks=True).digest
-    tokenizer_d = close_tree(tok_dir, resolve_symlinks=True).digest
+    tokenizer_d = tokenizer_artifact_digest(model_dir)
 
     proto = _protocol()
     plan_doc = _signed(signers["plan"], {

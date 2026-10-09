@@ -150,5 +150,61 @@
       "a stale revocation list refuses; a revoked decision replay refuses",
       "no receipt is written when admission, staging, or the backend load fails"
     ]
-  }
+  },
+  "review_repairs": [
+    {
+      "id": "REVIEW-1",
+      "title": "Tokenizer identity uses one shared plan convention",
+      "files": [
+        "src-python/minagi/v161/artifact_closure.py",
+        "src-python/minagi/v161/runtime_admission.py",
+        "src-python/minagi/v161/trusted_launcher.py",
+        "src-python/minagi/v161/peft_serving.py",
+        "scripts/run_campaign1.py",
+        "scripts/trusted_launch.py",
+        "scripts/admit_runtime.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_artifact_closure.py",
+        "tests-python/v161/test_v1641_trusted_launcher.py",
+        "tests-python/v161/test_v164_runtime_admission.py"
+      ],
+      "note": "artifact_closure.tokenizer_artifact_digest is the single implementation of the plan's convention (tokenizer-named files inside the model snapshot); the runner delegates (plan digests unchanged, Campaign 3A resume preserved), the launcher re-measures it from the staged model, the backend serves the tokenizer from the verified model artifact, and an explicit tokenizer root is an optional cross-check."
+    },
+    {
+      "id": "REVIEW-2",
+      "title": "Serving loads require an ApprovedSnapshot",
+      "files": [
+        "src-python/minagi/platforms/cuda/hf_runtime.py",
+        "scripts/run_campaign1.py",
+        "scripts/run_colab_campaign.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_trusted_launcher.py"
+      ],
+      "note": "load_causal_lm() with the default purpose='serving' previously fell through to a bare from_pretrained(spec.model_id) when no snapshot was passed; it now refuses, and the research-plane base-model call sites pass purpose='research'."
+    },
+    {
+      "id": "REVIEW-3",
+      "title": "Release verifier refuses symlinks",
+      "files": [
+        "scripts/verify_release.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1622_verify_release_script.py"
+      ],
+      "note": "An added symlink previously passed verification silently; links are now refused (symlinks_in_tree, exit 2), consistent with the artifact-closure policy and build_zip.py."
+    },
+    {
+      "id": "REVIEW-4",
+      "title": "Snapshot staging validates names and always cleans up",
+      "files": [
+        "src-python/minagi/v161/immutable_snapshot.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_artifact_closure.py"
+      ],
+      "note": "An unauthorized artifact name raised a raw KeyError and left a partially staged, unfrozen tree behind; names are validated up front (SnapshotError, nothing staged) and any staging failure discards the destination."
+    }
+  ]
 }

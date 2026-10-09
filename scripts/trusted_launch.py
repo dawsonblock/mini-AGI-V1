@@ -13,9 +13,15 @@ the load succeeds.
         --storage-root STORAGE --campaign-id CID --seed seed-0 \
         --decision STORAGE/evidence/CID/RUNTIME_MANIFEST.json \
         --adapter-dir STORAGE/adapters/CID/L6/seed-0 \
-        --model-path MODEL_DIR --tokenizer-path TOKENIZER_DIR \
+        --model-path MODEL_DIR \
         --revocation-list STORAGE/REVOCATIONS.json \
         --receipt STORAGE/evidence/CID/ACTIVATION_RECEIPT.json
+
+The tokenizer identity is bound by the signed plan as the
+tokenizer-named files inside the model snapshot, re-measured from the
+staged model and served from that verified artifact — `--tokenizer-path`
+is an optional cross-check root (the same tokenizer files elsewhere),
+never the served copy.
 
 The backend factory (module:callable) must return an object with a
 `backend_id` and a `load(snapshot)` method; the default `hf-peft`
@@ -77,7 +83,10 @@ def main(argv=None) -> int:
                     help="promotion decision document (promote.py --out)")
     ap.add_argument("--adapter-dir", required=True)
     ap.add_argument("--model-path", required=True)
-    ap.add_argument("--tokenizer-path", required=True)
+    ap.add_argument("--tokenizer-path", default=None,
+                    help="optional tokenizer artifact root to cross-check "
+                         "against the plan's binding (the served tokenizer "
+                         "is the one inside the verified model snapshot)")
     ap.add_argument("--backend", default="hf-peft")
     ap.add_argument("--backend-factory", default=None,
                     help="module:callable returning a serving backend")
@@ -145,7 +154,7 @@ def main(argv=None) -> int:
         qualification_doc=json.loads(qual_path.read_text()),
         plan_doc=json.loads(plan_path.read_text()),
         runtime_manifest=manifest, adapter_dir=args.adapter_dir,
-        model_path=args.model_path, tokenizer_path=args.tokenizer_path,
+        model_path=args.model_path, tokenizer_path=args.tokenizer_path or "",
         expected_backend=args.backend)
 
     receipt_path = args.receipt or (

@@ -2,8 +2,9 @@
 """Verify a mini-AGI signed release.
 
 Checks that every governed file on disk exactly matches SOURCE_MANIFEST.json
-(missing / extra / changed all fail) and that the manifest carries a valid
-Ed25519 signature from a TRUSTED release key.
+(missing / extra / changed all fail), that symbolic links are refused
+rather than silently skipped (v16.4.1 closure policy), and that the
+manifest carries a valid Ed25519 signature from a TRUSTED release key.
 
 FIX-006: also checks release-metadata reconciliation — the attestation's
 manifest_sha256 / reissued_utc must agree with the signed manifest (top
@@ -114,12 +115,24 @@ def main() -> int:
         artifact_dir = parts and parts[0].startswith('build')
         return (rel in excluded or artifact_dir or '__pycache__' in parts
                 or '.git' in parts or '.pytest_cache' in parts
+                or '.ruff_cache' in parts
                 or p.name.endswith('.pyc')
                 or any(part.endswith('.egg-info') for part in parts))
 
     actual = {p.relative_to(root).as_posix(): sha(p)
               for p in root.rglob('*')
               if p.is_file() and not p.is_symlink() and not skip(p)}
+    # v16.4.1 closure policy: symbolic links anywhere in the governed
+    # tree are refused, not silently skipped — a link is not a governed
+    # file and a downstream consumer must never follow one out of the
+    # archive. The release builder excludes them for the same reason.
+    symlinks = sorted(p.relative_to(root).as_posix()
+                      for p in root.rglob('*')
+                      if p.is_symlink() and not skip(p))
+    if symlinks:
+        print(json.dumps({'status': 'FAIL', 'reason': 'symlinks_in_tree',
+                          'symlinks': symlinks[:20]}, indent=2))
+        return 2
     if expected != actual:
         missing = sorted(set(expected) - set(actual))
         extra = sorted(set(actual) - set(expected))

@@ -13,7 +13,11 @@ that enforcement point. It:
      revocation list (with freshness);
   3. physically measures the model, tokenizer, and adapter bytes —
      caller-supplied hashes are never trusted, and a supplied hash that
-     disagrees with the measured bytes is refused;
+     disagrees with the measured bytes is refused. The tokenizer
+     identity is the plan's convention (the tokenizer-named files
+     inside the model snapshot root), re-measured from the staged
+     model — the tokenizer the backend opens is part of the verified
+     model artifact, not a separately substitutable path;
   4. stages the approved artifacts into an immutable snapshot
      (single-pass copy-and-verify, then read-only), re-verifies it, and
      hands the backend ONLY that snapshot;
@@ -42,7 +46,8 @@ from typing import Protocol
 from egai.common.canonical import validate_digest
 from egai.common.crypto import Ed25519Signer
 
-from .artifact_closure import expected_from_manifest, verify_entries
+from .artifact_closure import (ArtifactClosureError, expected_from_manifest,
+                               tokenizer_artifact_digest, verify_entries)
 from .authority import AuthorityLedger, as_utc
 from .immutable_snapshot import (ApprovedSnapshot, SnapshotError,
                                  stage_snapshot, verify_snapshot)
@@ -72,7 +77,9 @@ class LaunchRequest:
     runtime_manifest: dict
     adapter_dir: str
     model_path: str
-    tokenizer_path: str
+    tokenizer_path: str = ""         # optional cross-check root; the
+                                     # model snapshot carries the
+                                     # tokenizer the plan binds
     expected_backend: str = "hf-peft"
     candidate_digest: str = ""
     rollback_of: str = ""            # decision digest being rolled back from
@@ -154,7 +161,7 @@ class TrustedRuntimeLauncher:
                 runtime_manifest=request.runtime_manifest,
                 adapter_dir=request.adapter_dir, seed=request.seed,
                 runtime_model_path=request.model_path,
-                runtime_tokenizer_path=request.tokenizer_path,
+                runtime_tokenizer_path=request.tokenizer_path or None,
                 expected_backend=request.expected_backend,
                 rollback_of=request.rollback_of)
         except AdmissionRefused as exc:
@@ -167,22 +174,32 @@ class TrustedRuntimeLauncher:
             snapshot = stage_snapshot(
                 dest,
                 {"model": request.model_path,
-                 "tokenizer": request.tokenizer_path,
                  "adapter": request.adapter_dir},
                 expected_digests={
                     "model": str(manifest["model_digest"]),
-                    "tokenizer": str(manifest["tokenizer_digest"]),
                     "adapter": str(manifest["adapter_digest"])},
-                resolve_symlinks={"model": True, "tokenizer": True,
-                                  "adapter": False},
+                resolve_symlinks={"model": True, "adapter": False},
                 manifest_digest=str(manifest["digest"]))
             verify_snapshot(snapshot)
+            # The plan binds the tokenizer as the tokenizer-named files
+            # inside the model snapshot; re-measure that convention from
+            # the staged model bytes. The tokenizer the backend serves
+            # is part of the verified model artifact — there is no
+            # separate tokenizer path in the served set.
+            tokenizer_digest = tokenizer_artifact_digest(
+                snapshot.path("model"), resolve_symlinks=False)
+            if tokenizer_digest != str(manifest["tokenizer_digest"]):
+                raise ArtifactClosureError(
+                    "staged model's tokenizer artifact digest "
+                    f"{tokenizer_digest} != authorized "
+                    f"{manifest['tokenizer_digest']}")
             listed = manifest.get("adapter_files")
             if listed is not None:
                 verify_entries(snapshot.closure("adapter").entries,
                                expected_from_manifest(listed),
                                what="staged adapter")
         except SnapshotError as exc:
+            _discard(dest)
             raise LaunchRefused(f"snapshot refused: {exc}") from exc
         except Exception as exc:  # noqa: BLE001 - fail closed, never serve
             _discard(dest)
@@ -206,7 +223,10 @@ class TrustedRuntimeLauncher:
             admitted_at=at.isoformat(),
             candidate_digest=(request.candidate_digest
                               or admission.candidate_digest),
-            loaded_artifact_digests=snapshot.artifact_digests,
+            # model + adapter bytes from the staged snapshot, plus the
+            # tokenizer digest re-measured from the staged model at load
+            loaded_artifact_digests=tuple(snapshot.artifact_digests)
+            + (("tokenizer", tokenizer_digest),),
             activation_nonce=nonce,
             rollback_of=admission.rollback_of)
         # Evidence is recorded fail-closed: the ledger entry lands first,

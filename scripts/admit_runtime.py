@@ -9,7 +9,10 @@ artifact measurement, then writes a runtime-signed ActivationReceipt.
 
 v16.4.1 hardening:
   * model and tokenizer are MEASURED from --runtime-model-path /
-    --runtime-tokenizer-path; a caller-supplied digest is only a
+    --runtime-tokenizer-path; the tokenizer identity is the plan's
+    convention (the tokenizer-named files inside the model snapshot),
+    so the model path alone suffices and an explicit tokenizer path is
+    an optional cross-check. A caller-supplied digest is only a
     cross-check and a disagreement is refused (the receipt is evidence,
     so it must bind measured bytes);
   * the receipt is always signed by the runtime role — an unsigned
@@ -70,9 +73,11 @@ def main(argv=None) -> int:
     ap.add_argument("--out", required=True, help="activation receipt path")
     ap.add_argument("--backend", default="hf-peft")
     ap.add_argument("--runtime-model-path", required=True,
-                    help="model snapshot directory (physically measured)")
-    ap.add_argument("--runtime-tokenizer-path", required=True,
-                    help="tokenizer artifact directory (physically measured)")
+                    help="model snapshot directory (physically measured; "
+                         "carries the tokenizer the plan binds)")
+    ap.add_argument("--runtime-tokenizer-path", default=None,
+                    help="optional tokenizer artifact root to cross-check "
+                         "against the plan's tokenizer binding")
     ap.add_argument("--runtime-model-digest", default=None,
                     help="optional cross-check against the measurement")
     ap.add_argument("--runtime-tokenizer-digest", default=None,
@@ -116,7 +121,7 @@ def main(argv=None) -> int:
 
     for label, path in (("model", args.runtime_model_path),
                         ("tokenizer", args.runtime_tokenizer_path)):
-        if not Path(path).exists():
+        if path is not None and not Path(path).exists():
             return _config_error(f"{label} path missing: {path}")
 
     revocation_list = None

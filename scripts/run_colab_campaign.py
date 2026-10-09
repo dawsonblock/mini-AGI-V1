@@ -91,7 +91,7 @@ def main():
         if (run_dir/"COMPLETE").is_file() and seed_result_path.is_file():
             all_results.append(json.loads(seed_result_path.read_text())); continue
         random.seed(seed)
-        tokenizer=load_tokenizer(spec); model=load_causal_lm(spec)
+        tokenizer=load_tokenizer(spec); model=load_causal_lm(spec,purpose="research")
         model_digest=model_identity(model,spec); tok_digest=tokenizer_identity(tokenizer,spec)
         a0_score,a0_outputs=evaluate(model,tokenizer,hidden,int(cfg.get("max_new_tokens",8)),score_fn)
         a0=ExecutedRunReceiptV161.sign(signer=signer,campaign_digest=plan.digest,arm="A0",seed=seed,environment_digest=env.digest,model_digest=model_digest,tokenizer_digest=tok_digest,adapter_digest=ZERO,dataset_digest=parts.hidden.digest,evaluator_digest=arts[0].digest,metrics={"hidden_exact_match":a0_score})

@@ -27,7 +27,8 @@ sys.path.insert(0, str(ROOT / "src-python"))
 from egai.common.canonical import digest  # noqa: E402
 from minagi.v161.artifact_closure import (  # noqa: E402
     ArtifactClosureError, TreeEntry, close_tree, copy_closure,
-    expected_from_manifest, freeze_tree, verify_entries)
+    expected_from_manifest, freeze_tree, tokenizer_artifact_digest,
+    verify_entries)
 from minagi.v161.immutable_snapshot import (  # noqa: E402
     ApprovedSnapshot, SnapshotError, stage_snapshot, verify_snapshot)
 from minagi.v161.runtime_closure3 import sha256_path  # noqa: E402
@@ -71,6 +72,63 @@ def test_file_digest_unchanged(tmp_path):
     p = tmp_path / "f.bin"
     p.write_bytes(b"payload")
     assert sha256_path(p) == "sha256:" + hashlib.sha256(b"payload").hexdigest()
+
+
+# ---------- tokenizer identity convention (frozen) ----------------------
+
+_LEGACY_TOKENIZER_NAMES = {
+    "tokenizer.json", "tokenizer_config.json", "vocab.json", "vocab.txt",
+    "merges.txt", "special_tokens_map.json", "added_tokens.json",
+    "chat_template.jinja", "tokenizer.model", "spiece.model"}
+
+
+def _legacy_tokenizer_digest(root: Path) -> str:
+    """The plan's tokenizer identity, computed independently (literal
+    name set, map of relative path -> content digest, symlinks
+    resolved). Recorded plans bind this shape — it must not drift."""
+    rows = {}
+    for f in sorted(root.rglob("*")):
+        rel = f.relative_to(root).as_posix()
+        if Path(rel).name not in _LEGACY_TOKENIZER_NAMES:
+            continue
+        real = f.resolve() if f.is_symlink() else f
+        if real.is_file():
+            rows[rel] = "sha256:" + hashlib.sha256(
+                real.read_bytes()).hexdigest()
+    return digest(rows)
+
+
+def test_tokenizer_digest_matches_recorded_plan_convention(tmp_path):
+    snap = tmp_path / "snapshot"
+    snap.mkdir()
+    blobs = tmp_path / "blobs"
+    blobs.mkdir()
+    for name, data in (("tokenizer.json", b'{"vocab": []}'),
+                       ("tokenizer_config.json", b'{"ct": "x"}'),
+                       ("vocab.json", b"{}"),
+                       ("merges.txt", b"a b\n"),
+                       ("config.json", b'{"m": 1}'),
+                       ("sub/added_tokens.json", b"[]")):
+        blob = blobs / name.replace("/", "_")
+        blob.write_bytes(data)
+        (snap / name).parent.mkdir(parents=True, exist_ok=True)
+        (snap / name).symlink_to(blob)
+    assert tokenizer_artifact_digest(snap) == _legacy_tokenizer_digest(snap)
+
+    flat = tmp_path / "flat"
+    flat.mkdir()
+    for name, data in (("tokenizer.json", b'{"vocab": []}'),
+                       ("vocab.json", b"{}"), ("README.md", b"docs")):
+        (flat / name).write_bytes(data)
+    assert tokenizer_artifact_digest(flat) == _legacy_tokenizer_digest(flat)
+
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    (plain / "config.json").write_bytes(b"{}")
+    with pytest.raises(ArtifactClosureError, match="no tokenizer artifact"):
+        tokenizer_artifact_digest(plain)
+    with pytest.raises(ArtifactClosureError, match="symbolic link"):
+        tokenizer_artifact_digest(snap, resolve_symlinks=False)
 
 
 # ---------- symlinks are refused, not skipped --------------------------
@@ -235,6 +293,17 @@ def test_snapshot_requires_every_authorized_artifact(tmp_path):
                            "adapter": close_tree(d).digest,
                            "model": "sha256:" + "3" * 64},
                        manifest_digest="sha256:" + "7" * 64)
+
+
+def test_snapshot_refuses_unauthorized_artifact_names(tmp_path):
+    """An artifact name the manifest did not authorize cannot be
+    staged, and a refused staging leaves nothing behind."""
+    d = _adapter(tmp_path)
+    with pytest.raises(SnapshotError, match="not authorized"):
+        stage_snapshot(tmp_path / "snap", {"adapter": d, "extra": d},
+                       expected_digests={"adapter": close_tree(d).digest},
+                       manifest_digest="sha256:" + "7" * 64)
+    assert not (tmp_path / "snap").exists()
 
 
 def test_copy_closure_refuses_symlinked_source(tmp_path):

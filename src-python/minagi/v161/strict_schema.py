@@ -26,9 +26,9 @@ never substitutes for a signature check, and vice versa.
 """
 from __future__ import annotations
 
-from typing import Iterable, Mapping
+from typing import Mapping
 
-from egai.common.canonical import DIGEST_RE, validate_digest
+from egai.common.canonical import DIGEST_RE
 
 # Backends the qualification plane has actually qualified. A runtime
 # manifest declaring anything else is refused; a qualification record

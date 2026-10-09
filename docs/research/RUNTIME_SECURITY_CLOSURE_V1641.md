@@ -35,14 +35,25 @@ the artifacts it served had been admitted.
   `immutable_snapshot.stage_snapshot`); raw paths, strings, and mutable
   directories are refused.
 * `minagi/platforms/cuda/hf_runtime.py` — `load_causal_lm()` refuses
-  `adapter_path=` in serving mode (the default). Serving passes
-  `snapshot=`; the research plane — which evaluates the candidate, the
-  experiment itself, rather than the runtime — must pass
-  `purpose="research"` explicitly, which is the reviewable record that
-  the load is not a serving activation. Call sites updated:
-  `scripts/run_campaign1.py`, `scripts/run_colab_campaign.py`,
+  `adapter_path=` in serving mode (the default) and refuses a serving
+  load without an `ApprovedSnapshot` (a bare model load is not an
+  admitted artifact). Serving passes `snapshot=`; the research plane —
+  which evaluates the candidate, the experiment itself, rather than the
+  runtime — must pass `purpose="research"` explicitly, which is the
+  reviewable record that the load is not a serving activation. Call
+  sites updated: `scripts/run_campaign1.py`,
+  `scripts/run_colab_campaign.py`,
   `scripts/validation/adapter_effect_check.py`.
 * `scripts/trusted_launch.py` — the deployment CLI for the launcher.
+* Tokenizer identity: the signed plan binds the tokenizer as the
+  tokenizer-named files inside the model snapshot root
+  (`physical_identity_digests`); the launcher re-measures that
+  convention from the staged model
+  (`artifact_closure.tokenizer_artifact_digest`) and the serving
+  backend loads the tokenizer from the verified model artifact — there
+  is no separately substitutable tokenizer path in the served set.
+  `--tokenizer-path` / `--runtime-tokenizer-path` are optional
+  cross-check roots.
 
 ## SEC-002 — Artifact hashing overlooked symbolic links
 
@@ -140,6 +151,55 @@ revocation evidence had no freshness requirement.
   recorded in an append-only journal; revoked decisions are refused on
   re-admission.
 
+## Review repairs (post-release audit)
+
+A review of this release found four defects; each is fixed at the
+source with a regression test. None changes a security property for
+the better or worse in the fail-open direction — all four were
+fail-closed or unavailable paths.
+
+* **Tokenizer identity convention (integration blocker).** The plan
+  binds the tokenizer with `physical_identity_digests` (a map of
+  relative path → content digest over the tokenizer-named files inside
+  the model snapshot), while the launcher expected a tree closure of a
+  separate `--tokenizer-path`: structurally different digests, so no
+  plan-derived manifest could ever be admitted, and the test suite
+  encoded only the launcher's convention. The convention now lives in
+  one shared implementation (`artifact_closure.tokenizer_artifact_digest`,
+  byte-identical to the recorded plans — the runner delegates to it,
+  so plan digests are unchanged and Campaign 3A resume stays valid),
+  the launcher re-measures it from the staged model, the backend loads
+  the tokenizer from the verified model artifact, and the explicit
+  tokenizer path is an optional cross-check (the model snapshot and the
+  tokenizer path must agree when both are supplied).
+* **CUDA loader serving default.** `load_causal_lm(spec)` with the
+  default `purpose="serving"` silently loaded a bare base model from
+  `spec.model_id` when no snapshot was passed; the guard only covered
+  `adapter_path`. A serving load without an `ApprovedSnapshot` is now
+  refused, and the research-plane base-model call sites pass
+  `purpose="research"` explicitly.
+* **Release verifier symlinks.** `verify_release.py` excluded symlinks
+  from the measured set — an added link passed verification. Links are
+  now refused (`symlinks_in_tree`, exit 2), consistent with the
+  artifact-closure policy and with `build_zip.py`, which already
+  excludes them. Tool caches are skipped consistently (`.ruff_cache`
+  joins `.pytest_cache` in the verifier, the reseal enumerator, the
+  builder, and `.gitignore`).
+* **Snapshot staging cleanup.** `stage_snapshot()` raised a raw
+  `KeyError` and left a partially staged, unfrozen tree behind when
+  handed an artifact name the manifest did not authorize. Names are
+  validated up front (`SnapshotError`, nothing staged) and any staging
+  failure discards the destination.
+
+Regression tests: `test_tokenizer_digest_matches_recorded_plan_convention`
+(frozen plan convention), `test_manifest_tokenizer_binding_must_match_model_snapshot`,
+`test_tokenizer_cross_check_path_mismatch_refused`,
+`test_model_snapshot_without_tokenizer_refused`,
+`test_cuda_loader_refuses_serving_a_raw_adapter_path` (extended),
+`test_snapshot_refuses_unauthorized_artifact_names`,
+`test_symlink_in_tree_fails`, `test_symlink_at_governed_path_fails`,
+`test_tool_caches_are_skipped`.
+
 ## Time-of-check/time-of-use
 
 `minagi/v161/immutable_snapshot.py` stages every artifact with a
@@ -155,11 +215,12 @@ constructible only by `stage_snapshot`.
 
 | Suite | Coverage |
 |---|---|
-| `test_v1641_artifact_closure.py` | symlink/special-file/traversal/unexpected/missing/resized/modified refusals; digest compatibility with v16.4.0 semantics; single-pass staging; freeze; forged snapshot |
-| `test_v1641_trusted_launcher.py` | launch happy path + production receipt; backend mismatch/load failure; symlink and byte substitution; stale/missing revocation list; caller-digest disagreement; source mutation during load; nonce uniqueness; rollback lineage; unsigned/wrong-role/non-production receipts; raw-path backend refusal; CUDA loader gate |
+| `test_v1641_artifact_closure.py` | symlink/special-file/traversal/unexpected/missing/resized/modified refusals; digest compatibility with v16.4.0 semantics; frozen tokenizer convention; single-pass staging; freeze; forged snapshot; unauthorized artifact names |
+| `test_v1641_trusted_launcher.py` | launch happy path + production receipt; backend mismatch/load failure; symlink and byte substitution; tokenizer binding/cross-check refusals; stale/missing revocation list; caller-digest disagreement; source mutation during load; nonce uniqueness; rollback lineage; unsigned/wrong-role/non-production receipts; raw-path backend refusal; CUDA loader gates (adapter path and missing snapshot) |
 | `test_v1641_strict_schema.py` | unknown versions, absent digests, unsupported backends, unbound evaluation/protocol, expiry ordering, listing validation, production receipt fields; admission-level refusals |
 | `test_v1641_cli.py` | `admit_runtime.py` and `trusted_launch.py` end to end: measured artifacts, mandatory signing, stale revocation, symlink/byte refusals, production receipt verification, backend identity |
 | `test_v164_runtime_admission.py` (updated) | the v16.4.0 adversarial set still refuses; the CLI now measures physical paths |
+| `test_v1622_verify_release_script.py` | verifier failure paths incl. symlink refusal (extra link, governed path replaced by a link) |
 
 Run: `python -m pytest tests-python -q`.
 
@@ -170,12 +231,13 @@ runtime pins: numpy>=2.0, cryptography>=43, fastapi/uvicorn/pydantic/httpx,
 PyYAML; `[ml]`/`[colab]`/`[mac]` extras for torch/transformers/peft).
 The release is verified and archived with three commands:
 
-    python -m pytest tests-python -q          # 631 passed, 1 skipped (macOS)
+    python -m pytest tests-python -q          # 639 passed, 1 skipped (macOS)
     python scripts/verify_release.py          # manifest + signature + metadata
     python scripts/release/build_zip.py --out Runtime-Security-Closure.zip
 
 `verify_release.py` checks every governed file against the signed
-`SOURCE_MANIFEST.json`, verifies the Ed25519 signature against the
+`SOURCE_MANIFEST.json`, refuses symbolic links anywhere in the governed
+tree, verifies the Ed25519 signature against the
 pinned release-key fingerprint, and reconciles the attestation, the
 manifest, and `VERSION`. `build_zip.py` produces a byte-reproducible
 archive (sorted entries, fixed timestamps/permissions) and prints its
@@ -197,7 +259,9 @@ implementations that could disagree.
   code property — see `minagi/v161/authority.py`.
 * Research-plane evaluation loads are deliberately outside admission
   (`purpose="research"`); they evaluate the candidate artifact, they do
-  not serve it. The flag is greppable and auditable.
+  not serve it. The flag is greppable and auditable, and it is now the
+  only way to load without an `ApprovedSnapshot` — serving loads
+  without a snapshot are refused.
 * `python -m pytest` was executed on macOS (3.12); Linux CPU, Windows,
   and the GPU/PEFT campaign matrices are unchanged by this release and
   are tracked in the remaining-defects register.

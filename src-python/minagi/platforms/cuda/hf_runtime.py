@@ -55,8 +55,9 @@ def load_causal_lm(spec: HFLoadSpec, *, adapter_path: str | None = None,
 
     Serving (default): pass `snapshot=<ApprovedSnapshot>` to load the
     model/tokenizer/adapter from the launcher-staged immutable copy.
-    Passing `adapter_path` in serving mode is refused — a raw path is
-    not an authorized artifact.
+    A serving load WITHOUT a snapshot is refused (a bare model load is
+    not an admitted artifact), as is `adapter_path` in serving mode — a
+    raw path is not an authorized artifact.
 
     Research-plane evaluation that must open an adapter directory
     directly (the candidate under evaluation) passes
@@ -64,12 +65,19 @@ def load_causal_lm(spec: HFLoadSpec, *, adapter_path: str | None = None,
     """
     if purpose not in ("serving", "research"):
         raise ValueError("purpose must be 'serving' or 'research'")
-    if purpose == "serving" and adapter_path is not None:
-        raise PermissionError(
-            "serving must load adapters from an ApprovedSnapshot staged "
-            "by TrustedRuntimeLauncher — a raw adapter path is not an "
-            "authorized artifact (research-plane evaluation must pass "
-            "purpose='research' explicitly)")
+    if purpose == "serving":
+        if adapter_path is not None:
+            raise PermissionError(
+                "serving must load adapters from an ApprovedSnapshot staged "
+                "by TrustedRuntimeLauncher — a raw adapter path is not an "
+                "authorized artifact (research-plane evaluation must pass "
+                "purpose='research' explicitly)")
+        if snapshot is None:
+            raise PermissionError(
+                "serving requires snapshot=<ApprovedSnapshot> staged by "
+                "TrustedRuntimeLauncher — a bare model load is not an "
+                "admitted artifact (research-plane evaluation must pass "
+                "purpose='research' explicitly)")
     from transformers import AutoModelForCausalLM
     if purpose == "serving":
         if snapshot is not None:

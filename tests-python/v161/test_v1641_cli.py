@@ -22,7 +22,8 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from egai.common.canonical import digest  # noqa: E402
 from egai.common.crypto import Ed25519Signer  # noqa: E402
-from minagi.v161.artifact_closure import close_tree  # noqa: E402
+from minagi.v161.artifact_closure import (close_tree,  # noqa: E402
+                                          tokenizer_artifact_digest)
 from minagi.v161.authority import AUTHORITY_ROLES, write_trust_root  # noqa: E402
 from minagi.v161.experiment_protocol import ExperimentProtocolV1  # noqa: E402
 from minagi.v161.peft_serving import runtime_manifest  # noqa: E402
@@ -56,6 +57,8 @@ def _storage(tmp_path):
     model.mkdir(parents=True)
     (model / "config.json").write_text('{"model_type": "gpt2"}')
     (model / "model.safetensors").write_bytes(b"base-model-weights")
+    # the signed plan binds the tokenizer inside the model snapshot
+    (model / "tokenizer.json").write_text('{"vocab": []}')
     tok = storage / "models" / "tok"
     tok.mkdir(parents=True)
     (tok / "tokenizer.json").write_text('{"vocab": []}')
@@ -82,7 +85,7 @@ def _storage(tmp_path):
     manifest = runtime_manifest(
         model_id="tiny", model_revision="r1",
         model_digest=close_tree(model, resolve_symlinks=True).digest,
-        tokenizer_digest=close_tree(tok, resolve_symlinks=True).digest,
+        tokenizer_digest=tokenizer_artifact_digest(model),
         adapter_dir=adir, protocol=proto,
         campaign_digest=plan_doc["digest"],
         qualification_record_digest=qual_doc["digest"])
