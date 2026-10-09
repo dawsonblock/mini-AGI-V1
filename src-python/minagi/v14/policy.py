@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from .models import EvidenceStrength, GovernanceCoordinates, LearningMechanism, LearningProposalV14, PermanenceLevel
+from .models import EvidenceStrength, LearningProposalV14, PermanenceLevel
 
 
 DEFAULT_REQUIRED_EVIDENCE: dict[PermanenceLevel, EvidenceStrength] = {

@@ -23,7 +23,7 @@ from minagi.v14.provenance_v145 import (
 from minagi.v14.state_epoch_v145 import EpochTransitionAuthorityV145, EpochTransitionValidatorV145
 from minagi.v14.runtime_v145 import GovernedContinualRuntimeV145
 from minagi.v14.runtime_v144 import RUNTIME_COMPONENT_SCHEMAS_V144
-from minagi.v14.trajectory_v145 import VerifiedTrajectoryV145, TrajectorySkillInducerV145
+from minagi.v14.trajectory_v145 import VerifiedTrajectoryV145
 from minagi.v14.experiment_v145 import FrozenArmRecordV145, FrozenBaselineGateV145
 
 
@@ -119,7 +119,7 @@ def test_bound_evaluation_qualifies_and_state_epoch_becomes_servable(tmp_path):
     assert q.decision=="PROMOTE"
     m=rt.prepare_runtime_manifest(qualification=q,runtime_component_payloads=components(belief.digest)); a=rt.authorize(q,m)
     epoch=rt.prepare_state_epoch(manifest=m,authorization=a)
-    activation=rt.activate_into_epoch(auth=a,manifest=m,epoch=epoch)
+    rt.activate_into_epoch(auth=a,manifest=m,epoch=epoch)
     assert rt.db.state_epoch_row_v145(epoch.digest)["state"]=="LOCALLY_COMMITTED"
     authority=EpochTransitionAuthorityV145(authority_id="epoch",authority_generation=1,signer=epoch_s)
     witness=rt.cas.put_json({"external_witness":"ok","epoch":epoch.digest})

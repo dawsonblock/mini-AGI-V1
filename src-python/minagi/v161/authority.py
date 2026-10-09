@@ -223,8 +223,8 @@ class AuthorityLedger:
     def _records(self) -> list[dict]:
         if not self.path.is_file():
             return []
-        return [json.loads(l) for l in self.path.read_text().splitlines()
-                if l.strip()]
+        return [json.loads(line) for line in self.path.read_text().splitlines()
+                if line.strip()]
 
     def append(self, signer: Ed25519Signer, kind: str,
                body: dict) -> dict:

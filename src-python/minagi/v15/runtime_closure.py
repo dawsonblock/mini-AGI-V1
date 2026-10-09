@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import hashlib
-from typing import Any, Mapping
 
 from minagi.integration.qw3_state import (
     GovernedServingContract,

@@ -1,8 +1,8 @@
 from __future__ import annotations
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, Any
+from typing import Iterable, Mapping
 from egai.common.canonical import digest, validate_digest
 from egai.common.crypto import Ed25519Signer, Ed25519Verifier, SignedEnvelope
 

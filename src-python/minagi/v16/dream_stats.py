@@ -8,7 +8,6 @@ from typing import Callable, Sequence
 
 from dream_rsi_governed.canonical import sha256_digest
 from dream_rsi_governed.evaluator import ReplayEvaluator
-from dream_rsi_governed.experiment import replicated_score
 from dream_rsi_governed.models import CandidatePolicy, ReplayWorld
 from dream_rsi_governed.policy import ExplorationPolicy
 

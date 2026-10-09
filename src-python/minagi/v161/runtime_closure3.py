@@ -18,7 +18,7 @@ from pathlib import Path
 
 from egai.common.canonical import digest, validate_digest
 
-from .artifact_closure import (ArtifactClosureError, TreeClosure,
+from .artifact_closure import (TreeClosure,
                                close_tree)
 
 ZERO = "sha256:" + "0" * 64

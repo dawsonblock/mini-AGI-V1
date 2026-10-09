@@ -1,5 +1,7 @@
 """Verify exact source membership, hashes, and the detached Ed25519 attestation."""
-import argparse, hashlib, json, sys
+import argparse
+import hashlib
+import json
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 

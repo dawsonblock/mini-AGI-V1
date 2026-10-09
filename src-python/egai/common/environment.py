@@ -1,5 +1,9 @@
 from dataclasses import dataclass
-import platform,sys,importlib.metadata,os,subprocess
+import platform
+import sys
+import importlib.metadata
+import os
+import subprocess
 from egai.common.canonical import digest
 @dataclass(frozen=True)
 class EnvironmentFingerprint:

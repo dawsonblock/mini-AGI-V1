@@ -10,19 +10,19 @@ If selection sets differ / answer missed at 0.5  -> index-scoring divergence und
 If selection sets identical                       -> KV stage-in fidelity (bytes), not selection.
 """
 from __future__ import annotations
-import argparse, json
+import argparse
+import json
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dataset import load_all
-from analyze_dump import load_snapshot, session_char_spans
-from prompt import render_messages, render_history
+from analyze_dump import session_char_spans
+from prompt import render_messages
 
 NATIVE_CTX = 262144
 
 
 def snap_by_seq(path: Path, seq: int):
-    meta, blocks = None, None
     cm, cb = None, []
     for line in Path(path).read_text().splitlines():
         line = line.strip()

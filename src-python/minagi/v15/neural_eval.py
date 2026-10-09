@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-import json
 from typing import Callable, Mapping, Sequence
 
 from egai.common.canonical import digest, validate_digest

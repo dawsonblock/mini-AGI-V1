@@ -1,5 +1,3 @@
-import json
-from dataclasses import asdict
 from .model import SkillManifest
 from .memory import LearnedProcedure
 

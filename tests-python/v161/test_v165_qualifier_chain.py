@@ -16,7 +16,6 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src-python"))
@@ -346,9 +345,9 @@ def test_clean_matrix_qualifies_and_signs(tmp_path):
     # preregistration the runner wrote
     led = AuthorityLedger(c.storage / "AUTHORITY_LEDGER.jsonl")
     assert led.verify(c.registry) == []
-    kinds = [json.loads(l)["kind"]
-             for l in (c.storage / "AUTHORITY_LEDGER.jsonl")
-             .read_text().splitlines() if l.strip()]
+    kinds = [json.loads(line)["kind"]
+             for line in (c.storage / "AUTHORITY_LEDGER.jsonl")
+             .read_text().splitlines() if line.strip()]
     assert kinds == ["experiment_preregistration", "evaluation_bundle",
                      "qualification_record"]
 
@@ -357,7 +356,7 @@ def test_tampered_prediction_fails_closed(tmp_path):
     c = SyntheticCampaign(tmp_path)
     c.build()
     p = c.cdir / "seed-0" / "PREDICTIONS-L6.jsonl"
-    recs = [json.loads(l) for l in p.read_text().splitlines()]
+    recs = [json.loads(line) for line in p.read_text().splitlines()]
     recs[0]["output"] = "fabricated-right-answer"
     p.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
     proc, out = _qualify(c)
@@ -411,7 +410,7 @@ def test_off_corpus_prediction_id_fails(tmp_path):
     c = SyntheticCampaign(tmp_path)
     c.build()
     p = c.cdir / "seed-0" / "PREDICTIONS-L6.jsonl"
-    recs = [json.loads(l) for l in p.read_text().splitlines()]
+    recs = [json.loads(line) for line in p.read_text().splitlines()]
     recs[0] = prediction_record("injected-task", "hidden", "hp0",
                                 "ans0", 3, 32)
     # keep the receipt-consistent digests intact by re-signing with the

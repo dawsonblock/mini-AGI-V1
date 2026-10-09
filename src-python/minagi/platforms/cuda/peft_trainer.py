@@ -35,7 +35,9 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Mapping, Sequence
 import importlib.metadata
-import json, random, time
+import json
+import random
+import time
 from egai.common.canonical import digest, sha256_bytes
 
 LABEL_IGNORE = -100

@@ -50,7 +50,6 @@ def main() -> int:
     args = parser.parse_args()
 
     log_path = pathlib.Path(args.server_log)
-    start = log_path.stat().st_size if log_path.exists() else 0
     ballast, measured = make_ballast(
         args.base_url, args.ballast_tokens, args.timeout
     )
@@ -173,7 +172,7 @@ def main() -> int:
             args.base_url, messages, 16, args.timeout
         )
     else:
-        second_status, second, second_body = 0, {}, "first request failed"
+        second_status, _, second_body = 0, {}, "first request failed"
     second_end = log_path.stat().st_size
     if second_status == 200:
         # Simulate an upstream harness rewriting an old tool payload without
@@ -188,7 +187,7 @@ def main() -> int:
             args.base_url, recovery_messages, 8, args.timeout
         )
     else:
-        third_status, third, third_body = 0, {}, "second request failed"
+        third_status, _, third_body = 0, {}, "second request failed"
     time.sleep(0.2)
     log_bytes = log_path.read_bytes()
     oversized_log = log_bytes[oversized_start:oversized_end].decode(
@@ -197,7 +196,6 @@ def main() -> int:
     large_log = log_bytes[oversized_end:large_end].decode(
         "utf-8", errors="replace"
     )
-    log = log_bytes[start:].decode("utf-8", errors="replace")
     second_log = log_bytes[first_end:second_end].decode(
         "utf-8", errors="replace"
     )

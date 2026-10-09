@@ -18,5 +18,6 @@ class SequentialBenchmark:
         groups={}
         for c in self.cases:
             pred=solver(c.input);groups.setdefault(c.split,[]).append(self.scorer(pred,c.expected))
-        avg=lambda x:sum(x)/len(x) if x else 0.
+        def avg(x):
+            return sum(x)/len(x) if x else 0.
         return {'episode':episode,'future_success':avg(groups.get('future',[])),'old_success':avg(groups.get('retention',[])),'security_success':avg(groups.get('security',[]))}

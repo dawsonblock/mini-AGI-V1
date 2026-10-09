@@ -1,0 +1,29 @@
+# Flake8 view of the repository's lint contract. Mirrors
+# [tool.ruff.lint] in pyproject.toml so editors using either tool agree.
+#
+# Enforced: E4 (import hygiene), E7 (statement structure), E9 (syntax),
+# F (pyflakes) — the same selection ruff runs with.
+#
+# Intentionally not enforced, matching the codebase's established
+# compact style:
+#   E1/E2/E3/E5, W — pycodestyle formatting (indentation, whitespace
+#          after commas/operators, blank lines, line length): the
+#          research code is written compactly and ~100 columns wide, not
+#          to the 79-column default; ruff does not enforce these either
+#   E402 — scripts and legacy modules import after a sys.path bootstrap
+#          (the package is not pip-installed on the Colab runners)
+#   E701/E702/E703 — one-line `if x: y` / `a; b` statements, deliberate
+[flake8]
+max-line-length = 100
+extend-ignore = E1, E2, E3, E5, W, E402, E701, E702, E703
+per-file-ignores =
+    __init__.py:F401
+exclude =
+    .git,
+    __pycache__,
+    .pytest_cache,
+    .ruff_cache,
+    build*,
+    dist,
+    references,
+    third_party

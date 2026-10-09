@@ -1,5 +1,4 @@
 import pytest
-from egai.common.canonical import digest
 from egai.common.crypto import Ed25519Signer, Ed25519Verifier
 from minagi.v14 import (
     AdaptiveReplayScheduler,
@@ -88,7 +87,8 @@ def test_fresh_task_is_restart_safe_and_one_shot(tmp_path):
 
 
 def test_falsification_plan_requires_negative_retention_security():
-    base=lambda i,k:FalsificationCase(i,k,d(str(i%10)),d(str((i+1)%10)))
+    def base(i, k):
+        return FalsificationCase(i,k,d(str(i%10)),d(str((i+1)%10)))
     with pytest.raises(ValueError):
         FalsificationPlan(d("a"),(base(1,FalsificationKind.OOD),),"falsifier").validate()
     plan=FalsificationPlan(d("a"),(

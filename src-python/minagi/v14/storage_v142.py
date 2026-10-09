@@ -11,7 +11,6 @@ from typing import Any, Iterator
 
 from egai.common.canonical import digest, validate_digest
 from egai.common.crypto import SignedEnvelope
-from .storage import ImmutableCAS
 
 
 @dataclass(frozen=True)

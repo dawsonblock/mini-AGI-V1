@@ -100,8 +100,8 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 2
 
-    corpus_rows = [json.loads(l) for l in
-                   Path(args.corpus).read_text().splitlines() if l.strip()]
+    corpus_rows = [json.loads(line) for line in
+                   Path(args.corpus).read_text().splitlines() if line.strip()]
     if not corpus_rows:
         print("corpus is empty", file=sys.stderr)
         return 1

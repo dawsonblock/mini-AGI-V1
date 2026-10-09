@@ -40,10 +40,9 @@ import os
 import re
 import subprocess
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import kvmem_e2e_regression as e2e  # noqa: E402

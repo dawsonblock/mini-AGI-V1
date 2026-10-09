@@ -232,6 +232,7 @@ PyYAML; `[ml]`/`[colab]`/`[mac]` extras for torch/transformers/peft).
 The release is verified and archived with three commands:
 
     python -m pytest tests-python -q          # 639 passed, 1 skipped (macOS)
+    python -m ruff check .                    # lint contract (pyproject.toml, .flake8)
     python scripts/verify_release.py          # manifest + signature + metadata
     python scripts/release/build_zip.py --out Runtime-Security-Closure.zip
 

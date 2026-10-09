@@ -26,7 +26,6 @@ import json
 from pathlib import Path
 import re
 import struct
-import time
 from typing import Any
 
 from transformers import AutoTokenizer
@@ -218,7 +217,6 @@ def main() -> None:
             f"dump={meta['prompt_tokens']}"
         )
     blocks = sorted(snapshot["blocks"], key=lambda block: int(block["p0"]))
-    block_map = {int(block["b"]): block for block in blocks}
     records = message_records(canonical, sample, prompt)
     groups = build_groups(
         args.mode,

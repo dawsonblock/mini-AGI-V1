@@ -1,4 +1,3 @@
-from collections import defaultdict
 from .objects import Hypothesis,AbstractionCandidate,Counterexample
 from egai.common.canonical import digest
 

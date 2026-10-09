@@ -210,7 +210,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
     ]
     for arm in summary["arms"]:
         m = arm["metrics"]
-        mean = lambda key: m[key]["mean"]
+        def mean(key):
+            return m[key]["mean"]
         lines.append(
             f"| {arm['name']} | {arm['questions']} | {mean('selection_wall_ms'):.3f} | "
             f"{mean('stage_out_submit_wall_ms'):.3f} | "

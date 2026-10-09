@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import math
-from typing import Any
 
 from kvcontinual.execution.authority import Ed25519ReceiptSigner, Ed25519ReceiptVerifier
 from kvcontinual.execution.cache.block import ArtifactQualification, ExecutionArtifact

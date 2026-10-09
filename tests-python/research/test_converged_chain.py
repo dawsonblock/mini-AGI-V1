@@ -7,7 +7,7 @@ from kvcontinual.execution.authority import Ed25519ReceiptSigner
 from egai.common.trust import AuthorityTrust
 from egai.authority.model import RawResult
 from egai.common.canonical import digest
-from minagi.egai.models import LearningLevel,LearningProposal,LearningAction
+from minagi.egai.models import LearningLevel,LearningAction
 from minagi.egai.qualification import QualificationBundle,QualificationMetrics,IndependentQualificationGate
 
 

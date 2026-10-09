@@ -16,7 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src-python"))
 
-from egai.common.crypto import Ed25519Signer, SignedEnvelope  # noqa: E402
+from egai.common.crypto import Ed25519Signer  # noqa: E402
 from minagi.v161.authority import (AuthorityLedger,  # noqa: E402
                                    AuthorityRecord, AuthorityRegistry)
 

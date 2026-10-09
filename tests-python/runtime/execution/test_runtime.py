@@ -5,7 +5,7 @@ from kvcontinual.execution.recurrent.affine import AffineSummary
 from kvcontinual.execution.recurrent.interfaces import ApproximateExecution
 from kvcontinual.execution.runtime import ReconstructionRuntime
 from kvcontinual.execution.source import SourceSegment, SourceSegmentStore
-from kvcontinual.execution.types import AssemblyTopology, ExecutionIdentity, ModelIdentity, OracleMetrics, ReconstructionAction, RuntimeRiskSignals
+from kvcontinual.execution.types import ExecutionIdentity, ModelIdentity, OracleMetrics, ReconstructionAction, RuntimeRiskSignals
 
 
 def ident():

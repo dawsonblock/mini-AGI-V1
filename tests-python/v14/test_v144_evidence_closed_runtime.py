@@ -1,5 +1,4 @@
 from dataclasses import replace
-import json
 import pytest
 
 from egai.common.crypto import Ed25519Signer, Ed25519Verifier

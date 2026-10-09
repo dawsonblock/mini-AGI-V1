@@ -1,4 +1,5 @@
-import tempfile,unittest
+import tempfile
+import unittest
 from egai.skills.registry import SkillRegistry
 class T(unittest.TestCase):
  def test_no_direct_promotion_surface(self):

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Mapping
 
 from egai.common.canonical import digest
 from minagi.integration.qw3_state import RuntimeStateMismatch, ServedArtifactManifest

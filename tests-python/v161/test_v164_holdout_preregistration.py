@@ -25,9 +25,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src-python"))
 
-from egai.common.canonical import sha256_bytes  # noqa: E402
-from minagi.v161.dataset_manifest import (DatasetMember,  # noqa: E402
-                                          DatasetMembershipManifest)
+from minagi.v161.dataset_manifest import (DatasetMembershipManifest)
 
 GEN = ROOT / "scripts" / "generate_holdout.py"
 SEAL = ROOT / "scripts" / "seal_final_holdout.py"
@@ -89,7 +87,7 @@ def test_generator_deterministic_shape_and_meta(tmp_path):
         proc = _run_gen(corpus, out)
         assert proc.returncode == 0, proc.stderr
     assert out1.read_bytes() == out2.read_bytes()  # deterministic
-    rows = [json.loads(l) for l in out1.read_text().splitlines()]
+    rows = [json.loads(line) for line in out1.read_text().splitlines()]
     assert len(rows) == 6
     assert all(r["split"] == "final_holdout" for r in rows)
     assert all(r["family"].startswith("holdout-") for r in rows)
@@ -115,7 +113,7 @@ def test_generator_filters_corpus_vocabulary(tmp_path):
     out = tmp_path / "h.jsonl"
     proc = _run_gen(corpus, out, families=2, per_family=3)
     assert proc.returncode == 0, proc.stderr
-    rows = [json.loads(l) for l in out.read_text().splitlines()]
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
     assert not (_input_words(rows) & set(HOLDOUT_WORDS[:5]))
 
 
@@ -144,7 +142,7 @@ def test_sealer_accepts_generated_holdout(tmp_path):
     proc = _seal(out, corpus)
     assert proc.returncode == 0, proc.stderr
     sealed = json.loads(proc.stdout)["final_holdout_digest"]
-    rows = [json.loads(l) for l in out.read_text().splitlines()]
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
     recomputed = DatasetMembershipManifest(
         "final_holdout",
         tuple(_sealer._member(r) for r in rows)).digest
@@ -169,8 +167,8 @@ def _config(name):
 
 
 def _corpus_rows():
-    return [json.loads(l) for l in CAMPAIGN3_CORPUS.read_text().splitlines()
-            if l.strip()]
+    return [json.loads(line) for line in CAMPAIGN3_CORPUS.read_text().splitlines()
+            if line.strip()]
 
 
 def test_campaign3a_binds_a_sealed_holdout_digest():
@@ -202,8 +200,8 @@ def test_campaign3a_holdout_rederives_from_authority_file():
         pytest.skip("authority-held holdout file not present on this host "
                     "(sealed digest binding is still enforced above)")
     digest = str(_config("campaign3a.yaml")["final_holdout_digest"])
-    rows = [json.loads(l) for l in holdout.read_text().splitlines()
-            if l.strip()]
+    rows = [json.loads(line) for line in holdout.read_text().splitlines()
+            if line.strip()]
     man = DatasetMembershipManifest(
         "final_holdout", tuple(_sealer._member(r) for r in rows))
     assert man.digest == digest, \

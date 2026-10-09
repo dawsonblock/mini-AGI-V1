@@ -1,5 +1,6 @@
 from pathlib import Path
-import os, hashlib
+import os
+import hashlib
 from .canonical import sha256_bytes, validate_digest
 
 class ArtifactStore:

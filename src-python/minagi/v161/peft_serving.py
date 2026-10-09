@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Iterable
 
 from egai.common.canonical import digest, sha256_bytes
 from minagi.v161.artifact_closure import (ArtifactClosureError, TreeEntry,

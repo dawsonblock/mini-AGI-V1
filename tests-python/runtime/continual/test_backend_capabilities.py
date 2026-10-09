@@ -1,4 +1,4 @@
-from kvcontinual.continual.backends import BackendCapabilities, OpenAIBackend
+from kvcontinual.continual.backends import OpenAIBackend
 from kvcontinual.continual.integrations.openai_compatible import OpenAICompatibleClient
 
 

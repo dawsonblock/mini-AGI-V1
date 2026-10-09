@@ -19,7 +19,8 @@ class T(unittest.TestCase):
   meta={'feedback_verified':True,'verifier_id':'oracle'}
   exp=[TaskCase('e1','experience','abc','cba','reverse','Reverse the input characters.',('reverse',),meta),TaskCase('e2','experience','cat','tac','reverse','Reverse the input characters.',('reverse',),meta)]
   ev=[TaskCase('f1','future','dog','god','reverse'),TaskCase('r1','retention','plain','UNKNOWN','other')]
-  score=lambda a,b:1. if a==b else 0.
+  def score(a, b):
+   return 1. if a==b else 0.
   report=SequentialExperiment(exp,ev,score,checkpoints=(0,1,2),bootstrap_samples=100,near_leakage_threshold=None).run(model,agent)
   self.assertTrue(report.model_digest_constant);self.assertEqual(report.points[0].future_success,0.)
   self.assertEqual(report.points[-1].future_success,1.);self.assertEqual(report.learned_procedures,1)

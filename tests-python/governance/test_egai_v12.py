@@ -30,7 +30,6 @@ from minagi.egai import (
     PlasticityDecisionContext,
     ProposalOption,
     PromotionAuthority,
-    PromotionConstraints,
     PromotionVerdict,
     QualificationBundle,
     QualificationMetrics,
@@ -41,7 +40,6 @@ from minagi.egai import (
     TrustedEvidenceIngestor,
     compute_fte,
 )
-from minagi.egai.canonical import sha256_json
 
 
 IDENTITY = "sha256:" + "1" * 64

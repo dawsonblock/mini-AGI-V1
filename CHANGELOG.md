@@ -120,6 +120,33 @@ regression test; no scientific claim changes.
 Docs: `docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md` (tokenizer
 convention, verifier policy). Tests: +8 (631 → 639 passing, 1 skipped).
 
+## Lint contract (dedicated hygiene pass)
+
+The repository had no lint configuration, so tools ran with their own
+defaults (ruff 0.16's broad rule set, Flake8's 79-column pycodestyle)
+and flagged the codebase's deliberate conventions as thousands of
+errors. `pyproject.toml` (`[tool.ruff]`) and `.flake8` now declare one
+contract for both tools: E4 import hygiene, E7 statement structure, E9
+syntax, and pyflakes (F) are enforced. Documented as intentionally not
+enforced: the compact one-line statement style (E701/E702/E703), the
+post-`sys.path` bootstrap imports (E402 — the package is not installed
+on the Colab runners), the ~100-column line style (E501), and the
+pycodestyle formatting families (E1/E2/E3/E5/W). `__init__.py`
+re-export barrels are exempt from F401; `references/` and
+`third_party/` keep their upstream style.
+
+The enforced rules are then satisfied repo-wide: unused imports (F401),
+multi-import lines (E401), unused locals (F841), lambda assignments
+(E731), ambiguous names (E741), f-strings without placeholders (F541),
+a redundant re-import (F811), and an unnecessary `nonlocal` (F824)
+were fixed across 180 files. Every fix is behavior-preserving
+(side-effecting calls kept; dead assignments removed) — with one
+deliberate exception: the F811 "fix" would have broken the v164
+qualification path (the first binding serves it when the v165 branch is
+skipped), so `ImmutableCAS` is now imported from its defining module
+instead. `ruff check .` and `flake8 .` both report zero findings;
+tests unchanged at 639 passed (1 skipped).
+
 # v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
 
 Phases 2, 3, and (early) 5 of the v17 plan. Scientific claims unchanged

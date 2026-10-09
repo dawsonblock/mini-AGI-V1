@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
-import sqlite3, time
+import sqlite3
+import time
 
 class SnapshotRollbackGuard:
     """Durable anti-rollback floor for accepted snapshot lineages."""

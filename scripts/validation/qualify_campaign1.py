@@ -160,8 +160,8 @@ def main() -> int:
                                               DatasetMembershipManifest,
                                               DatasetPartitionSet)
     from egai.common.canonical import sha256_bytes
-    rows = [json.loads(l) for l in dataset_cfg.read_text().splitlines()
-            if l.strip()]
+    rows = [json.loads(line) for line in dataset_cfg.read_text().splitlines()
+            if line.strip()]
 
     def _member(row):
         payload = json.dumps(row, sort_keys=True, separators=(",", ":"),
@@ -195,9 +195,9 @@ def main() -> int:
                             "--holdout was not supplied for verification")
         else:
             try:
-                hrows = [json.loads(l) for l in
+                hrows = [json.loads(line) for line in
                          Path(args.holdout).read_text().splitlines()
-                         if l.strip()]
+                         if line.strip()]
                 hman = DatasetMembershipManifest(
                     "final_holdout",
                     tuple(_member(r) for r in hrows))
@@ -236,10 +236,9 @@ def main() -> int:
                                             retention_score, score_row,
                                             security_regression)
         from minagi.v161.evidence_receipt_v3 import (
-            EvidenceReceiptV3, evaluation_bundle,
-            input_manifest_digest, predictions_digest_of,
+            EvidenceReceiptV3, input_manifest_digest, predictions_digest_of,
             read_predictions)
-        from minagi.v161.stats import (bootstrap_ci, cluster_bootstrap_ci,
+        from minagi.v161.stats import (cluster_bootstrap_ci,
                                        false_activation_rate)
         from egai.common.canonical import digest as _digest, sha256_bytes as _sha
         ret_impl = {"containment_match": containment_match,

@@ -1,6 +1,9 @@
 from __future__ import annotations
 from pathlib import Path
-import json, os, time, uuid
+import json
+import os
+import time
+import uuid
 
 class LockTimeout(TimeoutError): pass
 

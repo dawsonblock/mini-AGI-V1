@@ -1,7 +1,7 @@
 from abc import ABC,abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-import hashlib, json
+import hashlib
 from egai.common.canonical import digest,validate_digest
 
 class FrozenModel(ABC):

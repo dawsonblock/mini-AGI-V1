@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-import hashlib, json
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 

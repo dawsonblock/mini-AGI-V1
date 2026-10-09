@@ -34,7 +34,7 @@ inputs — identical inputs produce identical decisions.
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from enum import Enum
 
 from egai.common.canonical import digest, validate_digest

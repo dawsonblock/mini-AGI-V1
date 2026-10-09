@@ -27,3 +27,32 @@ include = ["kvcontinual*", "minagi*", "egai*", "dream_rsi_governed*"]
 pythonpath = ["src-python", "tests-python/research"]
 testpaths = ["tests-python"]
 addopts = "--import-mode=importlib"
+
+[tool.ruff]
+# Deliberate, repo-wide lint contract (mirrored for Flake8 in .flake8).
+# The research code has an established compact style; the settings below
+# are what this repository actually enforces — everything else is
+# documented as intentionally not enforced rather than left to defaults.
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    "build*",
+    "dist",
+    "references",
+    "third_party",
+]
+
+[tool.ruff.lint]
+# E4 import hygiene, E7 statement structure, E9 syntax, F pyflakes.
+# Intentionally not enforced:
+#   E402 — scripts and legacy modules import after a sys.path bootstrap
+#          (the package is not pip-installed on the Colab runners)
+#   E501 — lines are kept to ~100 chars, not the 88/79 tool defaults
+#   E701/E702/E703 — the compact one-line statement style used
+#          deliberately throughout the research code
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E402", "E501", "E701", "E702", "E703"]
+
+[tool.ruff.lint.per-file-ignores]
+# Re-export barrels: an unused import here is the module's public API.
+"__init__.py" = ["F401"]

@@ -29,8 +29,7 @@ from minagi.v161.generations import (PROMOTION_DECISION_SCHEMA,  # noqa: E402
                                      GenerationChain, GenerationRecord)
 from minagi.v161.plasticity import (DynamicLoraPolicyV1,  # noqa: E402
                                     FailureEvidence, FailureKind,
-                                    Mechanism, PlasticityProposal,
-                                    RankAllocator, diagnose, propose)
+                                    Mechanism, RankAllocator, diagnose, propose)
 
 D = lambda s: digest(s)  # noqa: E731
 

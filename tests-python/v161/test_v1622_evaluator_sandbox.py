@@ -11,7 +11,6 @@ pass on the repaired implementation and fail on the v16.2.1 executor,
 which ran corpus python with the full parent environment, no
 filesystem/network isolation, and no process-tree termination.
 """
-import os
 import socket
 import subprocess
 import sys

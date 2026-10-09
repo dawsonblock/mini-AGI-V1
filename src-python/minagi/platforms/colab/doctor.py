@@ -1,5 +1,6 @@
 from __future__ import annotations
-import argparse, json
+import argparse
+import json
 from dataclasses import asdict
 from pathlib import Path
 from .environment import probe_environment

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-import math
-from typing import Mapping
 
 from minagi.egai.canonical import sha256_json
 from .experiment_protocol import AblationQualificationCertificateRC14, PreregisteredContinualExperimentPlanRC14

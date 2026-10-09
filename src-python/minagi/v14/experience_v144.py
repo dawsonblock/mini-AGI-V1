@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-import time, uuid
+import time
+import uuid
 
 from egai.common.canonical import digest, validate_digest
-from .verification import EpisodeVerificationReceipt, EpisodeVerificationValidator
+from .verification import EpisodeVerificationValidator
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,5 @@
 from __future__ import annotations
-from dataclasses import asdict, dataclass
-from typing import Iterable
+from dataclasses import dataclass
 from egai.common.canonical import digest, validate_digest
 
 

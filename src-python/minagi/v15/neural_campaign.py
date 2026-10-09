@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
-import json
-from typing import Callable, Mapping, Sequence
+from typing import Callable, Sequence
 
 from egai.common.canonical import canonical_bytes, digest, validate_digest
 from minagi.integration.qw3_state import ServedArtifactManifest
 from minagi.v14.experiment_v145 import FrozenBaselineGateV145
-from .neural_eval import QW3NeuralArm, SealedNeuralAdapterEvaluator, SealedNeuralExperiment
+from .neural_eval import QW3NeuralArm, SealedNeuralAdapterEvaluator
 
 ZERO = "0" * 64
 

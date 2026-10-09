@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import difflib
 import http.client
 import json
 import time

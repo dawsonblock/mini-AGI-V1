@@ -15,7 +15,6 @@ import os
 import re
 import signal
 import subprocess
-import time
 from pathlib import Path
 
 from prefix_cache_canary import post_completion, wait_for_server

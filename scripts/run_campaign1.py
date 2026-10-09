@@ -34,7 +34,12 @@ PASS — because only the full preregistered matrix may qualify.
 """
 from __future__ import annotations
 
-import argparse, gc, json, random, sys, time
+import argparse
+import gc
+import json
+import random
+import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 import yaml
@@ -58,8 +63,7 @@ from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
 from minagi.v161.evaluators import (containment_match, exact_match,
                                     retention_score, score_row,
                                     security_regression)
-from minagi.v161.authority import (AuthorityLedger, AuthorityRegistry,
-                                   provision_role)
+from minagi.v161.authority import (AuthorityLedger, AuthorityRegistry)
 from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
                                        ColabCampaignPlanV163,
                                        ColabCampaignPlanV164,
@@ -82,7 +86,7 @@ from minagi.v15.native_adapter import (native_adapter2_supports_target,
 
 
 def load_rows(path: Path):
-    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
 def member(row):
@@ -294,7 +298,6 @@ def main() -> int:
     # v164: rows with probe=delayed are the seed-end persistence probes.
     # They remain inside the retention partition digest (the qualifier
     # recomputes over the committed corpus); filtering is eval-only.
-    retention_eval_rows_all = retention_rows  # partition view: unfiltered
     delayed_rows = [r for r in retention_rows if r.get("probe") == "delayed"]
     retention_probe_rows = [r for r in retention_rows if r.get("probe") != "delayed"]
     parts = DatasetPartitionSet(
@@ -591,12 +594,12 @@ def main() -> int:
         # cannot legitimately precede a trusted plan. Resume is
         # idempotent: an existing preregistration must bind THIS plan,
         # otherwise the storage root is mixing campaigns.
-        existing = [json.loads(l) for l in
+        existing = [json.loads(line) for line in
                     authority_ledger.path.read_text().splitlines()
-                    if l.strip()] \
+                    if line.strip()] \
             if authority_ledger.path.is_file() else []
-        reg = [l for l in existing
-               if l.get("kind") == "experiment_preregistration"]
+        reg = [line for line in existing
+               if line.get("kind") == "experiment_preregistration"]
         if reg:
             if reg[0].get("body_digest") != digest(plan_doc):
                 raise SystemExit(
@@ -634,7 +637,6 @@ def main() -> int:
     all_seeds = []
     for seed in plan.seeds:
         final_dir = campaign_dir / f"seed-{seed}"
-        seed_result_path = final_dir / "SEED_RESULT.json"
         if v3:
             sd = load_verified_seed_result_v3(
                 final_dir, seed, plan.digest, plan.arms, verifier)

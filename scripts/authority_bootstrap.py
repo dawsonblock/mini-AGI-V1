@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from egai.common.crypto import Ed25519Signer
 from minagi.v161.authority import (AUTHORITY_ROLES, AuthorityLedger,
-                                   AuthorityRecord, AuthorityRegistry,
+                                   AuthorityRegistry,
                                    provision_role)
 
 

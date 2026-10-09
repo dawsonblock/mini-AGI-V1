@@ -8,7 +8,7 @@ import time
 from typing import Any, Mapping, Sequence
 import uuid
 
-from .canonical import atomic_write_json, canonical_bytes, sha256_json
+from .canonical import atomic_write_json, sha256_json
 from .models import EvidenceClass, EvidenceOrigin, EvidenceRecord
 
 

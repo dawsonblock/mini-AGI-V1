@@ -1,7 +1,12 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
-import hashlib, os, re, tempfile, time, uuid
+import hashlib
+import os
+import re
+import tempfile
+import time
+import uuid
 
 _DIGEST_RE=re.compile(r"^[0-9a-f]{64}$")
 

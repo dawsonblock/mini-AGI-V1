@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
-import time, uuid
+import time
+import uuid
 
 from egai.common.canonical import digest, validate_digest
 from egai.common.crypto import SignedEnvelope

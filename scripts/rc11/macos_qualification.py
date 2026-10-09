@@ -5,7 +5,15 @@ This does not claim HYPIC correctness by itself. It records the machine/toolchai
 identity that must be bound into later differential qualification receipts.
 """
 from __future__ import annotations
-import argparse, hashlib, importlib.metadata, importlib.util, json, platform, shutil, subprocess, sys
+import argparse
+import hashlib
+import importlib.metadata
+import importlib.util
+import json
+import platform
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 def cmd(argv):
