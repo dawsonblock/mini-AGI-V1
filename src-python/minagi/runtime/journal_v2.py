@@ -43,12 +43,22 @@ from .authority_store import AuthorityStore, StoreCorrupt
 
 #: Event kinds whose events must be signed by the `runtime` role.
 SIGNED_EVENT_KINDS = frozenset({
-    "activation_completion", "rollback_completion", "quarantined"})
+    "activation_completion", "rollback_completion", "quarantined",
+    "routing_observed", "deployment_restored", "deployment_unavailable",
+    "restoration_completed"})
 
-#: Control event kinds that legitimately record ACTIVE -> ACTIVE.
+#: Control event kinds that legitimately record a same-state marker
+#: (observations and deployment-level markers are not activation
+#: transitions).
 _SAME_STATE_KINDS = frozenset({
     "rollback_intent", "rollback_pointer", "rollback_completion",
-    "activation_completion", "migrated"})
+    "activation_completion", "migrated", "routing_observed",
+    "deployment_restored", "deployment_unavailable",
+    "restoration_completed", "unload_deferred"})
+
+#: Activation ids that are not per-activation journal chains at all —
+#: migration/deployment-level pseudo records.
+_PSEUDO_IDS = frozenset({"__migration__", "__deployment__"})
 
 
 class JournalRefused(StoreCorrupt):
@@ -85,9 +95,10 @@ def _verify_grammar(events: list[dict]) -> None:
     last_to: dict[str, str] = {}
     for e in events:
         aid = e["activation_id"]
-        if aid == "__migration__" or \
+        if aid in _PSEUDO_IDS or \
                 e["event_type"] == "migration_checkpoint":
-            continue  # migration pseudo-records are not activations
+            continue  # migration/deployment pseudo-records are not
+            # activation chains
         prev = last_to.get(aid, "")
         frm, to, kind = e["from_state"], e["to_state"], e["event_type"]
         if kind == "migrated":

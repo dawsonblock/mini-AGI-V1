@@ -94,16 +94,131 @@ def test_concurrent_routes_observe_consistent_version():
 def test_drain_waits_for_inflight():
     router = ServingRouter(drain_timeout=0.5)
     router.activate("aa" * 16, Backend(), {"id": 1})
-    with router._lock:
-        router._inflight += 1
+    lease = router.acquire_lease()
     done = []
     t = threading.Thread(target=lambda: (
         router.deactivate("aa" * 16), done.append(1)))
     t.start()
     import time
     time.sleep(0.05)
-    with router._drained:
-        router._inflight -= 1
-        router._drained.notify_all()
+    router.release_lease(lease)
     t.join(timeout=3)
     assert done
+
+
+def test_drain_timeout_is_not_unload_permission():
+    """SEC-303: a drain timeout leaves the backend retained — it is
+    not permission to unload while leases remain."""
+    router = ServingRouter(drain_timeout=0.05)
+    backend = Backend()
+    router.activate("aa" * 16, backend, {"id": 1})
+    lease = router.acquire_lease()
+    assert router.drain_until_idle("aa" * 16, timeout=0.05) is False
+    # still in flight: safe_unload refuses and the entry is retained
+    assert router.safe_unload("aa" * 16) is False
+    assert router.inflight("aa" * 16) == 1
+    router.release_lease(lease)
+    assert router.drain_until_idle("aa" * 16, timeout=0.5) is True
+    # still accepting traffic — withdrawal must precede unload
+    assert router.safe_unload("aa" * 16) is False
+    router.stop_accepting("aa" * 16)
+    assert router.safe_unload("aa" * 16) is True
+
+
+def test_retire_sequence_drains_then_unloads():
+    """The full withdrawal: stop new traffic, drain, unload only when
+    the activation's own lease count is zero."""
+    router = ServingRouter(drain_timeout=0.5)
+
+    class Unloading(Backend):
+        def __init__(self):
+            self.unloaded = []
+
+        def unload(self, handle):
+            self.unloaded.append(handle)
+
+    backend = Unloading()
+    router.activate("aa" * 16, backend, {"id": 1})
+    out = router.retire("aa" * 16)
+    assert out["drained"] and out["unloaded"]
+    assert backend.unloaded == [{"id": 1}]
+    assert router.inflight("aa" * 16) == 0
+    with pytest.raises(RoutingRefused):
+        router.route({"prompt": "x"})
+
+
+def test_retire_with_live_lease_retains_until_released():
+    router = ServingRouter(drain_timeout=0.05, cancel_grace=0.05)
+
+    class Unloading(Backend):
+        def __init__(self):
+            self.unloaded = []
+
+        def unload(self, handle):
+            self.unloaded.append(handle)
+
+    backend = Unloading()
+    router.activate("aa" * 16, backend, {"id": 1})
+    lease = router.acquire_lease()
+    out = router.retire("aa" * 16)
+    assert out["drained"] is False and out["unloaded"] is False
+    assert out["inflight"] == 1
+    assert not backend.unloaded
+    router.release_lease(lease)
+    out = router.retire("aa" * 16)
+    assert out["unloaded"] is True
+    assert backend.unloaded == [{"id": 1}]
+
+
+def test_publish_generation_must_advance():
+    """CAS: a stale deployment generation cannot overwrite a completed
+    newer transition."""
+    router = ServingRouter()
+    router.prepare_route("aa" * 16, Backend(), {"id": 1})
+    router.publish_route("aa" * 16, generation=5)
+    router.prepare_route("bb" * 16, Backend(), {"id": 2})
+    from minagi.runtime.serving_router import RouteConflict
+    with pytest.raises(RouteConflict, match="stale"):
+        router.publish_route("bb" * 16, generation=4)
+    # equal generation also loses
+    with pytest.raises(RouteConflict, match="stale"):
+        router.publish_route("bb" * 16, generation=5)
+    assert router.publish_route("bb" * 16, generation=6) == 2
+
+
+def test_per_activation_inflight_accounting():
+    """SEC-303: each activation drains independently — B's leases do
+    not block A's retirement and vice versa."""
+    router = ServingRouter(drain_timeout=0.2)
+    router.activate("aa" * 16, Backend(), {"id": 1})
+    lease_a = router.acquire_lease()
+    router.activate("bb" * 16, Backend(), {"id": 2})
+    lease_b = router.acquire_lease()
+    assert router.inflight("aa" * 16) == 1
+    assert router.inflight("bb" * 16) == 1
+    router.release_lease(lease_a)
+    assert router.drain_until_idle("aa" * 16, timeout=0.2) is True
+    assert router.drain_until_idle("bb" * 16, timeout=0.05) is False
+    router.release_lease(lease_b)
+
+
+def test_prepare_over_live_route_refused():
+    router = ServingRouter()
+    router.activate("aa" * 16, Backend(), {"id": 1})
+    from minagi.runtime.serving_router import RouteConflict
+    with pytest.raises(RouteConflict, match="live"):
+        router.prepare_route("aa" * 16, Backend(), {"id": 9})
+
+
+def test_lease_released_in_finally_on_backend_error():
+    router = ServingRouter()
+
+    class Bad(Backend):
+        def infer(self, handle, request):
+            raise RuntimeError("gpu fault")
+
+    router.activate("aa" * 16, Bad(), {"id": 1})
+    with pytest.raises(RuntimeError):
+        router.route({"prompt": "x"})
+    assert router.inflight() == 0
+    assert router.drain_until_idle("aa" * 16, timeout=0.1) is True

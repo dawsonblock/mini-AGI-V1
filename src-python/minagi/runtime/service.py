@@ -43,16 +43,29 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
 from .access_policy import (RESEARCH_OPS,
                             PrincipalContext, PolicyRefused,
                             audit_decision, principal_for_uid, require,
                             secure_dir)
+from .authority_store import AuthorityStoreError
 
 
 class ServiceRefused(PermissionError):
     """The service refused a connection or request."""
+
+
+#: Operations that alter deployment authority — every decision must
+#: have durable, signed audit evidence in the authority store (WP-D).
+_PRIVILEGED_OPS = frozenset(
+    {"launch", "quarantine", "rollback", "recover"})
+
+#: Emergency traffic shutdown NEVER depends on the audit database
+#: being writable — stopping unauthorized serving cannot be blocked
+#: by an audit failure; the incident is reconciled afterwards.
+_EMERGENCY_OPS = frozenset({"quarantine"})
 
 
 MAX_REQUEST_BYTES = 1 << 20          # 1 MiB request bound
@@ -97,7 +110,7 @@ class SupervisorService:
                  max_connections: int = MAX_CONNECTIONS,
                  per_uid_connections: int = PER_UID_CONNECTIONS,
                  socket_mode: int = 0o600, socket_group: int | None = None,
-                 audit_sink=None):
+                 audit_sink=None, audit_store=None):
         self.socket_path = Path(socket_path)
         self.launcher = launcher
         self.supervisor = supervisor
@@ -113,6 +126,10 @@ class SupervisorService:
         self.socket_mode = int(socket_mode)
         self.socket_group = socket_group
         self._audit_sink = audit_sink   # callable(audit_doc) or None
+        self._audit_store = audit_store  # AuthorityStore or None
+        self._audit_broken = False       # set when a mandatory audit
+                                         # write failed — activation is
+                                         # blocked until reconciled
         self._sock: socket.socket | None = None
         self._stop = threading.Event()
         self._pool = ThreadPoolExecutor(max_workers=int(max_workers))
@@ -154,20 +171,126 @@ class SupervisorService:
                 raise ServiceRefused(
                     "inference routing is not configured")
             try:
-                out = self.router.route(req.get("request"))
+                out = self.router.route(
+                    req.get("request"),
+                    principal=principal.principal_id)
             except Exception as exc:  # noqa: BLE001
                 raise ServiceRefused(f"inference refused: {exc}") from exc
             self._audit(principal, op,
                         target=str(out.get("activation_id", "")))
             return {"ok": True, **out}
+        if op in _PRIVILEGED_OPS:
+            return self._dispatch_privileged(req, principal, op)
+        raise ServiceRefused(f"unknown op {op!r}")
+
+    # --- mandatory administrative audit (WP-D) -----------------------
+    def _state_snapshot(self) -> dict:
+        ptr = {}
+        try:
+            ptr = self.supervisor.active_pointer() or {}
+        except Exception:  # noqa: BLE001 - snapshot is best effort
+            pass
+        return {"serving_state": self.supervisor.serving_state.value,
+                "active_activation": str(ptr.get("activation_id") or "")}
+
+    def _policy_digest(self) -> str:
+        from egai.common.canonical import digest
+        manifest = getattr(self.supervisor, "backend_manifest_doc",
+                           None) or {}
+        return digest({
+            "min_policy_epoch": int(self.supervisor.min_policy_epoch),
+            "backend_manifest_digest": str(manifest.get("digest") or ""),
+            "runtime_identity": self.supervisor.runtime_identity})
+
+    def _admin_audit(self, principal: PrincipalContext, op: str, *,
+                     decision: str, before, after, target: str = "",
+                     detail: dict | None = None) -> dict | None:
+        """One durable, signed administrative audit record. Raises
+        AuthorityStoreError on failure — callers decide whether the
+        operation may proceed without evidence (only emergency
+        shutdown may)."""
+        if self._audit_store is None:
+            return None  # durable audit not configured (development)
+        if self.audit_signer is None:
+            raise AuthorityStoreError(
+                "admin audit requires a signing identity")
+        return self._audit_store.append_admin_audit(
+            principal_id=principal.principal_id, operation=op,
+            target_activation=str(target),
+            policy_digest=self._policy_digest(), decision=decision,
+            before_state=before, after_state=after,
+            at=int(time.time()), detail=dict(detail or {}),
+            signer=self.audit_signer)
+
+    def _dispatch_privileged(self, req: dict,
+                             principal: PrincipalContext,
+                             op: str) -> dict:
+        """Privileged-op protocol: the authorization DECISION is
+        durable before the side effect; the OUTCOME is durable after.
+        A failed mandatory audit refuses ordinary administrative
+        change — except emergency traffic shutdown, which proceeds and
+        blocks further activation until the audit trail reconciles."""
+        if self._audit_broken and op == "launch":
+            raise ServiceRefused(
+                "activation is blocked pending administrative-audit "
+                "reconciliation — an emergency stop occurred while "
+                "the audit log was not writable")
+        before = self._state_snapshot()
+        try:
+            self._admin_audit(principal, op, decision="allowed",
+                              before=before, after="pending",
+                              target=str(req.get("target") or
+                                         req.get("reason") or ""),
+                              detail={"request": "decision"})
+        except AuthorityStoreError as exc:
+            if op in _EMERGENCY_OPS:
+                # Emergency shutdown proceeds WITHOUT durable evidence —
+                # the incident is flagged and activation blocks until
+                # the audit record can be written again.
+                self._audit_broken = True
+            else:
+                raise ServiceRefused(
+                    f"the administrative audit record could not be "
+                    f"written — {op!r} refused: {exc}") from exc
+        try:
+            resp = self._execute_op(req, principal, op)
+        except Exception as exc:
+            try:
+                self._admin_audit(principal, op, decision="refused",
+                                  before=before,
+                                  after=self._state_snapshot(),
+                                  target=str(exc)[:200],
+                                  detail={"request": "outcome"})
+            except AuthorityStoreError:
+                self._audit_broken = True
+            raise
+        try:
+            self._admin_audit(
+                principal, op, decision="completed", before=before,
+                after=self._state_snapshot(),
+                target=str(resp.get("activation_id") or
+                           resp.get("active") or ""),
+                detail={"request": "outcome"})
+            self._audit_broken = False
+        except AuthorityStoreError as exc:
+            self._audit_broken = True
+            if op not in _EMERGENCY_OPS:
+                raise ServiceRefused(
+                    f"the completed {op!r} could not be durably "
+                    f"audited — reconcile before further privileged "
+                    f"operations: {exc}") from exc
+        self._audit(principal, op,
+                    target=str(resp.get("activation_id") or
+                               resp.get("active") or ""))
+        return resp
+
+    def _execute_op(self, req: dict, principal: PrincipalContext,
+                    op: str) -> dict:
         if op == "recover":
-            self._audit(principal, op)
-            return {"ok": True,
-                    "report": self.supervisor.recover()}
+            return {"ok": True, "report": self.supervisor.recover()}
         if op == "quarantine":
             self.supervisor.quarantine_active(
                 reason=str(req.get("reason") or "operator quarantine"))
-            self._audit(principal, op, reason=str(req.get("reason") or ""))
             return {"ok": True,
                     "active": self.supervisor.active_pointer()}
         if op == "rollback":
@@ -175,13 +298,9 @@ class SupervisorService:
                 target = self.supervisor.rollback()
             except Exception as exc:  # noqa: BLE001
                 raise ServiceRefused(f"rollback: {exc}") from exc
-            self._audit(principal, op, target=str(target or ""))
             return {"ok": True, "active": target}
         if op == "launch":
-            result = self._launch(req)
-            self._audit(principal, op,
-                        target=str(result.get("activation_id", "")))
-            return result
+            return self._launch(req)
         raise ServiceRefused(f"unknown op {op!r}")
 
     def _audit(self, principal: PrincipalContext, op: str, *,
@@ -413,11 +532,42 @@ def main(argv=None) -> int:
     ap.add_argument("--allow-insecure-dev", action="store_true",
                     help="development only: serve when peer credentials "
                          "cannot be extracted")
+    ap.add_argument("--production", action="store_true",
+                    help="enforce production admission: signed backend "
+                         "manifest, operative policy epoch, fresh "
+                         "revocation evidence, authorized key roles")
+    ap.add_argument("--backend-manifest", default=None,
+                    help="signed backend manifest JSON (required in "
+                         "production)")
+    ap.add_argument("--policy-manifest", default=None,
+                    help="operative policy manifest JSON (required in "
+                         "production)")
+    ap.add_argument("--policy-epoch", type=int, default=0,
+                    help="minimum operative policy epoch")
+    ap.add_argument("--revocation-store", default=None,
+                    help="revocation snapshot directory (default "
+                         "<storage>/revocations)")
+    ap.add_argument("--runtime-identity", default="local-supervisor")
+    ap.add_argument("--backend-modules", default=
+                    "minagi.v161.peft_serving",
+                    help="comma-separated backend source modules the "
+                         "manifest measures")
+    ap.add_argument("--backend-deps", default=
+                    "torch,transformers,peft,safetensors",
+                    help="comma-separated dependency packages in the "
+                         "measured closure")
+    ap.add_argument("--inference-budget", default=None,
+                    help="optional InferenceBudgetPolicyV1 JSON")
     args = ap.parse_args(argv)
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from egai.common.crypto import Ed25519Signer
     from minagi.runtime.authority_store import AuthorityStore
+    from minagi.runtime.backend_manifest import (
+        BackendRefused, verify_backend_manifest,
+        verify_installed_backend)
+    from minagi.runtime.inference_policy import (
+        InferenceBudgetPolicyV1)
     from minagi.runtime.serving_router import ServingRouter
     from minagi.runtime.supervisor import ServingSupervisor
     from minagi.v161.authority import AuthorityRegistry
@@ -438,20 +588,95 @@ def main(argv=None) -> int:
     admission_key = Ed25519Signer.from_private_bytes(
         (storage / ".keys" / "admission.pem").read_bytes())
 
+    backend_manifest_doc = None
+    backend_modules: tuple = ()
+    backend_deps: tuple = ()
+    min_policy_epoch = 0
+    if args.production:
+        config = ProductionRuntimeConfig.from_args(
+            args, storage=storage)
+        missing = config.validate()
+        if missing:
+            raise SystemExit(
+                f"production startup refused — missing mandatory "
+                f"configuration: {', '.join(missing)}")
+        min_policy_epoch = config.min_policy_epoch
+        # The signing keys must hold the roles they claim.
+        for role, key in (("runtime", runtime_key),
+                          ("admission", admission_key)):
+            if not registry.is_authorized(role, key.key_id):
+                raise SystemExit(
+                    f"production startup refused — the {role} signing "
+                    f"key {key.key_id!r} is not authorized for that "
+                    "role in the trust root")
+        # Signed backend manifest + installed-closure measurement.
+        try:
+            backend_manifest_doc = json.loads(
+                Path(config.backend_manifest_path).read_text())
+            backend_manifest = verify_backend_manifest(
+                backend_manifest_doc, registry)
+        except (OSError, ValueError, BackendRefused) as exc:
+            raise SystemExit(
+                f"production startup refused — backend manifest: {exc}")
+        if backend_manifest.policy_epoch < min_policy_epoch:
+            raise SystemExit(
+                f"production startup refused — backend manifest policy "
+                f"epoch {backend_manifest.policy_epoch} < operative "
+                f"{min_policy_epoch}")
+        backend_modules = tuple(m for m in
+                                args.backend_modules.split(",") if m)
+        backend_deps = tuple(d for d in
+                             args.backend_deps.split(",") if d)
+        try:
+            verify_installed_backend(
+                backend_manifest, module_names=backend_modules,
+                dependency_packages=backend_deps,
+                min_policy_epoch=min_policy_epoch)
+        except BackendRefused as exc:
+            raise SystemExit(
+                f"production startup refused — installed backend: {exc}")
+        # Revocation evidence must be fresh and authentic at boot.
+        try:
+            RevocationStore(config.revocation_store_path).latest_valid(
+                registry)
+        except Exception as exc:  # noqa: BLE001 - fail closed
+            raise SystemExit(
+                f"production startup refused — revocation evidence: "
+                f"{exc}")
+        # Protected filesystem posture for the key material itself.
+        try:
+            secure_dir(storage / ".keys")
+        except Exception as exc:  # noqa: BLE001 - fail closed
+            raise SystemExit(
+                f"production startup refused — key directory: {exc}")
+
+    budget = InferenceBudgetPolicyV1()
+    if args.inference_budget:
+        budget = InferenceBudgetPolicyV1.from_doc(
+            json.loads(Path(args.inference_budget).read_text()))
     store = AuthorityStore(state_dir / "authority.sqlite")
     supervisor = ServingSupervisor(
-        store, runtime_signer=runtime_key, registry=registry)
+        store, runtime_signer=runtime_key, registry=registry,
+        runtime_identity=(args.runtime_identity
+                          if args.production else "local-supervisor"),
+        min_policy_epoch=min_policy_epoch,
+        backend_manifest_doc=backend_manifest_doc,
+        backend_modules=backend_modules,
+        backend_deps=backend_deps)
     report = supervisor.recover()
-    router = ServingRouter()
+    router = ServingRouter(budget=budget)
 
     launcher = TrustedRuntimeLauncher(
         registry,
-        revocation_store=RevocationStore(storage / "revocations"),
+        revocation_store=RevocationStore(
+            args.revocation_store or (storage / "revocations")),
         runtime_signer=runtime_key, admission_signer=admission_key,
         supervisor=supervisor,
         snapshot_root=snapshots,
         receipts_dir=receipts,
-        authority_store=store)
+        authority_store=store,
+        policy_epoch=min_policy_epoch,
+        backend_manifest_doc=backend_manifest_doc)
     supervisor.router = router
 
     uid_roles = {u: "operator" for u in args.operator_uid}
@@ -460,12 +685,27 @@ def main(argv=None) -> int:
     uid_roles.setdefault(os.getuid(), "operator")
 
     mode = int(args.socket_mode, 8)
+    factories = {"hf-peft": (lambda: PeftServingBackend(budget=budget))}
+
+    # WP-F: complete cold-start restoration before opening traffic —
+    # a durable pointer is intent, never liveness.
+    if report.get("requires_restoration"):
+        from minagi.runtime.recovery_manager import RecoveryManager
+        report["restoration"] = RecoveryManager(
+            supervisor, admission_signer=admission_key,
+            registry=registry, snapshot_root=snapshots,
+            backend_factories=factories,
+            revocation_store=RevocationStore(
+                args.revocation_store or (storage / "revocations")),
+        ).restore().get("restoration")
+
     service = SupervisorService(
         args.socket, launcher=launcher, supervisor=supervisor,
-        backend_factories={"hf-peft": PeftServingBackend},
+        backend_factories=factories,
         uid_roles=uid_roles, router=router, audit_signer=runtime_key,
         socket_mode=mode, socket_group=args.socket_group,
-        allow_insecure_dev=args.allow_insecure_dev)
+        allow_insecure_dev=args.allow_insecure_dev,
+        audit_store=store)
     print(f"[supervised-launch] operator endpoint on {args.socket} "
           f"(roles: {sorted(set(uid_roles.values()))}) "
           f"state={report.get('serving_state')}", flush=True)
@@ -474,11 +714,12 @@ def main(argv=None) -> int:
             research = SupervisorService(
                 args.research_socket, launcher=launcher,
                 supervisor=supervisor,
-                backend_factories={"hf-peft": PeftServingBackend},
+                backend_factories=factories,
                 uid_roles=uid_roles, router=router,
                 audit_signer=runtime_key, socket_mode=0o660,
                 socket_group=args.socket_group,
-                allow_insecure_dev=args.allow_insecure_dev)
+                allow_insecure_dev=args.allow_insecure_dev,
+                audit_store=store)
             threading.Thread(
                 target=research.serve_forever,
                 kwargs={"allowed_ops": RESEARCH_OPS}, daemon=True).start()
@@ -488,6 +729,56 @@ def main(argv=None) -> int:
     finally:
         service.shutdown()
     return 0
+
+
+@dataclass(frozen=True)
+class ProductionRuntimeConfig:
+    """Mandatory production admission inputs (v16.4.4 WP-C / SEC-304).
+    In production mode the service refuses to start without every one
+    of these — runtime identity checks are not optional."""
+    backend_manifest_path: str
+    policy_manifest_path: str
+    revocation_store_path: str
+    artifact_store_path: str
+    trusted_authority_path: str
+    runtime_identity: str
+    min_policy_epoch: int
+
+    @classmethod
+    def from_args(cls, args, *, storage: Path) -> "ProductionRuntimeConfig":
+        return cls(
+            backend_manifest_path=str(args.backend_manifest or ""),
+            policy_manifest_path=str(args.policy_manifest or ""),
+            revocation_store_path=str(
+                args.revocation_store or (storage / "revocations")),
+            artifact_store_path=str(storage / "snapshots"),
+            trusted_authority_path=str(storage / "trust_root.json"),
+            runtime_identity=str(args.runtime_identity or
+                                 "local-supervisor"),
+            min_policy_epoch=int(args.policy_epoch or 0))
+
+    def validate(self) -> list[str]:
+        missing = [name for name in (
+            "backend_manifest_path", "policy_manifest_path",
+            "revocation_store_path", "artifact_store_path",
+            "trusted_authority_path", "runtime_identity")
+            if not getattr(self, name)]
+        for name, want_dir in (
+                ("backend_manifest_path", False),
+                ("policy_manifest_path", False),
+                ("trusted_authority_path", False),
+                ("revocation_store_path", True),
+                ("artifact_store_path", True)):
+            value = getattr(self, name)
+            if not value or name in missing:
+                continue
+            p = Path(value)
+            ok = p.is_dir() if want_dir else p.is_file()
+            if not ok:
+                missing.append(
+                    f"{name} ({'directory' if want_dir else 'file'} "
+                    f"{value!r} does not exist)")
+        return missing
 
 
 if __name__ == "__main__":

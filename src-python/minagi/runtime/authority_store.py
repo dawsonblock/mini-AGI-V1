@@ -25,12 +25,31 @@ transactional authority — a SQLite database in WAL mode with
     request identity returns the recorded outcome instead of consuming
     a second grant.
 
+v16.4.4 (WP-A/WP-D) adds the deployment-generation transition record
+and the mandatory administrative audit chain:
+
+  * ``deployment`` is a single-row, monotonically versioned record of
+    which activation SHOULD serve: ``deployment_generation``,
+    ``desired_activation_id``, ``previous_activation_id``,
+    ``transition_id``, ``transition_phase``, ``policy_epoch``, and
+    ``last_committed_event_digest``. Durable intent commits BEFORE any
+    traffic is published (authorization is not activation); the
+    observed routing outcome is recorded afterwards as separate,
+    truthful evidence — never described as pre-traffic authorization.
+    Every transition carries the expected generation so a stale
+    transition cannot overwrite a completed newer one (compare-and-
+    swap on ``deployment_generation``).
+  * ``admin_audit`` is a hash-chained, signed log of security-
+    sensitive administrative decisions — a failed audit write refuses
+    the operation (emergency traffic shutdown excepted by policy).
+
 The database file must sit on protected storage owned by the runtime
 service identity (``secure_dir`` in ``access_policy`` enforces this).
 """
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 import threading
 from pathlib import Path
@@ -38,7 +57,7 @@ from pathlib import Path
 from egai.common.canonical import digest
 from egai.common.crypto import Ed25519Signer, SignedEnvelope
 
-STORE_SCHEMA_VERSION = "mini-agi-v16.4.3-authority-store-v1"
+STORE_SCHEMA_VERSION = "mini-agi-v16.4.4-authority-store-v2"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS admission_grants (
@@ -80,6 +99,34 @@ CREATE TABLE IF NOT EXISTS serving_pointer (
     committed_at INTEGER NOT NULL,
     event_sequence INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS deployment (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    deployment_generation INTEGER NOT NULL,
+    desired_activation_id TEXT NOT NULL,
+    previous_activation_id TEXT NOT NULL,
+    transition_id TEXT NOT NULL,
+    transition_phase TEXT NOT NULL,
+    policy_epoch INTEGER NOT NULL,
+    last_committed_event_digest TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS admin_audit (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL UNIQUE,
+    principal_id TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    target_activation TEXT NOT NULL,
+    policy_digest TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    before_state TEXT NOT NULL,
+    after_state TEXT NOT NULL,
+    detail_json TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    previous_event_digest TEXT NOT NULL,
+    event_digest TEXT NOT NULL UNIQUE,
+    signer_key_id TEXT NOT NULL,
+    signature_b64 TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -93,6 +140,12 @@ class AuthorityStoreError(RuntimeError):
 
 class GrantConsumed(AuthorityStoreError):
     """The grant id, nonce, or digest is already reserved — replay."""
+
+
+class GenerationConflict(AuthorityStoreError):
+    """A transition based on a superseded deployment generation — the
+    stale transition loses; it does not overwrite a completed newer
+    generation (compare-and-swap)."""
 
 
 class StoreCorrupt(AuthorityStoreError):
@@ -127,13 +180,48 @@ class AuthorityStore:
             with self._db:
                 self._db.executescript(_SCHEMA)
                 self._db.execute(
-                    "INSERT OR IGNORE INTO meta(key, value) "
-                    "VALUES('schema_version', ?)",
+                    "INSERT INTO meta(key, value) "
+                    "VALUES('schema_version', ?) ON CONFLICT(key) DO "
+                    "UPDATE SET value = excluded.value",
                     (STORE_SCHEMA_VERSION,))
+                self._migrate_deployment_row()
         except (sqlite3.Error, OSError) as exc:
             raise AuthorityStoreError(
                 f"authority store unavailable at {self.db_path}: {exc}") \
                 from exc
+
+    def _migrate_deployment_row(self) -> None:
+        """v16.4.3 -> v16.4.4: a pre-existing ``serving_pointer`` seeds
+        the single deployment row at generation 1. The migrated phase
+        is ROUTED when a signed completion/observation event exists for
+        the pointed activation, COMMITTED otherwise — durable intent
+        and live state remain distinguishable."""
+        row = self._db.execute(
+            "SELECT COUNT(*) FROM deployment").fetchone()
+        if int(row[0]) > 0:
+            return
+        ptr = self._db.execute(
+            "SELECT activation_id, committed_at, event_sequence FROM "
+            "serving_pointer WHERE id = 1").fetchone()
+        if ptr is None or not str(ptr[0]):
+            return
+        observed = self._db.execute(
+            "SELECT COUNT(*) FROM runtime_events WHERE activation_id = "
+            "? AND to_state = 'ACTIVE' AND event_type IN "
+            "('activation_completion', 'routing_observed', "
+            "'rollback_completion')", (str(ptr[0]),)).fetchone()
+        phase = "ROUTED" if int(observed[0]) > 0 else "COMMITTED"
+        last = self._db.execute(
+            "SELECT event_digest FROM runtime_events WHERE sequence = ?",
+            (int(ptr[2]),)).fetchone()
+        self._db.execute(
+            "INSERT INTO deployment(id, deployment_generation, "
+            "desired_activation_id, previous_activation_id, "
+            "transition_id, transition_phase, policy_epoch, "
+            "last_committed_event_digest, updated_at) "
+            "VALUES(1,?,?,?,?,?,?,?,?)",
+            (1, str(ptr[0]), "", f"migrated-{secrets.token_hex(8)}",
+             phase, 0, str(last[0]) if last else "", int(ptr[1])))
 
     def close(self) -> None:
         with self._lock:
@@ -335,6 +423,438 @@ class AuthorityStore:
         return {"activation_id": row[0], "artifact_root_digest": row[1],
                 "backend_id": row[2], "committed_at": row[3],
                 "event_sequence": row[4]}
+
+    # --- deployment generations (v16.4.4 WP-A) ------------------------
+    def deployment(self) -> dict | None:
+        """The current deployment transition record: the durable
+        intent (which activation should serve), its monotonically
+        increasing generation, and the transition phase."""
+        row = self._db.execute(
+            "SELECT deployment_generation, desired_activation_id, "
+            "previous_activation_id, transition_id, transition_phase, "
+            "policy_epoch, last_committed_event_digest, updated_at "
+            "FROM deployment WHERE id = 1").fetchone()
+        if row is None:
+            return None
+        return {"deployment_generation": int(row[0]),
+                "desired_activation_id": row[1],
+                "previous_activation_id": row[2],
+                "transition_id": row[3],
+                "transition_phase": row[4],
+                "policy_epoch": int(row[5]),
+                "last_committed_event_digest": row[6],
+                "updated_at": int(row[7])}
+
+    def commit_activation_intent(self, *, candidate_id: str,
+                                 expected_generation: int, at: int,
+                                 artifact_root_digest: str,
+                                 backend_id: str, policy_epoch: int = 0,
+                                 event_type: str = "commit_intent",
+                                 from_state: str = "READY",
+                                 to_state: str = "COMMITTED",
+                                 detail: dict | None = None,
+                                 signer: Ed25519Signer | None = None
+                                 ) -> dict:
+        """Stage one of the two-stage activation protocol: durably
+        record WHICH activation is authorized to serve, at the NEXT
+        deployment generation, BEFORE any traffic may reach it.
+
+        Compare-and-swap: the transaction refuses unless the current
+        deployment generation equals ``expected_generation`` — a
+        transition based on generation N cannot overwrite a completed
+        generation N+1. The commit event, the serving pointer, and the
+        deployment row move in ONE transaction."""
+        try:
+            with self._lock:
+                self._db.execute("BEGIN IMMEDIATE")
+                try:
+                    dep = self._deployment_txn()
+                    current = int(dep["deployment_generation"]) \
+                        if dep is not None else 0
+                    if current != int(expected_generation):
+                        self._db.execute("ROLLBACK")
+                        raise GenerationConflict(
+                            f"deployment generation is {current}, not "
+                            f"{expected_generation} — the transition is "
+                            "stale and loses")
+                    generation = current + 1
+                    transition_id = secrets.token_hex(16)
+                    previous = str(dep["desired_activation_id"]) \
+                        if dep is not None else ""
+                    detail = dict(detail or {})
+                    detail.update({
+                        "transition_id": transition_id,
+                        "deployment_generation": generation,
+                        "previous_desired": previous})
+                    event = self._append_event_txn(
+                        activation_id=candidate_id,
+                        event_type=event_type, from_state=from_state,
+                        to_state=to_state, at=at, detail=detail,
+                        signer=signer)
+                    self._db.execute(
+                        "INSERT INTO serving_pointer(id, activation_id, "
+                        "artifact_root_digest, backend_id, "
+                        "committed_at, event_sequence) "
+                        "VALUES(1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE "
+                        "SET activation_id=excluded.activation_id, "
+                        "artifact_root_digest=excluded."
+                        "artifact_root_digest, backend_id=excluded."
+                        "backend_id, committed_at=excluded.committed_at,"
+                        " event_sequence=excluded.event_sequence",
+                        (candidate_id, artifact_root_digest, backend_id,
+                         int(at), int(event["sequence"])))
+                    self._db.execute(
+                        "INSERT INTO deployment(id, "
+                        "deployment_generation, desired_activation_id, "
+                        "previous_activation_id, transition_id, "
+                        "transition_phase, policy_epoch, "
+                        "last_committed_event_digest, updated_at) "
+                        "VALUES(1,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO "
+                        "UPDATE SET deployment_generation=excluded."
+                        "deployment_generation, desired_activation_id="
+                        "excluded.desired_activation_id, "
+                        "previous_activation_id=excluded."
+                        "previous_activation_id, transition_id=excluded."
+                        "transition_id, transition_phase=excluded."
+                        "transition_phase, policy_epoch=excluded."
+                        "policy_epoch, last_committed_event_digest="
+                        "excluded.last_committed_event_digest, "
+                        "updated_at=excluded.updated_at",
+                        (generation, candidate_id, previous,
+                         transition_id, "COMMITTED",
+                         int(policy_epoch), event["event_digest"],
+                         int(at)))
+                    self._db.execute("COMMIT")
+                    return {"generation": generation,
+                            "transition_id": transition_id,
+                            "previous_desired": previous,
+                            "event": event}
+                except Exception:
+                    try:
+                        self._db.execute("ROLLBACK")
+                    except sqlite3.Error:
+                        pass
+                    raise
+        except GenerationConflict:
+            raise
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError(
+                f"activation-intent transaction failed: {exc}") from exc
+
+    def _deployment_txn(self) -> dict | None:
+        row = self._db.execute(
+            "SELECT deployment_generation, desired_activation_id, "
+            "previous_activation_id, transition_id, transition_phase, "
+            "policy_epoch, last_committed_event_digest, updated_at "
+            "FROM deployment WHERE id = 1").fetchone()
+        if row is None:
+            return None
+        return {"deployment_generation": int(row[0]),
+                "desired_activation_id": row[1],
+                "previous_activation_id": row[2],
+                "transition_id": row[3],
+                "transition_phase": row[4],
+                "policy_epoch": int(row[5]),
+                "last_committed_event_digest": row[6],
+                "updated_at": int(row[7])}
+
+    def record_routing_observation(self, *, activation_id: str,
+                                   generation: int, transition_id: str,
+                                   at: int,
+                                   event_type: str = "routing_observed",
+                                   from_state: str = "COMMITTED",
+                                   to_state: str = "ACTIVE",
+                                   detail: dict | None = None,
+                                   signer: Ed25519Signer | None = None
+                                   ) -> dict:
+        """Stage two: the supervisor's OBSERVED report that the
+        authorized generation was actually published to routing. This
+        is post-traffic evidence — it exists only because routing
+        happened, and it is never described as pre-traffic
+        authorization. Refuses if the durable intent has moved on."""
+        try:
+            with self._lock:
+                self._db.execute("BEGIN IMMEDIATE")
+                try:
+                    dep = self._deployment_txn()
+                    if dep is None or \
+                            dep["desired_activation_id"] != activation_id \
+                            or dep["deployment_generation"] != \
+                            int(generation) or \
+                            dep["transition_id"] != transition_id:
+                        self._db.execute("ROLLBACK")
+                        raise GenerationConflict(
+                            "the durable deployment intent no longer "
+                            f"names {activation_id!r} at generation "
+                            f"{generation} — the observation belongs to "
+                            "a superseded transition")
+                    detail = dict(detail or {})
+                    detail.update({
+                        "transition_id": transition_id,
+                        "deployment_generation": int(generation)})
+                    event = self._append_event_txn(
+                        activation_id=activation_id,
+                        event_type=event_type, from_state=from_state,
+                        to_state=to_state, at=at, detail=detail,
+                        signer=signer)
+                    self._db.execute(
+                        "UPDATE deployment SET transition_phase = "
+                        "'ROUTED', last_committed_event_digest = ?, "
+                        "updated_at = ? WHERE id = 1",
+                        (event["event_digest"], int(at)))
+                    self._db.execute("COMMIT")
+                    return event
+                except Exception:
+                    try:
+                        self._db.execute("ROLLBACK")
+                    except sqlite3.Error:
+                        pass
+                    raise
+        except GenerationConflict:
+            raise
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError(
+                f"routing-observation transaction failed: {exc}") \
+                from exc
+
+    def reconcile_deployment(self, *, expected_generation: int,
+                             desired_id: str, phase: str, at: int,
+                             event_activation_id: str,
+                             event_type: str, event_from_state: str,
+                             event_to_state: str, because: str = "",
+                             artifact_root_digest: str = "",
+                             backend_id: str = "",
+                             detail: dict | None = None,
+                             signer: Ed25519Signer | None = None) -> dict:
+        """Generation-checked reconciliation after a failed or
+        withdrawn transition: move the durable intent to ``desired_id``
+        (a live committed predecessor, or ``""`` for durably
+        unavailable) at a NEW generation, in one transaction with the
+        reconcile event. The in-memory router and durable state
+        converge — a predecessor is never restored only in memory."""
+        try:
+            with self._lock:
+                self._db.execute("BEGIN IMMEDIATE")
+                try:
+                    dep = self._deployment_txn()
+                    current = int(dep["deployment_generation"]) \
+                        if dep is not None else 0
+                    if current != int(expected_generation):
+                        self._db.execute("ROLLBACK")
+                        raise GenerationConflict(
+                            f"deployment generation is {current}, not "
+                            f"{expected_generation} — reconciliation "
+                            "refused against a newer transition")
+                    generation = current + 1
+                    transition_id = secrets.token_hex(16)
+                    previous = str(dep["desired_activation_id"]) \
+                        if dep is not None else ""
+                    detail = dict(detail or {})
+                    detail.update({
+                        "transition_id": transition_id,
+                        "deployment_generation": generation,
+                        "previous_desired": previous,
+                        "because": because})
+                    event = self._append_event_txn(
+                        activation_id=event_activation_id,
+                        event_type=event_type,
+                        from_state=event_from_state,
+                        to_state=event_to_state, at=at, detail=detail,
+                        signer=signer)
+                    if desired_id:
+                        self._db.execute(
+                            "INSERT INTO serving_pointer(id, "
+                            "activation_id, artifact_root_digest, "
+                            "backend_id, committed_at, event_sequence) "
+                            "VALUES(1,?,?,?,?,?) ON CONFLICT(id) DO "
+                            "UPDATE SET activation_id=excluded."
+                            "activation_id, artifact_root_digest="
+                            "excluded.artifact_root_digest, backend_id="
+                            "excluded.backend_id, committed_at=excluded."
+                            "committed_at, event_sequence=excluded."
+                            "event_sequence",
+                            (desired_id, artifact_root_digest,
+                             backend_id, int(at),
+                             int(event["sequence"])))
+                    else:
+                        self._db.execute(
+                            "UPDATE serving_pointer SET activation_id = "
+                            "'', artifact_root_digest = '', backend_id "
+                            "= '', committed_at = ? WHERE id = 1",
+                            (int(at),))
+                    self._db.execute(
+                        "INSERT INTO deployment(id, "
+                        "deployment_generation, desired_activation_id, "
+                        "previous_activation_id, transition_id, "
+                        "transition_phase, policy_epoch, "
+                        "last_committed_event_digest, updated_at) "
+                        "VALUES(1,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO "
+                        "UPDATE SET deployment_generation=excluded."
+                        "deployment_generation, desired_activation_id="
+                        "excluded.desired_activation_id, "
+                        "previous_activation_id=excluded."
+                        "previous_activation_id, transition_id=excluded."
+                        "transition_id, transition_phase=excluded."
+                        "transition_phase, policy_epoch=excluded."
+                        "policy_epoch, last_committed_event_digest="
+                        "excluded.last_committed_event_digest, "
+                        "updated_at=excluded.updated_at",
+                        (generation, desired_id, previous,
+                         transition_id, phase,
+                         int(dep["policy_epoch"]) if dep else 0,
+                         event["event_digest"], int(at)))
+                    self._db.execute("COMMIT")
+                    return {"generation": generation,
+                            "transition_id": transition_id,
+                            "event": event}
+                except Exception:
+                    try:
+                        self._db.execute("ROLLBACK")
+                    except sqlite3.Error:
+                        pass
+                    raise
+        except GenerationConflict:
+            raise
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError(
+                f"deployment reconciliation failed: {exc}") from exc
+
+    # --- mandatory administrative audit (v16.4.4 WP-D) ----------------
+    def append_admin_audit(self, *, event_id: str | None = None,
+                           principal_id: str, operation: str,
+                           target_activation: str, policy_digest: str,
+                           decision: str, before_state: dict | str,
+                           after_state: dict | str, at: int,
+                           detail: dict | None = None,
+                           signer: Ed25519Signer) -> dict:
+        """Durably record one security-sensitive administrative
+        decision in the hash-chained admin log. A failure here means
+        there is NO durable evidence — callers must refuse ordinary
+        administrative changes on AuthorityStoreError (emergency
+        traffic shutdown is the explicit policy exception)."""
+        event_id = event_id or f"audit-{secrets.token_hex(12)}"
+        before = (json.dumps(before_state, sort_keys=True,
+                             separators=(",", ":"))
+                  if not isinstance(before_state, str) else before_state)
+        after = (json.dumps(after_state, sort_keys=True,
+                            separators=(",", ":"))
+                 if not isinstance(after_state, str) else after_state)
+        try:
+            with self._lock:
+                self._db.execute("BEGIN IMMEDIATE")
+                try:
+                    row = self._db.execute(
+                        "SELECT COALESCE((SELECT event_digest FROM "
+                        "admin_audit ORDER BY sequence DESC LIMIT 1), "
+                        "'')").fetchone()
+                    prev = str(row[0])
+                    pdigest = digest({
+                        "event_id": event_id,
+                        "principal_id": principal_id,
+                        "operation": operation,
+                        "target_activation": target_activation,
+                        "policy_digest": policy_digest,
+                        "decision": decision,
+                        "before_state": before, "after_state": after,
+                        "at": int(at), "detail": dict(detail or {})})
+                    body = {"event_id": event_id,
+                            "principal_id": principal_id,
+                            "operation": operation,
+                            "target_activation": target_activation,
+                            "policy_digest": policy_digest,
+                            "decision": decision,
+                            "before_state": before,
+                            "after_state": after, "at": int(at),
+                            "payload_digest": pdigest,
+                            "previous_event_digest": prev}
+                    env = signer.sign(body)
+                    event_digest = digest(
+                        dict(body, signer_key_id=env.key_id,
+                             signature_b64=env.signature_b64))
+                    self._db.execute(
+                        "INSERT INTO admin_audit(event_id, "
+                        "principal_id, operation, target_activation, "
+                        "policy_digest, decision, before_state, "
+                        "after_state, detail_json, at, "
+                        "previous_event_digest, event_digest, "
+                        "signer_key_id, signature_b64) "
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (event_id, principal_id, operation,
+                         target_activation, policy_digest, decision,
+                         before, after,
+                         json.dumps(dict(detail or {}), sort_keys=True,
+                                    separators=(",", ":")),
+                         int(at), prev, event_digest, env.key_id,
+                         env.signature_b64))
+                    self._db.execute("COMMIT")
+                    return {"event_id": event_id,
+                            "event_digest": event_digest,
+                            "previous_event_digest": prev,
+                            "signer_key_id": env.key_id}
+                except Exception:
+                    try:
+                        self._db.execute("ROLLBACK")
+                    except sqlite3.Error:
+                        pass
+                    raise
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError(
+                f"administrative audit append failed: {exc}") from exc
+
+    def admin_events(self) -> list[dict]:
+        rows = self._db.execute(
+            "SELECT sequence, event_id, principal_id, operation, "
+            "target_activation, policy_digest, decision, before_state, "
+            "after_state, detail_json, at, previous_event_digest, "
+            "event_digest, signer_key_id, signature_b64 FROM "
+            "admin_audit ORDER BY sequence").fetchall()
+        return [{"sequence": r[0], "event_id": r[1],
+                 "principal_id": r[2], "operation": r[3],
+                 "target_activation": r[4], "policy_digest": r[5],
+                 "decision": r[6], "before_state": r[7],
+                 "after_state": r[8], "detail": json.loads(r[9] or "{}"),
+                 "at": r[10], "previous_event_digest": r[11],
+                 "event_digest": r[12], "signer_key_id": r[13],
+                 "signature_b64": r[14]} for r in rows]
+
+    def verify_admin_chain(self) -> list[dict]:
+        """Verify the admin-audit hash chain — tampering or truncation
+        fails closed with StoreCorrupt."""
+        events = self.admin_events()
+        prev = ""
+        for e in events:
+            if e["previous_event_digest"] != prev:
+                raise StoreCorrupt(
+                    f"admin audit chain broken at sequence "
+                    f"{e['sequence']} — the durable decision log was "
+                    "altered or truncated")
+            body = {"event_id": e["event_id"],
+                    "principal_id": e["principal_id"],
+                    "operation": e["operation"],
+                    "target_activation": e["target_activation"],
+                    "policy_digest": e["policy_digest"],
+                    "decision": e["decision"],
+                    "before_state": e["before_state"],
+                    "after_state": e["after_state"], "at": e["at"],
+                    "payload_digest": digest({
+                        "event_id": e["event_id"],
+                        "principal_id": e["principal_id"],
+                        "operation": e["operation"],
+                        "target_activation": e["target_activation"],
+                        "policy_digest": e["policy_digest"],
+                        "decision": e["decision"],
+                        "before_state": e["before_state"],
+                        "after_state": e["after_state"], "at": e["at"],
+                        "detail": e["detail"]}),
+                    "previous_event_digest": e["previous_event_digest"]}
+            expect = digest(dict(body, signer_key_id=e["signer_key_id"],
+                                 signature_b64=e["signature_b64"]))
+            if e["event_digest"] != expect:
+                raise StoreCorrupt(
+                    f"admin audit digest mismatch at sequence "
+                    f"{e['sequence']} — record was modified")
+            prev = e["event_digest"]
+        return events
 
     def events(self, activation_id: str | None = None) -> list[dict]:
         """The durable event log (all activations or one), in order."""

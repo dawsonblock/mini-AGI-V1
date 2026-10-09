@@ -134,13 +134,13 @@ def test_full_lifecycle_commits_atomically(tmp_path):
     assert sup.serving_state is ServingState.SERVING
     pointer = sup.active_pointer()
     assert pointer["activation_id"] == aid
-    # intent is durable before the pointer, completion signed after
+    # intent is durable before the pointer, observed routing signed after
     hist = _events(sup, aid)
     kinds = [e["detail"].get("kind") or e["event_type"] for e in hist]
     assert "commit_intent" in [e["event_type"] for e in hist]
-    assert "activation_completion" in [e["event_type"] for e in hist]
+    assert "routing_observed" in [e["event_type"] for e in hist]
     completion = [e for e in hist
-                  if e["event_type"] == "activation_completion"][0]
+                  if e["event_type"] == "routing_observed"][0]
     assert completion["signer_key_id"]
     states = [e["to_state"] for e in hist]
     assert states.index("COMMITTED") < states.index("ACTIVE")
@@ -293,18 +293,22 @@ def test_commit_transaction_failure_aborts(tmp_path):
 
     def boom(**kw):
         raise AuthorityStoreError("disk full")
-    sup.store.commit_with_pointer = boom
+    sup.store.commit_activation_intent = boom
     with pytest.raises(ActivationError, match="commit"):
         sup.commit_activation(aid)
     assert _events(sup, aid)[-1]["to_state"] == "ABORTED"
     assert sup.active_id is None
     assert sup.store.read_pointer() is None
+    dep = sup.store.deployment()
+    assert dep is None or dep["desired_activation_id"] == ""
 
 
-def test_completion_record_failure_rolls_back_pointer(tmp_path):
-    """If the signed completion cannot be persisted after the pointer
-    commit, the candidate is aborted and the pointer restored to the
-    previous live runtime — nothing unevidenced stays routable."""
+def test_routing_observation_failure_rolls_back_pointer(tmp_path):
+    """SEC-301: if the signed routing observation cannot be persisted
+    after the durable commit, the candidate is withdrawn and the
+    durable intent reconciled to the previous live runtime — nothing
+    unevidenced stays routable, and A is restored durably, not just in
+    memory."""
     registry, signers = _chain(tmp_path)
     sup = _supervisor(tmp_path, registry, signers)
     aid1 = _drive(sup, signers, tmp_path, FakeBackend(), tag="a")
@@ -318,20 +322,129 @@ def test_completion_record_failure_rolls_back_pointer(tmp_path):
     sup.prepare(aid2, FakeBackend())
     sup.health_check(aid2)
 
-    orig_append = sup.store.append_event
-
     def flaky(**kw):
-        if kw.get("event_type") == "activation_completion":
-            raise AuthorityStoreError("simulated persistence failure")
-        return orig_append(**kw)
-    sup.store.append_event = flaky
+        raise AuthorityStoreError("simulated persistence failure")
+    sup.store.record_routing_observation = flaky
 
-    with pytest.raises(ActivationError, match="completion"):
+    with pytest.raises(ActivationError, match="routing"):
         sup.commit_activation(aid2)
-    # rolled back rather than left serving without evidence
-    assert sup.active_id is None or sup.active_id == aid1
+    # reconciled to the live predecessor — durable AND in memory
+    assert sup.active_id == aid1
     ptr = sup.active_pointer()
-    assert ptr is None or ptr["activation_id"] in ("", aid1)
+    assert ptr["activation_id"] == aid1
+    dep = sup.store.deployment()
+    assert dep["desired_activation_id"] == aid1
+    assert dep["transition_phase"] == "RESTORED"
+
+
+def test_publish_failure_restores_predecessor_durably(tmp_path):
+    """SEC-301/A3: a routing failure after the durable commit cannot
+    leave B routable — desired returns to A in the SAME durable
+    generation protocol."""
+    registry, signers = _chain(tmp_path)
+    sup = _supervisor(tmp_path, registry, signers)
+    from minagi.runtime.serving_router import ServingRouter
+    sup.router = ServingRouter()
+    aid1 = _drive(sup, signers, tmp_path, FakeBackend(), tag="a")
+    assert sup.active_id == aid1
+
+    digests, paths = _artifacts(tmp_path, "b")
+    grant = _grant(signers, digest(digests))
+    aid2 = sup.request().activation_id
+    sup.authorize(aid2, grant)
+    sup.stage(aid2, _stage(tmp_path, "b", digests, paths))
+    sup.prepare(aid2, FakeBackend())
+    sup.health_check(aid2)
+
+    orig_publish = sup.router.publish_route
+
+    def flaky(*a, **kw):
+        if a and a[0] == aid2:
+            raise RuntimeError("routing plane down")
+        return orig_publish(*a, **kw)
+    sup.router.publish_route = flaky
+    with pytest.raises(ActivationError, match="publication"):
+        sup.commit_activation(aid2)
+    assert sup.active_id == aid1
+    assert sup.active_pointer()["activation_id"] == aid1
+    dep = sup.store.deployment()
+    assert dep["desired_activation_id"] == aid1
+    # B never received traffic
+    assert sup.router.inflight(aid2) == 0
+    st = sup.router.route_entry(aid2)
+    assert st is None or st.accepting is False
+
+
+def test_zero_traffic_before_durable_intent(tmp_path):
+    """G1: a persistence failure during stage 1 means B is never
+    published — zero requests can reach it."""
+    registry, signers = _chain(tmp_path)
+    sup = _supervisor(tmp_path, registry, signers)
+    from minagi.runtime.serving_router import ServingRouter
+    sup.router = ServingRouter()
+    digests, paths = _artifacts(tmp_path, "a")
+    grant = _grant(signers, digest(digests))
+    aid = sup.request().activation_id
+    sup.authorize(aid, grant)
+    sup.stage(aid, _stage(tmp_path, "a", digests, paths))
+    sup.prepare(aid, FakeBackend())
+    sup.health_check(aid)
+
+    def boom(**kw):
+        raise AuthorityStoreError("disk full")
+    sup.store.commit_activation_intent = boom
+    with pytest.raises(ActivationError):
+        sup.commit_activation(aid)
+    from minagi.runtime.serving_router import RoutingRefused
+    with pytest.raises(RoutingRefused):
+        sup.router.route({"prompt": "x"})
+    dep = sup.store.deployment()
+    assert dep is None or dep["desired_activation_id"] == ""
+
+
+def test_concurrent_activations_single_winner(tmp_path):
+    """A5: two transitions racing on the same generation — exactly one
+    wins the CAS."""
+    registry, signers = _chain(tmp_path)
+    sup = _supervisor(tmp_path, registry, signers)
+    store = sup.store
+    import threading
+    results = {}
+
+    def commit(tag):
+        try:
+            results[tag] = store.commit_activation_intent(
+                candidate_id=tag * 16, expected_generation=0, at=TS,
+                artifact_root_digest=digest({"r": tag}),
+                backend_id="hf-peft")
+        except Exception as exc:  # noqa: BLE001
+            results[tag] = exc
+
+    t1 = threading.Thread(target=commit, args=("a",))
+    t2 = threading.Thread(target=commit, args=("b",))
+    t1.start(); t2.start(); t1.join(); t2.join()
+    from minagi.runtime.authority_store import GenerationConflict
+    outcomes = list(results.values())
+    wins = [o for o in outcomes if isinstance(o, dict)]
+    losses = [o for o in outcomes if isinstance(o, GenerationConflict)]
+    assert len(wins) == 1 and len(losses) == 1
+    dep = store.deployment()
+    assert dep["deployment_generation"] == 1
+
+
+def test_stale_generation_refused(tmp_path):
+    """A transition based on generation 10 cannot overwrite a completed
+    generation 11."""
+    registry, signers = _chain(tmp_path)
+    sup = _supervisor(tmp_path, registry, signers)
+    _drive(sup, signers, tmp_path, FakeBackend(), tag="a")
+    dep = sup.store.deployment()
+    assert dep["deployment_generation"] == 1
+    from minagi.runtime.authority_store import GenerationConflict
+    with pytest.raises(GenerationConflict):
+        sup.store.commit_activation_intent(
+            candidate_id="cc" * 8, expected_generation=0, at=TS,
+            artifact_root_digest=digest({"r": 1}), backend_id="hf-peft")
 
 
 # ---------- quarantine + rollback ----------------------------------------
