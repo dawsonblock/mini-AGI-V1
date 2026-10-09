@@ -1143,7 +1143,7 @@
     "src-python/minagi/runtime/durable_journal.py": "51b4d4068c8ad6df84167ebde9dca90427bc2ec0eba2c4be7de4aaa1ab752b05",
     "src-python/minagi/runtime/journal_v2.py": "306057388f3a14cacef1bc983bd12ebc173cdaba6a94ba64e373f9ab28a45537",
     "src-python/minagi/runtime/service.py": "fb814f038f13cfb579ad2fdc350af25b44b228a3c095e10ca898e2ffeee1fe87",
-    "src-python/minagi/runtime/serving_router.py": "6eca3a4e82da5edc226b560121139ab79462c5f0eeb854622952e011fc40fd49",
+    "src-python/minagi/runtime/serving_router.py": "64f375414db75d76ae93e57dff74d3c05c9f070b9fb07442f5a418913c604edf",
     "src-python/minagi/runtime/supervisor.py": "ffa393657c69ad9bd0e1710d571a6f16d6b225a12618a3c3302b9663b32897a1",
     "src-python/minagi/security/__init__.py": "f1ef397c8b949efd07e5cb4362e98e6931135698d60ab29331353c1ee660a80a",
     "src-python/minagi/security/admission_grants.py": "1f99a58cf83b3d26d6fc1ace9893289f9ca0b1fc0abc728b1048621636210a06",

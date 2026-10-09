@@ -93,10 +93,11 @@ class ServingRouter:
                     "service is unavailable")
             self._inflight += 1
         try:
-            infer = getattr(route.backend, "infer", None)
-            if not callable(infer):
-                infer = getattr(route.backend, "generate", None)
-            if not callable(infer):
+            if callable(getattr(route.backend, "infer", None)):
+                infer = getattr(route.backend, "infer")
+            elif callable(getattr(route.backend, "generate", None)):
+                infer = getattr(route.backend, "generate")
+            else:
                 raise RoutingRefused(
                     f"backend {getattr(route.backend, 'backend_id', None)!r} "
                     "exposes no inference method on the routed handle")
