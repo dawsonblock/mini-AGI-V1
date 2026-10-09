@@ -222,16 +222,15 @@ profile (`test_real_probe_detects_a_profile_that_cannot_start_the_interpreter`)
 and with a simulated probe failure; tests: 641 → 643 passing
 (1 skipped).
 
-RC14-001 (the drifted donor class in `minagi/rc14/system.py`) remains
-the one open decision — the tree contains no base with the RC13-era API
-it expects (`state_epochs`, `runtime_activation`, `verify_control_plane`
-appear nowhere else, including `references/`), so a faithful fix means
-porting that base, wiring the class up, or retiring it. Meanwhile the
-class docstring now states plainly that it is not wired and why, and the
-CI lint gate's tolerance was tightened: it accepts exactly the two
-`unexpected-keyword-arg` findings on that call (matched by file and
-code) and fails on any other finding in the file, so the allowance can
-no longer hide new problems.
+RC14-001 is closed by retirement: the drifted donor class
+(`minagi/rc14/system.py`, whose only definition it was) is deleted and
+the package re-export removed with a pointer comment. Its RC13-era base
+(`state_epochs`, `runtime_activation`, `verify_control_plane`) exists
+nowhere in this tree, so it could never be constructed, and nothing
+instantiated it; provenance remains in git history and the donor archive
+identity in `SOURCE_PROVENANCE.json`. The CI lint gate now requires
+zero Pylint findings — the two tolerated `unexpected-keyword-arg`
+findings are gone with the class.
 
 # v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
 
