@@ -20,7 +20,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "5144700735b53e5f44babb36ccb71dcbd797fcd886ed1b12c1e4c2649e5cfd4b",
+ "manifest_sha256": "2ed685dec053af416d066368ada9cd4d5cc66a6fe0cee052cb3fb28f04abb1e8",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "641/641 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -167,9 +167,14 @@
    "manifest_sha256": "5144700735b53e5f44babb36ccb71dcbd797fcd886ed1b12c1e4c2649e5cfd4b",
    "reason": "RC14-001 retired (user decision): src-python/minagi/rc14/system.py \u2014 whose only definition was the unconstructible donor class GovernedRC14System \u2014 is deleted, and the package re-export removed with a pointer comment. Provenance remains in git history and the donor archive identity in SOURCE_PROVENANCE.json. With the class gone, the CI lint gate's tolerance is removed: it now requires zero Pylint findings. Tests unchanged: 643 passed, 1 skipped",
    "utc": "2026-10-09T03:16:45.698173+00:00"
+  },
+  {
+   "manifest_sha256": "2ed685dec053af416d066368ada9cd4d5cc66a6fe0cee052cb3fb28f04abb1e8",
+   "reason": "README.md rewritten as the modern GitHub front page for v16.4.1 (badges, architecture, status, governed chain, campaigns, verification, quality gates, docs index). Documentation-only change; no code or test impact.",
+   "utc": "2026-10-09T03:30:30.184576+00:00"
   }
  ],
- "reissued_utc": "2026-10-09T03:16:45.698173+00:00",
+ "reissued_utc": "2026-10-09T03:30:30.184576+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
