@@ -76,7 +76,12 @@ class SupervisorClient:
         return self._call({"op": "rollback"})
 
     def launch(self, request_fields: dict, *, backend: str = "hf-peft",
-               receipt_path=None) -> dict:
-        return self._call({"op": "launch", "backend": backend,
-                           "request": dict(request_fields),
-                           "receipt_path": receipt_path})
+               request_id: str | None = None) -> dict:
+        req = {"op": "launch", "backend": backend,
+               "request": dict(request_fields)}
+        if request_id:
+            req["request_id"] = request_id
+        return self._call(req)
+
+    def infer(self, request) -> dict:
+        return self._call({"op": "infer", "request": request})

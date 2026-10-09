@@ -53,10 +53,10 @@ every release ships a signed manifest verifiable offline.
 
 | Item | State |
 |---|---|
-| Current release | **v16.4.2 — Authority and Activation Closure** (`v16.4.2`, in flight) · latest published: [**v16.4.1**](https://github.com/dawsonblock/mini-AGI-V1/releases/tag/v16.4.1-colab) |
+| Current release | **v16.4.3 — Hardened Runtime** (`v16.4.3`, in flight) · latest published: [**v16.4.2**](https://github.com/dawsonblock/mini-AGI-V1/releases/tag/v16.4.2) |
 | Release integrity | ✅ **PASS** — `scripts/verify_release.py`: signed manifest, Ed25519 signature, attestation/version reconciliation |
 | CI | ✅ **green** — lint (ruff · Flake8 · Pylint error-gate), ubuntu + macOS validation, native CMake/CTest, tag-gated release-integrity |
-| Unified Python suite | ✅ **711 passed, 1 skipped** (`tests-python/`) |
+| Unified Python suite | ✅ **767 passed, 1 skipped** (`tests-python/`) |
 | Native CTest | ✅ 28/28 (ubuntu + macOS CPU/stub builds; CUDA paths unverified offline) |
 | Runtime admission | ✅ full chain — plan → qualification → promotion → manifest → exact bytes — with signed activation receipts and rollback |
 | Evaluator sandbox | ✅ fail-closed — usable / unavailable / misconfigured backends classified explicitly; no unsandboxed fallback |
@@ -67,7 +67,67 @@ every release ships a signed manifest verifiable offline.
 | Campaign 3A — `campaign3a` | ⏳ **PREREGISTERED + EXECUTING** — halved-optimization-pressure arm, sealed digest-bound holdout, resumable per-seed evidence banking |
 | Validated designation | **v16.2** — the v16.3+ promotion gate required Campaign 2 to qualify; it did not |
 
-## What's new in v16.4.2
+## What's new in v16.4.3
+
+**Hardened runtime.** Every guarantee the activation architecture
+claimed is now enforced at the source: durable single-use admission
+grants, per-operation role authorization, service-owned storage
+paths, a verified hash-chained journal, crash-safe recovery that
+never reports a phantom server, backend-identity and policy-epoch
+binding, bounded service I/O, and a real serving router — all behind
+one transactional authority.
+
+<table>
+<tr><td>
+
+**🗄️ One transactional authority**
+
+`authority_store.py` (SQLite, WAL, `BEGIN IMMEDIATE`) owns grant
+reservations, the signed hash-chained event log, the active pointer,
+and idempotent request outcomes. A consumed grant stays consumed —
+across threads, processes, restarts, and crashes.
+
+</td><td>
+
+**🛂 Per-operation authorization**
+
+`PrincipalContext` comes from the authenticated peer uid, never
+request JSON. `research.sock` submits proposals; `operator.sock`
+runs lifecycle ops; every decision — allowed or refused — is audit
+recorded.
+
+</td></tr>
+<tr><td>
+
+**📂 Filesystem authority**
+
+Server-generated opaque activation ids; receipts under a
+service-owned root; symlinked parents, traversal, and absolute
+paths refused at the containment layer.
+
+</td><td>
+
+**🔁 Verified recovery + routing**
+
+Cold start is `UNAVAILABLE` — a durable `ACTIVE` record is evidence
+for re-qualification, not a live handle. `ServingRouter` sends
+traffic only to the committed+healthy instance; rollback re-checks
+the revocation epoch.
+
+</td></tr>
+</table>
+
+All ten v16.4.2 findings (SEC-201..207, OPS-001..003) are closed —
+evidence in
+[`docs/research/RUNTIME_SECURITY_CLOSURE_V1643.md`](docs/research/RUNTIME_SECURITY_CLOSURE_V1643.md)
+and the threat model in
+[`docs/research/THREAT_MODEL_V1643.md`](docs/research/THREAT_MODEL_V1643.md).
+Controller correctness (SEC-005/006) is the v16.4.4 gate; real-model
+Campaign 3 qualification is the v16.5.0 gate — see
+[`docs/research/UPGRADE_PLAN_V17.md`](docs/research/UPGRADE_PLAN_V17.md).
+
+<details>
+<summary><b>v16.4.2 — Authority and Activation Closure</b></summary>
 
 **Authority and activation closure.** Measured files can no longer
 become deployable by constructing an object, the production backend
@@ -118,9 +178,11 @@ stored atomically.
 
 The full 13-row qualification table from the upgrade spec runs in
 `tests-python/v161/test_v1642_activation_closure.py`. Controller
-correctness (SEC-005/006) is the v16.4.3 gate; real-model Campaign 3
-qualification is the v16.5.0 gate — see
+correctness (SEC-005/006) moved to the v16.4.4 gate; real-model
+Campaign 3 qualification is the v16.5.0 gate — see
 [`docs/research/UPGRADE_PLAN_V17.md`](docs/research/UPGRADE_PLAN_V17.md).
+
+</details>
 
 <table>
 <tr><td>
@@ -359,6 +421,8 @@ push and pull request; the release-integrity job is tag-gated.
 
 | Document | Contents |
 |---|---|
+| [`docs/research/RUNTIME_SECURITY_CLOSURE_V1643.md`](docs/research/RUNTIME_SECURITY_CLOSURE_V1643.md) | v16.4.3 hardened-runtime design, evidence, and gate status |
+| [`docs/research/THREAT_MODEL_V1643.md`](docs/research/THREAT_MODEL_V1643.md) | Trust boundaries, adversaries, and fail-closed invariants |
 | [`docs/research/RUNTIME_SECURITY_CLOSURE_V1642.md`](docs/research/RUNTIME_SECURITY_CLOSURE_V1642.md) | v16.4.2 authority + activation-closure design and evidence |
 | [`docs/research/UPGRADE_PLAN_V17.md`](docs/research/UPGRADE_PLAN_V17.md) | The v16.4.1 → v17.0 engineering roadmap and release gates |
 | [`docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md`](docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md) | v16.4.1 security-closure design and evidence |

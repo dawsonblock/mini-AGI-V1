@@ -243,6 +243,23 @@ class PeftServingBackend:
         if out.logits is None:
             raise RuntimeError("health probe produced no logits")
 
+    def infer(self, handle, request) -> dict:
+        """v16.4.3 routed inference (WP8/OPS-003): the serving router
+        dispatches requests only to the live handle of the committed,
+        healthy activation — the backend is never handed a raw path."""
+        import torch
+        model, tokenizer = handle["model"], handle["tokenizer"]
+        req = dict(request or {})
+        prompt = str(req.get("prompt", ""))
+        max_new = int(req.get("max_new_tokens", 8))
+        with torch.inference_mode():
+            ids = tokenizer(prompt, return_tensors="pt")
+            out = model.generate(**ids, max_new_tokens=max_new)
+        return {"completion": tokenizer.decode(out[0],
+                                               skip_special_tokens=True),
+                "manifest_digest": handle.get(
+                    "snapshot_manifest_digest", "")}
+
     def unload(self, handle) -> None:
         """Release a loaded model. Idempotent — a supervisor may call
         this during abort and again during recovery."""

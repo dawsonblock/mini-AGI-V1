@@ -220,15 +220,16 @@ class Backend:
 '''
 
 
-def _launch_args(chain, factory, receipt):
+def _launch_args(chain, factory, receipt=None):
+    # receipt destinations are service-owned (SEC-204); the activation
+    # receipt lands at <storage>/receipts/<activation_id>.json
     return ["--storage-root", str(chain.storage), "--campaign-id", "camp",
             "--seed", "seed-0", "--decision", str(chain.decision_path),
             "--adapter-dir", str(chain.adir),
             "--model-path", str(chain.model),
             "--tokenizer-path", str(chain.tok),
             "--revocation-store", str(chain.rev_dir),
-            "--backend-factory", f"c3a_fake_backend:{factory}",
-            "--receipt", str(receipt)]
+            "--backend-factory", f"c3a_fake_backend:{factory}"]
 
 
 def _factory_env(tmp_path, source=BACKEND_SRC):
@@ -241,12 +242,16 @@ def _factory_env(tmp_path, source=BACKEND_SRC):
 
 def test_launch_cli_stages_loads_and_writes_production_receipt(tmp_path):
     chain = _storage(tmp_path)
-    receipt = chain.cdir / "ACTIVATION_RECEIPT.json"
-    proc = _run(LAUNCH_CLI, *_launch_args(chain, "Backend", receipt),
+    proc = _run(LAUNCH_CLI, *_launch_args(chain, "Backend"),
                 env=_factory_env(tmp_path))
     assert proc.returncode == 0, proc.stderr
     out = json.loads(proc.stdout)
     assert out["status"] == "LAUNCHED" and out["production"] is True
+    receipt = Path(out["receipt"])
+    # service-owned receipt path under <storage>/receipts
+    assert receipt.parent == (chain.storage / "receipts").resolve() or \
+        receipt.parent == chain.storage / "receipts"
+    assert receipt.is_file()
     doc = json.loads(receipt.read_text())
     assert "signer_key_id" in doc
 
@@ -266,21 +271,21 @@ def test_launch_cli_stages_loads_and_writes_production_receipt(tmp_path):
 def test_launch_cli_refuses_altered_byte_and_writes_no_receipt(tmp_path):
     chain = _storage(tmp_path)
     (chain.adir / "adapter_model.safetensors").write_bytes(b"altered")
-    receipt = chain.cdir / "ACTIVATION_RECEIPT.json"
-    proc = _run(LAUNCH_CLI, *_launch_args(chain, "Backend", receipt),
+    proc = _run(LAUNCH_CLI, *_launch_args(chain, "Backend"),
                 env=_factory_env(tmp_path))
     assert proc.returncode == 2
     assert "adapter bytes differ" in proc.stderr
-    assert not receipt.exists()
+    receipts = chain.storage / "receipts"
+    assert not receipts.exists() or not list(receipts.glob("*.json"))
 
 
 def test_launch_cli_refuses_backend_that_is_not_the_requested_one(tmp_path):
     chain = _storage(tmp_path)
-    receipt = chain.cdir / "ACTIVATION_RECEIPT.json"
     bad = "class Backend:\n    backend_id = 'qw3-native'\n" \
           "    def load(self, snapshot):\n        return None\n"
-    proc = _run(LAUNCH_CLI, *_launch_args(chain, "Backend", receipt),
+    proc = _run(LAUNCH_CLI, *_launch_args(chain, "Backend"),
                 env=_factory_env(tmp_path, bad))
     assert proc.returncode == 2
     assert "does not match" in proc.stderr
-    assert not receipt.exists()
+    receipts = chain.storage / "receipts"
+    assert not receipts.exists() or not list(receipts.glob("*.json"))

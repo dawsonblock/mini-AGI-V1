@@ -175,6 +175,7 @@ def _revocation_snapshot(chain, *, revoked=(), epoch=0,
 
 
 def _launcher(chain, tmp_path, *, revocation=None, signer=None, **kw):
+    from minagi.runtime.authority_store import AuthorityStore
     return TrustedRuntimeLauncher(
         chain.registry,
         revocation_snapshot=revocation if revocation is not None
@@ -182,8 +183,10 @@ def _launcher(chain, tmp_path, *, revocation=None, signer=None, **kw):
         runtime_signer=signer or chain.signers["runtime"],
         admission_signer=chain.signers["admission"],
         snapshot_root=tmp_path / "snapshots",
+        receipts_dir=tmp_path / "receipts",
+        authority_store=kw.pop("authority_store", None) or
+        AuthorityStore(tmp_path / "state" / "authority.sqlite"),
         nonce_journal=tmp_path / "nonces.jsonl",
-        journal_dir=tmp_path / "journal",
         ledger_path=kw.pop("ledger_path", tmp_path / "ledger.jsonl"),
         now=NOW, **kw)
 
@@ -214,9 +217,8 @@ def test_launch_admits_stages_loads_and_emits_production_receipt(tmp_path):
     ledger = _ledger(chain, tmp_path)
     launcher = _launcher(chain, tmp_path, ledger_path=ledger.path)
     backend = FakeBackend()
-    out = tmp_path / "ACTIVATION_RECEIPT.json"
-    result = launcher.launch(_request(chain), backend,
-                             receipt_path=out)
+    result = launcher.launch(_request(chain), backend)
+    out = Path(result.receipt_path)
 
     assert result.backend_id == "hf-peft"
     assert backend.seen is result.snapshot
@@ -267,21 +269,18 @@ def test_backend_identity_mismatch_refused(tmp_path):
     launcher = _launcher(chain, tmp_path)
     backend = FakeBackend()
     backend.backend_id = "qw3-native"
-    out = tmp_path / "R.json"
     with pytest.raises(LaunchRefused, match="does not match"):
-        launcher.launch(_request(chain), backend, receipt_path=out)
-    assert not out.exists()
+        launcher.launch(_request(chain), backend)
+    assert not list((tmp_path / "receipts").glob("*.json"))
     assert backend.seen is None
 
 
 def test_backend_load_failure_emits_no_receipt(tmp_path):
     chain = _build_chain(tmp_path)
     launcher = _launcher(chain, tmp_path)
-    out = tmp_path / "R.json"
     with pytest.raises(LaunchRefused, match="failed to load"):
-        launcher.launch(_request(chain), FakeBackend(fail=True),
-                        receipt_path=out)
-    assert not out.exists()
+        launcher.launch(_request(chain), FakeBackend(fail=True))
+    assert not list((tmp_path / "receipts").glob("*.json"))
 
 
 def test_symlink_added_to_adapter_refuses_launch(tmp_path):
@@ -378,7 +377,7 @@ def test_stale_revocation_snapshot_refused(tmp_path):
             admission_signer=chain.signers["admission"],
             snapshot_root=tmp_path / "snapshots",
             nonce_journal=tmp_path / "nonces.jsonl",
-            journal_dir=tmp_path / "journal",
+            receipts_dir=tmp_path / "receipts",
             ledger_path=tmp_path / "ledger.jsonl",
             now=NOW).launch(_request(chain), FakeBackend())
 
@@ -431,7 +430,7 @@ def test_unsigned_revocation_list_refused(tmp_path):
             runtime_signer=chain.signers["runtime"],
             admission_signer=chain.signers["admission"],
             snapshot_root=tmp_path / "s", nonce_journal=tmp_path / "n.jsonl",
-            journal_dir=tmp_path / "j", now=NOW).launch(
+            receipts_dir=tmp_path / "r", now=NOW).launch(
                 _request(chain), FakeBackend())
 
 

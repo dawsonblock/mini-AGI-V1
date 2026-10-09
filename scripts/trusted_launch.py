@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""Trusted runtime launcher CLI (v16.4.2) — supervised transactional
+"""Trusted runtime launcher CLI (v16.4.3) — supervised transactional
 activation.
 
 Every launch verifies the full signed chain plus an authenticated
 RevocationSnapshotV2, issues a short-lived AdmissionGrant under the
-`admission` role, stages an immutable measured snapshot, and hands the
-transactional lifecycle to the ServingSupervisor: prepare → health
-probe → durable commit → active-pointer flip. Any failed transition
-unloads the prepared handle and restores traffic to the previous live
-runtime; a crash between commit and switch is reconciled from the
-durable journal before traffic is accepted.
+`admission` role, stages an immutable measured snapshot under a
+server-generated activation id, and hands the transactional lifecycle
+to the ServingSupervisor over the SQLite authority store: durable grant
+reservation → prepare → health probe → atomic commit+pointer → signed
+completion. Any failed transition unloads the prepared handle and
+restores traffic to the previous live runtime; a restart reconciles the
+verified event log and never serves a model that is not resident.
 
     python scripts/trusted_launch.py \
         --storage-root STORAGE --campaign-id CID --seed seed-0 \
         --decision STORAGE/evidence/CID/RUNTIME_MANIFEST.json \
         --adapter-dir STORAGE/adapters/CID/L6/seed-0 \
         --model-path MODEL_DIR \
-        --revocation-store STORAGE/revocations \
-        --receipt STORAGE/evidence/CID/ACTIVATION_RECEIPT.json
+        --revocation-store STORAGE/revocations
 
 The tokenizer identity is bound by the signed plan as the
 tokenizer-named files inside the model snapshot, re-measured from the
@@ -25,9 +25,12 @@ staged model and served from that verified artifact — `--tokenizer-path`
 is an optional cross-check root (the same tokenizer files elsewhere),
 never the served copy.
 
-The backend factory (module:callable) must return an object with a
-`backend_id` plus `load`/`health_probe`/`unload` lifecycle methods; the
-default `hf-peft` factory is
+Receipt paths and snapshot destinations are generated inside the
+trusted side (`storage/receipts/<activation_id>.json`,
+`storage/snapshots/<id>`); campaign/seed are metadata, never path
+components. The backend factory (module:callable) must return an object
+with a `backend_id` plus `load`/`health_probe`/`unload` lifecycle
+methods; the default `hf-peft` factory is
 `minagi.v161.peft_serving.PeftServingBackend`, which refuses anything
 but a MeasuredSnapshot.
 
@@ -45,6 +48,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src-python"))
 
 from egai.common.crypto import Ed25519Signer  # noqa: E402
+from minagi.runtime.authority_store import AuthorityStore  # noqa: E402
 from minagi.runtime.supervisor import ServingSupervisor  # noqa: E402
 from minagi.security.signed_revocations import RevocationStore  # noqa: E402
 from minagi.v161.authority import AuthorityRegistry  # noqa: E402
@@ -99,9 +103,13 @@ def main(argv=None) -> int:
                          "(RevocationStore); unsigned lists are refused")
     ap.add_argument("--max-revocation-age-days", type=float, default=7.0)
     ap.add_argument("--snapshot-root", default=None)
-    ap.add_argument("--nonce-journal", default=None)
-    ap.add_argument("--journal-dir", default=None)
-    ap.add_argument("--receipt", default=None)
+    ap.add_argument("--state-dir", default=None,
+                    help="authority store directory "
+                         "(default <storage>/state)")
+    ap.add_argument("--policy-epoch", type=int, default=0)
+    ap.add_argument("--receipt", default=None,
+                    help="deprecated: receipt destinations are "
+                         "service-owned; ignored")
     ap.add_argument("--ledger", default=None)
     ap.add_argument("--runtime-key", default=None)
     ap.add_argument("--admission-key", default=None)
@@ -155,19 +163,22 @@ def main(argv=None) -> int:
     except Exception as exc:  # noqa: BLE001
         return _config_error(f"backend factory: {exc}")
 
-    journal_dir = args.journal_dir or (storage / "runtime_journal")
+    store = AuthorityStore(
+        (args.state_dir or (storage / "state")) / "authority.sqlite")
     supervisor = ServingSupervisor(
-        journal_dir, runtime_signer=signer, registry=registry)
-    supervisor.recover_from_journal()
+        store, runtime_signer=signer, registry=registry,
+        min_policy_epoch=args.policy_epoch)
+    supervisor.recover()
 
     launcher = TrustedRuntimeLauncher(
         registry, runtime_signer=signer,
         admission_signer=admission_signer,
         supervisor=supervisor,
+        authority_store=store,
         revocation_store=revocation_store,
         snapshot_root=args.snapshot_root or (storage / "snapshots"),
-        nonce_journal=args.nonce_journal
-        or (storage / "activation_nonces.jsonl"),
+        receipts_dir=storage / "receipts",
+        policy_epoch=args.policy_epoch,
         max_revocation_age_seconds=int(
             float(args.max_revocation_age_days) * 86400),
         ledger_path=args.ledger or (storage / "AUTHORITY_LEDGER.jsonl"))
@@ -181,10 +192,8 @@ def main(argv=None) -> int:
         model_path=args.model_path, tokenizer_path=args.tokenizer_path or "",
         expected_backend=args.backend)
 
-    receipt_path = args.receipt or (
-        cdir / "ACTIVATION_RECEIPT.json")
     try:
-        result = launcher.launch(request, backend, receipt_path=receipt_path)
+        result = launcher.launch(request, backend)
     except LaunchRefused as exc:
         return _refuse(str(exc))
     except Exception as exc:  # noqa: BLE001 - never report success on error
@@ -197,7 +206,7 @@ def main(argv=None) -> int:
         "activation_id": result.activation_id,
         "grant_digest": result.grant_digest,
         "receipt_digest": result.receipt_doc["digest"],
-        "receipt": str(receipt_path),
+        "receipt": str(result.receipt_path),
         "snapshot_root": str(result.snapshot.root),
         "loaded_artifact_digests": dict(
             result.receipt.loaded_artifact_digests),

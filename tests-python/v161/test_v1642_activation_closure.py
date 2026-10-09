@@ -60,9 +60,11 @@ def test_row2_arbitrary_path_object_refused(tmp_path):
     """An object with a path() method is not measurement evidence —
     the supervisor refuses it at stage()."""
     chain = _build_chain(tmp_path)
-    sup = ServingSupervisor(tmp_path / "journal",
-                            runtime_signer=chain.signers["runtime"],
-                            registry=chain.registry, now=NOW)
+    from minagi.runtime.authority_store import AuthorityStore
+    sup = ServingSupervisor(
+        AuthorityStore(tmp_path / "state" / "authority.sqlite"),
+        runtime_signer=chain.signers["runtime"],
+        registry=chain.registry, now=NOW)
     from minagi.security.admission_grants import issue_grant
     grant = issue_grant(
         chain.signers["admission"], decision_digest=digest({"d": 1}),
@@ -70,14 +72,14 @@ def test_row2_arbitrary_path_object_refused(tmp_path):
         runtime_manifest_digest=chain.manifest["digest"],
         artifact_root_digest=digest({"a": 1}), backend_id="hf-peft",
         audience_runtime_identity=sup.runtime_identity, now=NOW)
-    sup.request("act")
-    sup.authorize("act", grant)
+    act = sup.request()
+    sup.authorize(act.activation_id, grant)
 
     class Quacks:
         def path(self, name):
             return tmp_path
     with pytest.raises(Exception, match="MeasuredSnapshot"):
-        sup.stage("act", Quacks())
+        sup.stage(act.activation_id, Quacks())
 
 
 # --- rows 3-4: explicit backend authorization ----------------------------
@@ -202,34 +204,34 @@ def test_row10_receipt_failure_leaves_no_active_candidate(tmp_path):
     unevidenced remains routable."""
     chain = _build_chain(tmp_path)
     launcher = _launcher(chain, tmp_path)
-    # a receipt path that is a directory makes persistence fail
-    receipt = tmp_path / "receipt-dir"
-    receipt.mkdir()
+    # a receipts_dir that is a regular file makes persistence fail
+    blocker = tmp_path / "receipts"
+    blocker.write_text("not a directory")
+    launcher.receipts_dir = blocker
     with pytest.raises(LaunchRefused, match="evidence"):
-        launcher.launch(_request(chain), FakeBackend(),
-                        receipt_path=receipt)
+        launcher.launch(_request(chain), FakeBackend())
     pointer = launcher.supervisor.active_pointer()
     assert not pointer or not pointer.get("activation_id")
 
 
 def test_row11_crash_between_commit_and_switch_recovers(tmp_path):
-    """Drive the journal to COMMITTED-but-unrouted, then recover."""
+    """Drive the event log to COMMITTED-but-unrouted, then recover."""
     chain = _build_chain(tmp_path)
-    journal_dir = tmp_path / "journal"
-    sup = ServingSupervisor(journal_dir,
-                            runtime_signer=chain.signers["runtime"],
-                            registry=chain.registry, now=NOW)
-    journal = sup.journal
+    from minagi.runtime.authority_store import AuthorityStore
+    store = AuthorityStore(tmp_path / "state" / "authority.sqlite")
+    aid = "ab" * 16
+    src = ""
     for st in ["REQUESTED", "AUTHORIZED", "STAGED", "PREPARED",
                "READY", "COMMITTED"]:
-        journal.append(activation_id="act-x",
-                       from_state="", to_state=st, at=TS)
-    # no pointer write — the crash landed before routing
-    fresh = ServingSupervisor(journal_dir,
-                              runtime_signer=chain.signers["runtime"],
-                              registry=chain.registry, now=NOW)
-    report = fresh.recover_from_journal()
-    assert "act-x" in report["aborted"]
+        store.append_event(activation_id=aid, event_type="transition",
+                           from_state=src, to_state=st, at=TS)
+        src = st
+    # no pointer commit — the crash landed before routing
+    fresh = ServingSupervisor(
+        store, runtime_signer=chain.signers["runtime"],
+        registry=chain.registry, now=NOW)
+    report = fresh.recover()
+    assert aid in report["aborted"]
 
 
 # --- rows 12-13: quarantine + rollback ------------------------------------
@@ -247,9 +249,11 @@ def test_row12_revoked_active_version_quarantined(tmp_path):
 
 def test_row13_failed_health_probe_keeps_previous(tmp_path):
     chain = _build_chain(tmp_path)
-    sup = ServingSupervisor(tmp_path / "journal",
-                            runtime_signer=chain.signers["runtime"],
-                            registry=chain.registry, now=NOW)
+    from minagi.runtime.authority_store import AuthorityStore
+    sup = ServingSupervisor(
+        AuthorityStore(tmp_path / "state" / "authority.sqlite"),
+        runtime_signer=chain.signers["runtime"],
+        registry=chain.registry, now=NOW)
     launcher = _launcher(chain, tmp_path, supervisor=sup)
     ok = launcher.launch(_request(chain), FakeBackend())
     assert sup.active_id == ok.activation_id

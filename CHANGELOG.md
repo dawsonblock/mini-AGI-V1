@@ -1,3 +1,79 @@
+# v16.4.3 — Hardened Runtime
+
+Closes all ten v16.4.2 authority/concurrency/filesystem/recovery/
+journal/backend/service/routing findings (SEC-201..207,
+OPS-001..003), at the source, with executable regressions.
+Details: `docs/research/RUNTIME_SECURITY_CLOSURE_V1643.md`;
+threat model: `docs/research/THREAT_MODEL_V1643.md`; open items:
+`docs/research/REMAINING_DEFECTS_V1641.md`. No scientific claim
+changes.
+
+One transactional authority (WP1):
+
+- `runtime/authority_store.py` — SQLite (WAL, `synchronous=FULL`,
+  `BEGIN IMMEDIATE`) owns admission-grant reservations (unique
+  grant id / nonce / digest / activation id), the hash-chained
+  signed runtime-event log, idempotent request outcomes, audit, and
+  the active-pointer projection in one database. A consumed grant
+  stays consumed across restarts and failed activations; the store
+  fails closed when unavailable or corrupt.
+
+Per-operation authorization (WP2):
+
+- `runtime/access_policy.py` — `PrincipalContext` from authenticated
+  peer uid (never request fields), per-operation role checks, signed
+  audit of allowed and refused decisions. The service exposes
+  `research.sock` (proposal/status/infer) and `operator.sock`
+  (lifecycle); endpoint whitelists are enforced in the dispatcher.
+
+Filesystem authority (WP3):
+
+- Activation ids are `secrets.token_hex(16)` generated inside the
+  service; receipts land under a service-owned root. `secure_dir` /
+  `contained_child` refuse symlinked roots/parents, traversal,
+  absolute paths, and non-opaque names.
+
+Verified journal + migration (WP4):
+
+- `runtime/journal_v2.py` — every event digest-, chain-, role-, and
+  grammar-verified; signed-checkpoint anchor makes tail truncation
+  loud. `scripts/migrate_journal_v1_to_v2.py` re-issues V1 history
+  under the `migration` authority with original signatures preserved.
+
+Crash-safe recovery (WP5):
+
+- Serving states (`UNAVAILABLE`…`SERVING`) are explicit; cold start
+  never serves. `recover()` re-verifies the log, qualification,
+  revocation freshness, and artifacts, obtains fresh admission,
+  probes health, and commits before routing. Rollback re-checks the
+  revocation epoch and only targets verified-live predecessors.
+
+Backend identity (WP6):
+
+- `runtime/backend_manifest.py` — `RuntimeBackendManifestV1` binds
+  backend id, implementation digest, dependency lock, inference
+  configuration, qualification digest, and policy epoch; the
+  supervisor enforces it at admission and rollback.
+
+Bounded service I/O (WP7):
+
+- `readline(MAX_REQUEST_BYTES + 1)` under socket deadlines, fixed
+  worker pool with bounded queue, connection and per-principal
+  quotas, auth-failure rate limiting, graceful drain. Socket
+  directory is service-owned; dev insecure mode requires an
+  explicit `dev_role` and cannot grant `admin`.
+
+Serving router (WP8):
+
+- `runtime/serving_router.py` — versioned routing under one lock;
+  only the committed+healthy instance receives `infer()` traffic;
+  activation/quarantine/rollback serialize; `PeftServingBackend`
+  gained `infer()`. `integration/test_full_admission_chain.py`
+  covers admit → route → activate → rollback → refuse → recover.
+
+Suite: 767 passed, 1 skipped; ruff/flake8/pylint zero findings;
+CTest 28/28.
+
 # v16.4.2 — Authority and Activation Closure
 
 Closes the three activation-authority weaknesses confirmed in the v17

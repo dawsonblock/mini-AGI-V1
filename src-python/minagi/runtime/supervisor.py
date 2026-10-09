@@ -1,33 +1,39 @@
-"""v16.4.2 serving supervisor (UPGRADE_PLAN §3.5/§3.6).
+"""v16.4.3 serving supervisor — transactional activation over the
+authority store (HARDENING_PLAN WP1/WP2/WP3/WP5).
 
-The supervisor owns every production model load. It enforces the
-activation state machine, journals every transition before it takes
-effect, keeps the previous healthy model until a candidate's commit is
-durable, and reconciles the journal against the active-version pointer
-on recovery.
+v16.4.2 introduced the lifecycle and the durable JSONL journal.
+v16.4.3 closes what was still process-local or caller-controlled:
 
-Ordering guarantees:
+  * grant consumption is reserved in `AuthorityStore` (SQLite,
+    BEGIN IMMEDIATE) — durable across restarts, atomic across threads
+    and processes (SEC-201/SEC-207);
+  * activation ids are generated inside the trusted service
+    (`secrets.token_hex(16)`) — campaign/seed are metadata, never a
+    path component (SEC-204);
+  * the serving pointer moves in the SAME transaction as the COMMITTED
+    intent event — the pointer and the journal cannot diverge;
+  * recovery distinguishes durable history from live state: a restart
+    begins UNAVAILABLE/RECOVERY_REQUIRED and never reports SERVING for
+    a model that is not resident — restoring traffic means re-admitting
+    through the same verified path (SEC-202);
+  * rollback re-validates revocation freshness and requires a live,
+    retained, committed predecessor — durable intent and completion
+    events bracket the pointer move (SEC-205 routing half).
 
-  * the activation-intent record is durable BEFORE the traffic pointer
-    moves — an intent record is never labelled proof of completed
-    activation;
-  * the pointer swap is atomic (tmp + fsync + os.replace) — a crash
-    mid-commit yields the old pointer or the new one, never a torn one;
-  * the signed activation-completion record is written after the swap
-    and describes what actually happened;
-  * any failure between load and commit unloads the candidate and
-    discards its snapshot — nothing unevidenced can serve;
-  * the previous healthy model stays resident until the new candidate
-    is COMMITTED+ACTIVE, so a failed activation never strands traffic.
+Ordering guarantees (unchanged in spirit, now transactional):
 
-The supervisor deliberately does not read caller paths directly: it
-verifies the `admission` grant itself, and the backend sees only the
-measured snapshot produced by `stage_snapshot`.
+  * the authorization event is committed before staging;
+  * commit intent + pointer swap are one database transaction;
+  * the signed completion event lands after;
+  * any post-load failure unloads the candidate;
+  * a pointer never names a model that is not resident.
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Protocol
 
 from egai.common.crypto import Ed25519Signer
@@ -38,13 +44,28 @@ from minagi.v161.authority import as_utc
 from minagi.v161.immutable_snapshot import (MeasuredSnapshot,
                                             verify_snapshot)
 
-from .activation_state import (ActivationState, check_transition)
-from .durable_journal import DurableJournal, JournalError
+from .access_policy import opaque_id
+from .activation_state import (ActivationState, IllegalTransition,
+                               check_transition)
+from .authority_store import (AuthorityStore, AuthorityStoreError,
+                              GrantConsumed)
+
+
+class ServingState(str, Enum):
+    """Live-traffic state of this service instance — distinct from the
+    historical activation records (SEC-202)."""
+    UNAVAILABLE = "UNAVAILABLE"            # no qualified model serving
+    RECOVERY_REQUIRED = "RECOVERY_REQUIRED"  # durable commit exists but
+                                           # its live state is unknown
+    PREPARING = "PREPARING"                # reloading + verifying
+    READY = "READY"                        # probes passed, not routed
+    SERVING = "SERVING"                    # live model receiving traffic
+    QUARANTINED = "QUARANTINED"            # withdrawn by authority
 
 
 class SupervisedBackend(Protocol):
-    """The contract a serving backend must satisfy to run under the
-    supervisor: load into a non-serving handle, prove health, and be
+    """The contract a serving backend must satisfy under the
+    supervisor: load into a non-serving handle, prove health, be
     unloadable on demand."""
     backend_id: str
 
@@ -52,11 +73,9 @@ class SupervisedBackend(Protocol):
         ...
 
     def health_probe(self, handle) -> None:  # pragma: no cover
-        """Raise unless the loaded model answers the probe."""
         ...
 
     def unload(self, handle) -> None:  # pragma: no cover
-        """Release the loaded model. Must tolerate being called twice."""
         ...
 
 
@@ -66,6 +85,11 @@ class ActivationRefused(PermissionError):
 
 class ActivationError(RuntimeError):
     """A supervised transition failed after authorization."""
+
+
+class RecoveryRequired(ActivationRefused):
+    """A durable committed activation exists but is not live — restore
+    it through the verified path instead of trusting the pointer."""
 
 
 @dataclass
@@ -81,27 +105,47 @@ class _Activation:
 class ServingSupervisor:
     """Transactional activation control for the serving runtime."""
 
-    def __init__(self, journal_dir, *, runtime_signer: Ed25519Signer,
+    def __init__(self, store: AuthorityStore, *,
+                 runtime_signer: Ed25519Signer,
                  registry, runtime_identity: str = "local-supervisor",
+                 min_policy_epoch: int = 0,
+                 revocation_epoch_provider=None,
+                 backend_manifest_doc=None, backend_modules=(),
+                 backend_deps=(),
                  now: datetime | None = None):
         if runtime_signer is None:
             raise ActivationRefused(
                 "the supervisor requires a protected runtime signing "
                 "identity — unsigned completion records are not evidence")
-        self.journal = DurableJournal(journal_dir)
+        self.store = store
         self.signer = runtime_signer
         self.registry = registry
         self.runtime_identity = str(runtime_identity)
+        self.min_policy_epoch = int(min_policy_epoch)
+        self._revocation_epoch_provider = revocation_epoch_provider
+        self.backend_manifest_doc = backend_manifest_doc
+        self.backend_modules = tuple(backend_modules)
+        self.backend_deps = tuple(backend_deps)
         self._now = now
+        self._lock = threading.RLock()
         self._activations: dict[str, _Activation] = {}
-        self._live_handles: dict[str, object] = {}
+        self._live_handles: dict[str, tuple] = {}
         self._active_id: str | None = None
         self._retained: str | None = None
-        self._consumed_grants: set[str] = set()
-        pointer = self.journal.read_pointer() if \
-            self.journal.pointer_path.is_file() else None
-        if pointer is not None:
-            self._active_id = str(pointer["activation_id"])
+        self._serving_state = ServingState.UNAVAILABLE
+        self.router = None  # set by the service (WP8)
+        # Boot state: the pointer is history, not liveness. A durable
+        # committed pointer yields RECOVERY_REQUIRED; nothing is SERVING
+        # until a live handle is re-verified.
+        try:
+            pointer = self.store.read_pointer()
+        except AuthorityStoreError:
+            pointer = None
+        if pointer is not None and pointer.get("activation_id"):
+            self._serving_state = ServingState.RECOVERY_REQUIRED
+            self._pending_restore_id = str(pointer["activation_id"])
+        else:
+            self._pending_restore_id = None
 
     # --- plumbing ---------------------------------------------------
     def _at(self) -> int:
@@ -115,45 +159,64 @@ class ServingSupervisor:
                 "drives state, it does not infer it")
         return act
 
-    def _transition(self, act: _Activation, dst: ActivationState,
-                    *, detail: dict | None = None,
+    def _transition(self, act: _Activation, dst: ActivationState, *,
+                    event_type: str = "transition",
+                    detail: dict | None = None,
                     sign: bool = False) -> None:
         check_transition(act.state, dst)
-        self.journal.append(
-            activation_id=act.activation_id,
+        self.store.append_event(
+            activation_id=act.activation_id, event_type=event_type,
             from_state=act.state.value, to_state=dst.value,
             at=self._at(), detail=detail,
             signer=self.signer if sign else None)
         act.state = dst
 
     @property
+    def serving_state(self) -> ServingState:
+        return self._serving_state
+
+    @property
     def active_id(self) -> str | None:
         return self._active_id
 
     def active_pointer(self) -> dict | None:
-        return self.journal.read_pointer() if \
-            self.journal.pointer_path.is_file() else None
+        try:
+            return self.store.read_pointer()
+        except AuthorityStoreError:
+            return None
 
     # --- the lifecycle ----------------------------------------------
-    def request(self, activation_id: str) -> _Activation:
-        """REQUESTED — register a candidate. Activation ids are
-        write-once so a journal replay cannot alias two candidates."""
-        if not activation_id:
-            raise ActivationRefused("activation_id required")
-        if activation_id in self._activations:
-            raise ActivationRefused(
-                f"activation id {activation_id!r} already exists")
-        act = _Activation(activation_id=activation_id,
-                          state=ActivationState.REQUESTED)
-        self.journal.append(activation_id=activation_id,
-                            from_state="", to_state="REQUESTED",
-                            at=self._at())
-        self._activations[activation_id] = act
-        return act
+    def request(self, *, activation_id: str | None = None) -> _Activation:
+        """REQUESTED — register a candidate. Activation ids are opaque
+        and server-generated (SEC-204); a caller may not choose its own
+        storage identity. `activation_id` exists only for journal
+        replay/migration and must still pass the opaque-id grammar."""
+        if activation_id is None:
+            activation_id = opaque_id()
+        else:
+            from .access_policy import validate_opaque_id
+            try:
+                validate_opaque_id(activation_id,
+                                   what="activation id")
+            except Exception as exc:
+                raise ActivationRefused(str(exc)) from exc
+        with self._lock:
+            if activation_id in self._activations:
+                raise ActivationRefused(
+                    f"activation id {activation_id!r} already exists")
+            act = _Activation(activation_id=activation_id,
+                              state=ActivationState.REQUESTED)
+            self.store.append_event(
+                activation_id=activation_id, event_type="requested",
+                from_state="", to_state="REQUESTED", at=self._at())
+            self._activations[activation_id] = act
+            return act
 
     def authorize(self, activation_id: str, grant_doc) -> _Activation:
-        """AUTHORIZED — the supervisor verifies the grant itself; a
-        caller's claim of authorization is not evidence."""
+        """AUTHORIZED — the supervisor verifies the grant itself and
+        reserves it in the transactional store: id, nonce, digest, and
+        activation id are unique across restarts and concurrent
+        callers (SEC-201/SEC-207)."""
         act = self._get(activation_id)
         try:
             grant = verify_grant(
@@ -162,18 +225,36 @@ class ServingSupervisor:
         except GrantRefused as exc:
             self.abort(activation_id, reason=f"grant refused: {exc}")
             raise ActivationRefused(f"grant refused: {exc}") from exc
-        if grant.grant_id in self._consumed_grants:
-            self.abort(activation_id, reason="grant replay")
+        if grant.policy_epoch < self.min_policy_epoch:
+            self.abort(activation_id,
+                       reason="grant policy epoch superseded")
             raise ActivationRefused(
-                "grant id already consumed — a grant authorizes exactly "
-                "one activation")
-        act.grant = grant
-        self._transition(act, ActivationState.AUTHORIZED,
-                         detail={"grant_id": grant.grant_id,
-                                 "manifest": grant.runtime_manifest_digest,
-                                 "backend": grant.backend_id})
-        self._consumed_grants.add(grant.grant_id)
-        return act
+                f"grant policy epoch {grant.policy_epoch} is older than "
+                f"the operative epoch {self.min_policy_epoch} — "
+                "superseded authorization refused")
+        with self._lock:
+            try:
+                self.store.reserve_grant(
+                    grant, activation_id=activation_id, at=self._at(),
+                    from_state=act.state.value,
+                    detail={"grant_id": grant.grant_id,
+                            "manifest": grant.runtime_manifest_digest,
+                            "backend": grant.backend_id,
+                            "policy_epoch": grant.policy_epoch})
+            except GrantConsumed as exc:
+                self.abort(activation_id, reason="grant replay")
+                raise ActivationRefused(
+                    "grant replay refused — a grant authorizes exactly "
+                    "one activation") from exc
+            except AuthorityStoreError as exc:
+                self.abort(activation_id,
+                           reason=f"authority store: {exc}")
+                raise ActivationError(
+                    f"the authority store could not reserve the grant: "
+                    f"{exc}") from exc
+            act.grant = grant
+            act.state = ActivationState.AUTHORIZED
+            return act
 
     def stage(self, activation_id: str,
               snapshot: MeasuredSnapshot) -> _Activation:
@@ -204,8 +285,11 @@ class ServingSupervisor:
         return act
 
     def prepare(self, activation_id: str, backend) -> _Activation:
-        """PREPARED — the backend loads into a non-serving handle. A
-        load failure aborts: nothing half-loaded can proceed."""
+        """PREPARED — the backend loads into a non-serving handle. When
+        a backend manifest is configured, the installed implementation
+        and dependency closure are re-measured against it first —
+        a signature for hf-peft cannot authorize an arbitrary object
+        claiming to be hf-peft (SEC-206)."""
         act = self._get(activation_id)
         if act.snapshot is None:
             raise ActivationRefused("prepare requires a staged snapshot")
@@ -215,6 +299,15 @@ class ServingSupervisor:
             raise ActivationRefused(
                 f"backend {getattr(backend, 'backend_id', None)!r} does "
                 "not match the grant's authorized backend")
+        if self.backend_manifest_doc is not None:
+            try:
+                self._verify_backend_identity(backend, act)
+            except Exception as exc:  # noqa: BLE001 - fail closed
+                self.abort(activation_id,
+                           reason=f"backend identity: {exc}")
+                raise ActivationRefused(
+                    f"backend identity verification failed: {exc}") \
+                    from exc
         try:
             handle = backend.load(act.snapshot)
         except Exception as exc:  # noqa: BLE001 - fail closed
@@ -228,6 +321,25 @@ class ServingSupervisor:
         self._transition(act, ActivationState.PREPARED,
                          detail={"backend_id": backend.backend_id})
         return act
+
+    def _verify_backend_identity(self, backend, act) -> None:
+        from .backend_manifest import (verify_backend_manifest,
+                                       verify_installed_backend)
+        manifest = verify_backend_manifest(
+            self.backend_manifest_doc, self.registry, now=self._now)
+        if manifest.backend_id != backend.backend_id:
+            raise ActivationRefused(
+                f"backend manifest names {manifest.backend_id!r}, not "
+                f"{backend.backend_id!r}")
+        if act.grant is not None and act.grant.backend_binary_digest and \
+                act.grant.backend_binary_digest != \
+                str(self.backend_manifest_doc.get("digest")):
+            raise ActivationRefused(
+                "grant binds a different backend manifest digest")
+        verify_installed_backend(
+            manifest, module_names=self.backend_modules,
+            dependency_packages=self.backend_deps,
+            min_policy_epoch=self.min_policy_epoch)
 
     def health_check(self, activation_id: str) -> _Activation:
         """READY — health + inference probes must pass before a
@@ -252,10 +364,11 @@ class ServingSupervisor:
     def commit_activation(self, activation_id: str,
                           *, expected_previous: str | None = None
                           ) -> _Activation:
-        """COMMITTED -> ACTIVE. The intent record is durable BEFORE the
-        pointer moves; the pointer swap is atomic; the signed completion
-        record lands after. A completion-write failure rolls the pointer
-        back — nothing unevidenced stays routable."""
+        """COMMITTED -> ACTIVE. The commit intent event and the serving
+        pointer move in ONE database transaction — a crash cannot leave
+        a routed pointer without its commit record. The signed
+        completion event lands after; a completion-write failure rolls
+        the pointer back."""
         act = self._get(activation_id)
         if expected_previous is not None \
                 and self._active_id != expected_previous:
@@ -266,122 +379,149 @@ class ServingSupervisor:
                 f"{self._active_id!r} is active — refusing to swap onto "
                 "an unknown base")
 
-        # 1. durable intent — the transition does not exist until the
-        #    journal says it does
-        self._transition(act, ActivationState.COMMITTED,
-                         detail={"kind": "activation_intent"})
-
-        # 2. atomic pointer swap (traffic routing)
-        pointer = {"activation_id": activation_id,
-                   "artifact_root_digest":
-                       digest_root(act.snapshot) if act.snapshot else "",
-                   "backend_id": act.grant.backend_id if act.grant else "",
-                   "committed_at": self._at()}
-        try:
-            self.journal.write_pointer(pointer)
-        except JournalError as exc:
-            self.abort(activation_id,
-                       reason=f"pointer write failed: {exc}")
-            raise ActivationError(
-                f"active-version pointer could not be committed: {exc}") \
-                from exc
-
-        previous = self._active_id
-        self._active_id = activation_id
-        self._transition(act, ActivationState.ACTIVE,
-                         detail={"pointer": "swapped",
-                                 "previous": previous or ""})
-
-        # 3. signed completion record — evidence of what happened. If
-        #    it cannot be written, the activation is rolled back rather
-        #    than left active without evidence.
-        try:
-            self.journal.append(
-                activation_id=activation_id, from_state="COMMITTED",
-                to_state="ACTIVE", at=self._at(),
-                detail={"kind": "activation_completion",
-                        "grant_id": (act.grant.grant_id
-                                     if act.grant else ""),
-                        "artifact_root_digest": pointer[
-                            "artifact_root_digest"],
-                        "backend_id": pointer["backend_id"],
-                        "previous": previous or ""},
-                signer=self.signer)
-        except JournalError as exc:
-            self._active_id = previous
+        with self._lock:
+            check_transition(act.state, ActivationState.COMMITTED)
+            previous = self._active_id
             try:
-                if previous is not None:
-                    prev_act = self._activations.get(previous)
-                    prev_pointer = {"activation_id": previous,
-                                    "restored_at": self._at()}
-                    if prev_act is not None:
-                        prev_pointer["artifact_root_digest"] = \
-                            digest_root(prev_act.snapshot) \
-                            if prev_act.snapshot else ""
-                    self.journal.write_pointer(prev_pointer)
-                else:
-                    self.journal.write_pointer(
-                        {"activation_id": "", "cleared_at": self._at()})
-            except JournalError:
-                pass  # recovery reconciles whatever landed
-            self.abort(activation_id,
-                       reason=f"completion record failed: {exc}")
-            raise ActivationError(
-                "the signed activation-completion record could not be "
-                "persisted — the candidate was rolled back rather than "
-                "left serving without evidence") from exc
+                self.store.commit_with_pointer(
+                    activation_id=activation_id, at=self._at(),
+                    artifact_root_digest=(
+                        digest_root(act.snapshot) if act.snapshot else ""),
+                    backend_id=(act.grant.backend_id if act.grant else ""),
+                    detail={"kind": "activation_intent"})
+            except AuthorityStoreError as exc:
+                self.abort(activation_id,
+                           reason=f"commit transaction failed: {exc}")
+                raise ActivationError(
+                    f"commit intent + pointer transaction failed: {exc}") \
+                    from exc
+            act.state = ActivationState.COMMITTED
+            self._active_id = activation_id
+            act.state = ActivationState.ACTIVE
+            self._serving_state = ServingState.SERVING
+            if self.router is not None and act.handle is not None:
+                self.router.activate(activation_id, act.backend,
+                                     act.handle)
 
-        # The previous version stays resident as the protected
-        # deployment target (spec: "maintain the last independently
-        # qualified version"). At most one predecessor is retained —
-        # deeper history re-admits through the normal path.
-        if previous and previous in self._live_handles:
-            if self._retained and self._retained != previous:
-                old = self._retained
-                if old in self._live_handles:
-                    b, h = self._live_handles.pop(old)
-                    try:
-                        b.unload(h)
-                    except Exception:  # noqa: BLE001 - best effort
-                        pass
-                old_act = self._activations.get(old)
-                if old_act is not None and not old_act.state.terminal:
-                    self.journal.append(
-                        activation_id=old,
-                        from_state=old_act.state.value,
-                        to_state="ABORTED", at=self._at(),
-                        detail={"kind": "retention_evicted",
-                                "by": activation_id})
-                    old_act.state = ActivationState.ABORTED
-            self._retained = previous
-        return act
+            # signed completion evidence — if it cannot be written the
+            # candidate is rolled back, not left active without evidence
+            try:
+                self.store.append_event(
+                    activation_id=activation_id,
+                    event_type="activation_completion",
+                    from_state="COMMITTED", to_state="ACTIVE",
+                    at=self._at(),
+                    detail={"kind": "activation_completion",
+                            "grant_id": (act.grant.grant_id
+                                         if act.grant else ""),
+                            "previous": previous or ""},
+                    signer=self.signer)
+            except AuthorityStoreError as exc:
+                self._active_id = previous
+                self._serving_state = (ServingState.SERVING if previous
+                                       else ServingState.UNAVAILABLE)
+                if self.router is not None:
+                    if previous is not None and previous in \
+                            self._live_handles:
+                        pb, ph = self._live_handles[previous]
+                        self.router.activate(previous, pb, ph)
+                    else:
+                        self.router.deactivate(activation_id)
+                try:
+                    self.store.clear_pointer(
+                        at=self._at(),
+                        because="completion event failed")
+                except AuthorityStoreError:
+                    pass
+                self.abort(activation_id,
+                           reason=f"completion record failed: {exc}")
+                raise ActivationError(
+                    "the signed activation-completion record could not "
+                    "be persisted — the candidate was rolled back rather "
+                    "than left serving without evidence") from exc
+
+            if act.grant is not None:
+                self.store.set_grant_state(act.grant.grant_id,
+                                           "committed")
+            # retain one healthy predecessor as the rollback target
+            if previous and previous in self._live_handles:
+                if self._retained and self._retained != previous:
+                    old = self._retained
+                    if old in self._live_handles:
+                        b, h = self._live_handles.pop(old)
+                        try:
+                            b.unload(h)
+                        except Exception:  # noqa: BLE001 - best effort
+                            pass
+                    old_act = self._activations.get(old)
+                    if old_act is not None and not old_act.state.terminal:
+                        self.store.append_event(
+                            activation_id=old, event_type="evicted",
+                            from_state=old_act.state.value,
+                            to_state="ABORTED", at=self._at(),
+                            detail={"kind": "retention_evicted",
+                                    "by": activation_id})
+                        old_act.state = ActivationState.ABORTED
+                self._retained = previous
+            return act
 
     # --- failure / rollback paths ------------------------------------
     def abort(self, activation_id: str, *, reason: str = "") -> None:
         """Abort a candidate: unload whatever is loaded and record the
         terminal state. Idempotent — safe to call twice or on a
         candidate that never loaded."""
-        act = self._activations.get(activation_id)
-        if act is None:
-            return
-        if act.state.terminal:
-            return
-        pair = self._live_handles.pop(activation_id, None)
-        if pair is not None:
-            backend, handle = pair
+        with self._lock:
+            act = self._activations.get(activation_id)
+            if act is None:
+                return
+            if act.state.terminal:
+                return
+            pair = self._live_handles.pop(activation_id, None)
+            if pair is not None:
+                backend, handle = pair
+                try:
+                    backend.unload(handle)
+                except Exception:  # noqa: BLE001 - best-effort cleanup
+                    pass
+            if self.router is not None:
+                self.router.deactivate(activation_id)
+            if act.grant is not None:
+                self.store.set_grant_state(act.grant.grant_id, "aborted")
+            if self._active_id == activation_id:
+                self._quarantine_pointer(activation_id, reason)
+                try:
+                    check_transition(act.state, ActivationState.QUARANTINED)
+                    self.store.append_event(
+                        activation_id=activation_id,
+                        event_type="quarantined",
+                        from_state=act.state.value,
+                        to_state="QUARANTINED", at=self._at(),
+                        detail={"reason": reason}, signer=self.signer)
+                    act.state = ActivationState.QUARANTINED
+                except IllegalTransition:
+                    # COMMITTED -> QUARANTINED is legal; REQUESTED ->
+                    # QUARANTINED (active id set but transition grammar
+                    # forbids) collapses to ABORTED + pointer repair.
+                    self.store.append_event(
+                        activation_id=activation_id,
+                        event_type="aborted", from_state=act.state.value,
+                        to_state="ABORTED", at=self._at(),
+                        detail={"reason": reason})
+                    act.state = ActivationState.ABORTED
+                if act.grant is not None:
+                    self.store.set_grant_state(act.grant.grant_id,
+                                               "quarantined")
+                self._serving_state = ServingState.QUARANTINED
+                return
             try:
-                backend.unload(handle)
-            except Exception:  # noqa: BLE001 - best-effort cleanup
-                pass
-        if self._active_id == activation_id:
-            # an active candidate being aborted is quarantined — the
-            # pointer must not keep routing to a dead model
-            self._quarantine_pointer(activation_id, reason)
-            self._transition(act, ActivationState.QUARANTINED,
-                             detail={"reason": reason}, sign=True)
-            return
-        self._transition(act, ActivationState.ABORTED,
-                         detail={"reason": reason})
+                check_transition(act.state, ActivationState.ABORTED)
+                self.store.append_event(
+                    activation_id=activation_id, event_type="aborted",
+                    from_state=act.state.value, to_state="ABORTED",
+                    at=self._at(), detail={"reason": reason})
+                act.state = ActivationState.ABORTED
+            except IllegalTransition:
+                act.state = ActivationState.ABORTED
 
     def quarantine_active(self, *, reason: str) -> None:
         """Withdraw the currently active version (e.g. its promotion
@@ -391,33 +531,71 @@ class ServingSupervisor:
             return
         self.abort(self._active_id, reason=reason or "quarantined")
 
-    def rollback(self, activation_id: str | None = None) -> str | None:
-        """Restore the retained committed predecessor. The previous
-        healthy model is kept resident as the protected deployment
-        target, so a pointer swap restores a live backend without
-        re-loading. Older history re-admits through admission."""
-        target = activation_id
-        if target is None:
-            target = self._retained or self._last_completed_excluding(
-                self._active_id, require_live=True)
-        if target is None or target not in self._live_handles:
-            raise ActivationRefused(
-                "no retained committed version to roll back to — a "
-                "rollback must re-admit artifacts through admission, "
-                "not improvise")
-        prev_pointer = {"activation_id": target,
-                        "rolled_back_at": self._at(),
-                        "from": self._active_id or ""}
-        self.journal.write_pointer(prev_pointer)
-        old = self._active_id
-        self._active_id = target
-        self.journal.append(activation_id=target,
-                            from_state="ABORTED", to_state="ACTIVE",
-                            at=self._at(),
-                            detail={"kind": "rollback",
-                                    "from": old or ""},
-                            signer=self.signer)
-        return target
+    def rollback(self, activation_id: str | None = None,
+                 *, min_revocation_epoch: int | None = None) -> str | None:
+        """Restore a retained committed predecessor. The target must be
+        live, must still pass the operative revocation epoch, and the
+        pointer move is bracketed by durable rollback intent and signed
+        completion events (SEC-205/WP8)."""
+        with self._lock:
+            target = activation_id
+            if target is None:
+                target = self._retained or self._last_completed_excluding(
+                    self._active_id, require_live=True)
+            if target is None or target not in self._live_handles:
+                raise ActivationRefused(
+                    "no retained committed version to roll back to — a "
+                    "rollback must re-admit artifacts through admission, "
+                    "not improvise")
+            tgt_act = self._activations.get(target)
+            # Rollback does not bypass security: the predecessor's grant
+            # must still satisfy the operative revocation epoch.
+            floor = min_revocation_epoch
+            if floor is None and self._revocation_epoch_provider is not None:
+                floor = int(self._revocation_epoch_provider())
+            if floor is not None and tgt_act is not None and \
+                    tgt_act.grant is not None and \
+                    int(tgt_act.grant.revocation_epoch) < int(floor):
+                raise ActivationRefused(
+                    f"rollback target's grant was issued against "
+                    f"revocation epoch {tgt_act.grant.revocation_epoch}; "
+                    f"the operative epoch is {floor} — stale "
+                    "authorization refused")
+            b, h = self._live_handles[target]
+            try:
+                b.health_probe(h)
+            except Exception as exc:  # noqa: BLE001
+                raise ActivationRefused(
+                    f"rollback target failed a fresh health probe: {exc}") \
+                    from exc
+
+            old = self._active_id
+            self.store.append_event(
+                activation_id=target, event_type="rollback_intent",
+                from_state="ACTIVE", to_state="ACTIVE", at=self._at(),
+                detail={"kind": "rollback_intent",
+                        "from": old or ""})
+            self.store.commit_with_pointer(
+                activation_id=target, at=self._at(),
+                artifact_root_digest=(
+                    digest_root(tgt_act.snapshot)
+                    if tgt_act is not None and tgt_act.snapshot else ""),
+                backend_id=(tgt_act.grant.backend_id
+                            if tgt_act is not None and tgt_act.grant
+                            else ""),
+                event_type="rollback_pointer",
+                from_state="ACTIVE", to_state="ACTIVE",
+                detail={"kind": "rollback", "from": old or ""})
+            self._active_id = target
+            self._serving_state = ServingState.SERVING
+            if self.router is not None:
+                self.router.activate(target, b, h)
+            self.store.append_event(
+                activation_id=target, event_type="rollback_completion",
+                from_state="ACTIVE", to_state="ACTIVE", at=self._at(),
+                detail={"kind": "rollback_completion",
+                        "from": old or ""}, signer=self.signer)
+            return target
 
     def _last_completed_excluding(self, exclude: str | None,
                                   *, require_live: bool = False
@@ -427,115 +605,124 @@ class ServingSupervisor:
         still resident counts — a pointer must never route to a model
         that is not loaded."""
         completed: list[str] = []
-        for r in self.journal.records():
-            if r.to_state == "ACTIVE" and r.activation_id != exclude \
-                    and r.detail.get("kind") == "activation_completion":
-                completed.append(r.activation_id)
+        for e in self.store.events():
+            if e["to_state"] == "ACTIVE" and \
+                    e["event_type"] == "activation_completion" and \
+                    e["activation_id"] != exclude:
+                completed.append(e["activation_id"])
         for aid in reversed(completed):
             if not require_live or aid in self._live_handles:
                 return aid
         return None
 
     def _quarantine_pointer(self, activation_id: str, reason: str) -> None:
-        """Move the active pointer off a quarantined candidate: restore
+        """Move the serving pointer off a quarantined candidate: restore
         the last committed predecessor *that is still resident*, else
         clear it — a pointer never routes to an unloaded model."""
         fallback = self._last_completed_excluding(
             activation_id, require_live=True)
         try:
             if fallback is not None:
-                self.journal.write_pointer(
-                    {"activation_id": fallback,
-                     "restored_at": self._at(),
-                     "because": f"quarantine {activation_id}: {reason}"})
+                fb = self._activations.get(fallback)
+                self.store.commit_with_pointer(
+                    activation_id=fallback, at=self._at(),
+                    artifact_root_digest=(
+                        digest_root(fb.snapshot)
+                        if fb is not None and fb.snapshot else ""),
+                    backend_id=(fb.grant.backend_id
+                                if fb is not None and fb.grant else ""),
+                    detail={"kind": "quarantine_restore",
+                            "because": f"quarantine {activation_id}: "
+                                       f"{reason}"})
                 self._active_id = fallback
+                self._serving_state = ServingState.SERVING
+                if self.router is not None and fallback in \
+                        self._live_handles:
+                    rb, rh = self._live_handles[fallback]
+                    self.router.activate(fallback, rb, rh)
             else:
-                self.journal.write_pointer(
-                    {"activation_id": "", "cleared_at": self._at(),
-                     "because": f"quarantine {activation_id}: {reason}"})
+                self.store.clear_pointer(
+                    at=self._at(),
+                    because=f"quarantine {activation_id}: {reason}")
                 self._active_id = None
-        except JournalError:
+                self._serving_state = ServingState.UNAVAILABLE
+        except AuthorityStoreError:
             self._active_id = None
+            self._serving_state = ServingState.UNAVAILABLE
 
     # --- crash recovery ----------------------------------------------
-    def recover_from_journal(self) -> dict:
-        """Reconcile the durable journal with the active pointer after
-        a crash. Deterministic rules:
+    def recover(self) -> dict:
+        """Reconcile the durable event log after a restart. The event
+        chain is verified first — tampering, truncation, or a broken
+        payload digest fails closed (SEC-205).
 
-          * pointer names an activation whose journal shows COMMITTED
-            intent but no completion → it DID go live; write the
-            completion record marked reconciled (evidence gap closed);
-          * an activation with COMMITTED intent but the pointer names
-            someone else → it never routed; abort it;
-          * an activation stalled before COMMITTED → abort it (it could
-            not have been routed);
-          * a pointer naming an activation with no intent record at all
-            → corrupt; clear the pointer to the last completed
-            activation (or empty) and refuse to serve the phantom.
+        Outcome states:
+          * activations stalled before COMMITTED → aborted;
+          * COMMITTED intent whose pointer commit never landed → the
+            transaction rolled back together, so none can exist — any
+            COMMITTED event without a matching pointer-commit is
+            quarantined evidence, not silently completed;
+          * a pointer naming an unknown activation → cleared;
+          * a valid committed pointer → RECOVERY_REQUIRED: historical
+            evidence, not liveness. The service must restore through
+            the verified path before serving (SEC-202).
         """
-        report = {"reconciled_completions": [], "aborted": [],
-                  "cleared_pointer": False, "active": None}
-        pointer = self.journal.read_pointer() if \
-            self.journal.pointer_path.is_file() else None
-        records = self.journal.records()
-        by_id: dict[str, list] = {}
-        for r in records:
-            by_id.setdefault(r.activation_id, []).append(r)
+        with self._lock:
+            report = {"reconciled_completions": [], "aborted": [],
+                      "cleared_pointer": False, "serving_state": None,
+                      "requires_restoration": None}
+            from .journal_v2 import verify_event_log
+            events = verify_event_log(self.store, self.registry,
+                                      now=self._now)
+            pointer = self.store.read_pointer()
+            by_id: dict[str, list] = {}
+            for e in events:
+                by_id.setdefault(e["activation_id"], []).append(e)
 
-        def last_state(aid: str) -> str:
-            return by_id[aid][-1].to_state if by_id.get(aid) else ""
+            def last_state(aid: str) -> str:
+                return by_id[aid][-1]["to_state"] if by_id.get(aid) else ""
 
-        def has(aid: str, state: str, kind: str = "") -> bool:
-            return any(r.to_state == state and
-                       (not kind or r.detail.get("kind") == kind)
-                       for r in by_id.get(aid, ()))
-
-        for aid in list(by_id):
-            state = last_state(aid)
-            if state in ("ABORTED", "QUARANTINED", "ACTIVE"):
-                continue
-            if state == "COMMITTED":
-                if pointer and pointer.get("activation_id") == aid:
-                    # committed AND routed — complete the record
-                    self.journal.append(
-                        activation_id=aid, from_state="ACTIVE",
-                        to_state="ACTIVE", at=self._at(),
-                        detail={"kind": "activation_completion",
-                                "reconciled": True},
-                        signer=self.signer)
-                    report["reconciled_completions"].append(aid)
-                else:
-                    # intent durable but never routed
-                    self.journal.append(
-                        activation_id=aid, from_state="COMMITTED",
-                        to_state="ABORTED", at=self._at(),
-                        detail={"reason": "recovery: committed but "
-                                          "never routed"})
-                    report["aborted"].append(aid)
-            else:
-                self.journal.append(
-                    activation_id=aid, from_state=state,
-                    to_state="ABORTED", at=self._at(),
+            for aid in list(by_id):
+                if aid == "__migration__":
+                    continue
+                state = last_state(aid)
+                if state in ("ABORTED", "QUARANTINED", "ACTIVE"):
+                    continue
+                self.store.append_event(
+                    activation_id=aid, event_type="aborted",
+                    from_state=state, to_state="ABORTED", at=self._at(),
                     detail={"reason": "recovery: stalled before commit"})
                 report["aborted"].append(aid)
 
-        if pointer is not None:
-            active = str(pointer.get("activation_id") or "")
+            active = str((pointer or {}).get("activation_id") or "")
             if active and active not in by_id:
-                fallback = self._last_completed_excluding(active)
-                self.journal.write_pointer(
-                    {"activation_id": fallback or "",
-                     "recovered_at": self._at(),
-                     "because": "pointer named an activation with no "
-                                "journal history"})
-                self._active_id = fallback
+                self.store.clear_pointer(
+                    at=self._at(),
+                    because="pointer named an activation with no "
+                            "event history")
                 report["cleared_pointer"] = True
+                active = ""
+            if active:
+                self._pending_restore_id = active
+                self._serving_state = ServingState.RECOVERY_REQUIRED
             else:
-                self._active_id = active or None
-        else:
-            self._active_id = None
-        report["active"] = self._active_id
-        return report
+                self._pending_restore_id = None
+                self._serving_state = ServingState.UNAVAILABLE
+            report["serving_state"] = self._serving_state.value
+            report["requires_restoration"] = self._pending_restore_id
+            return report
+
+    def mark_restored(self, activation_id: str) -> None:
+        """Called after a restoration launch commits a live, verified
+        model for the activation — the service is SERVING again."""
+        with self._lock:
+            self._serving_state = ServingState.SERVING
+            self._pending_restore_id = None
+
+
+# Backward-compatible alias: tests and callers imported
+# recover_from_journal in v16.4.2.
+ServingSupervisor.recover_from_journal = ServingSupervisor.recover
 
 
 def digest_root(snapshot: MeasuredSnapshot) -> str:
