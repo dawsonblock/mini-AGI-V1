@@ -48,7 +48,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "c1e5aeb5c1e5307d4c703f773b27e6d2b998cacaba3fb56a7070604bc737ddd4",
+ "manifest_sha256": "23b38a44710600fb8afdb5a3eb781e3402ec9b0754247d55eebca820e7fb0666",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -207,8 +207,8 @@
    "utc": "2026-10-09T06:45:19.386443+00:00"
   },
   {
-   "manifest_sha256": "c1e5aeb5c1e5307d4c703f773b27e6d2b998cacaba3fb56a7070604bc737ddd4",
-   "reason": "v16.4.3 hardened runtime: authority store, op authorization, path authority, verified journal + migration, crash-safe recovery, backend manifest, bounded service I/O, serving router (SEC-201..207, OPS-001..003 closed). (manifest regenerated after VERSION bump)",
+   "manifest_sha256": "23b38a44710600fb8afdb5a3eb781e3402ec9b0754247d55eebca820e7fb0666",
+   "reason": "v16.4.3 hardened runtime: authority store, op authorization, path authority, verified journal + migration, crash-safe recovery, backend manifest, bounded service I/O, serving router (SEC-201..207, OPS-001..003 closed). (manifest regenerated after VERSION/SBOM bump + router callable() fix)",
    "utc": "2026-10-09T09:05:44.277747Z"
   }
  ],
