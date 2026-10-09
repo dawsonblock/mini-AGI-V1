@@ -199,6 +199,13 @@ surface. The gate tolerates exactly the two documented RC14-001
 findings and fails on anything else (verified: a probe finding in
 another file exits 1).
 
+Separately, CI had been red since the Route-B commit (`a2a7295`), which
+started importing `torch`/`transformers`/`safetensors` in the test
+suites without adding them to the workflow's install line — the
+`validate` job could not even collect the tests. The install line now
+includes `torch transformers peft safetensors` (the ML dependencies the
+suites import; `faiss`/`trl` are imported nowhere and stay out).
+
 # v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
 
 Phases 2, 3, and (early) 5 of the v17 plan. Scientific claims unchanged

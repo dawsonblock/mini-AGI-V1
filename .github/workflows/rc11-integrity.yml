@@ -15,7 +15,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install '.[dev]' torch flask
+      # The test suite imports torch/transformers/safetensors at
+      # collection time and peft at runtime (tests-python and the
+      # references/oracle_reference suite). These were missing since the
+      # Route-B commit (a2a7295) started importing them, which left
+      # every run red; faiss/trl are imported nowhere and stay out.
+      - run: python -m pip install '.[dev]' torch transformers peft safetensors flask
       - run: bash scripts/rc11/validate_all.sh
       - run: cmake -S . -B ../native-build -DQW3_ENABLE_CUDA=OFF -DQW3_ENABLE_METAL_GDN=OFF -DQW3_BUILD_TESTS=ON
       - run: cmake --build ../native-build --parallel 4
