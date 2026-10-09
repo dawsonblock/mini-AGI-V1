@@ -33,7 +33,19 @@ from .state_epoch import StateEpochRegistryRC14, StateEpochRC14
 
 
 class GovernedRC14System(GovernedSystem):
-    """RC14.7 composition with preregistered empirical-learning evidence and witnessed serving closure."""
+    """RC14.7 composition with preregistered empirical-learning evidence and witnessed serving closure.
+
+    NOT WIRED — donor artifact. This class was written against an RC13-era
+    ``GovernedSystem`` that provided a state-epoch registry
+    (``self.state_epochs``), a runtime activation authority
+    (``self.runtime_activation``) and ``verify_control_plane()``; that base
+    was never imported into this tree. As written it cannot be constructed
+    (the two verifier keyword arguments below are not accepted by
+    ``minagi.system.GovernedSystem``), and nothing imports the class.
+    Tracked as RC14-001 in docs/research/REMAINING_DEFECTS_V1641.md —
+    decision needed: port the missing base, wire the class up, or retire
+    it (the rest of the rc14 modules are wired and exercised by
+    scripts/validation/import_probe.py and the donor-import tests)."""
 
     def __init__(self, root, backend, *, research_verifier, promotion_signer,
                  rc14_epoch_verifiers: Mapping[str, Any], rc14_candidate_verifiers: Mapping[str, Any],
