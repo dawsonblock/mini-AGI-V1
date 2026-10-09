@@ -19,8 +19,7 @@ from minagi.runtime.authority_store import (  # noqa: E402
     AuthorityStore, AuthorityStoreError, StoreCorrupt)
 from minagi.runtime.inference_policy import (  # noqa: E402
     BudgetExceeded, InferenceBudgetPolicyV1)
-from minagi.runtime.recovery_manager import (  # noqa: E402
-    RecoveryManager, RestorationRefused)
+from minagi.runtime.recovery_manager import RecoveryManager  # noqa: E402
 from minagi.runtime.service import (  # noqa: E402
     ServiceRefused, SupervisorService)
 from minagi.runtime.serving_router import (  # noqa: E402
@@ -390,7 +389,6 @@ def test_cold_restart_restores_live_model(tmp_path):
     reloads, health-checks and publishes a verified live model — the
     pointer alone never declares SERVING."""
     registry, signers = _chain(tmp_path)
-    store_dir = tmp_path / "journal"
     snaproot = tmp_path / "snaps"
     sup = _supervisor(tmp_path, registry, signers)
     backend = FakeBackend()
