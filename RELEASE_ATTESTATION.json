@@ -1,5 +1,33 @@
 {
  "assembly_signature_only": true,
+ "authority_and_activation_closure": {
+  "defects_closed": [
+   "ACT-001 backend load before durable activation evidence",
+   "AUTH-001 missing backend coverage defaulted to supported list",
+   "ACT-002 measured artifact implied deployment authorization",
+   "REV-001 unsigned non-monotonic revocation list"
+  ],
+  "detail": "docs/research/RUNTIME_SECURITY_CLOSURE_V1642.md",
+  "qualification_table": "tests-python/v161/test_v1642_activation_closure.py (13 rows)",
+  "tests": "tests-python/security/test_signed_revocations.py, tests-python/security/test_admission_grants.py, tests-python/runtime/test_activation_supervisor.py, tests-python/runtime/test_supervised_service.py, tests-python/v161/test_v1642_activation_closure.py"
+ },
+ "authority_recovery_hardening": {
+  "defects_closed": [
+   "SEC-201 in-memory grant consumption replaced by durable SQLite ledger",
+   "SEC-207 non-atomic grant check/insert replaced by BEGIN IMMEDIATE reservation",
+   "SEC-203 single-allowlist dispatch replaced by per-operation role authorization",
+   "SEC-204 caller-controlled activation/receipt paths replaced by service-owned opaque ids",
+   "SEC-202 pointer-derived serving state replaced by verified cold recovery (UNAVAILABLE until re-admitted + probed)",
+   "SEC-205 unverified journal records replaced by digest/chain/signature/grammar verification + signed checkpoints + V1->V2 migration",
+   "SEC-206 permissive backend/policy binding replaced by RuntimeBackendManifestV1 enforcement",
+   "OPS-001 unbounded readline/thread-per-connection replaced by bounded reads, deadlines, worker pool, quotas",
+   "OPS-002 cross-uid contradiction repaired via service-owned socket dir + research.sock/operator.sock + dev-role escape hatch",
+   "OPS-003 activation decoupled from inference replaced by ServingRouter routing only to committed+healthy handles"
+  ],
+  "detail": "docs/research/RUNTIME_SECURITY_CLOSURE_V1643.md",
+  "tests": "tests-python/security/{test_grant_ledger,test_path_containment,test_backend_identity}.py; tests-python/runtime/{test_journal_integrity,test_serving_router,test_activation_supervisor,test_supervised_service}.py; tests-python/integration/test_full_admission_chain.py",
+  "threat_model": "docs/research/THREAT_MODEL_V1643.md"
+ },
  "campaign_qualification": {
   "campaign_id": "campaign1b-v163",
   "decision": "QUALIFIED",
@@ -20,10 +48,10 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "1e8ee9cacd461faf5eda8c22db6f7bea343fc3c2caabf7681b88a2c12f270ddb",
+ "manifest_sha256": "d16978825b2cd74c7de71b1d8a84312c5620412cdb98ace2a707a4ce954cf634",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
- "python_validation": "409/409 PASS (local, pre-commit)",
+ "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
  "reissue": {
   "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)",
   "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
@@ -62,9 +90,129 @@
    "manifest_sha256": "f7e95fd20e2b46369191cb320e001b4f4cbe51715a0e22c9efe2bf9264f71052",
    "reason": "v16.2.1 Route-B + Phase 7/8 batch: v2 native LoRA bundles (per-layer attention targets, dims-validated, fail-closed on batched/recurrent paths), NativeQW3Adapter2Compiler with bit-exact F32 parity, v166 native_adapter_tier, governed plasticity proposals + DynamicLoraPolicyV1 rank allocator, promotion-gated generation chain; verify_release skips gitignored build dirs; 454/454 Python + 28/28 CTest",
    "utc": "2026-10-08T04:09:53.206035+00:00"
+  },
+  {
+   "manifest_sha256": "6e5242e778b313aea4daef8a647bac8f7cb9474f2c35ee7d961ccfbbe5eb40c8",
+   "reason": "v16.2.2 security/correctness repair (v17 plan Phase 1, FIX-001..006): OS-enforced evaluator sandbox + declarative evaluator (fail closed without a backend), rank-allocator growth arithmetic, verified append-only generation promotion, corrected false-activation denominator + conditional regression, authority validity-window enforcement, release-metadata reconciliation enforced by verify_release.py (adversarially tested via --root fixture); every defect carries a reproducing test; 521/521 Python (1 skipped: Linux-only RLIMIT_AS on macOS)",
+   "utc": "2026-10-08T08:33:36.968396+00:00"
+  },
+  {
+   "manifest_sha256": "88431a50b74f76dab049b372b00026baa5421bd3f171975e53cc187f06f0e501",
+   "reason": "v16.4.0 training/admission batch (v17 plan Phases 2.1/3/5-early): explicit microbatch/gradient-accumulation/effective-batch schedule bound in the signed protocol + receipt v2 (sample order, per-update gradient stats, adapter artifact digest, strict malformed policy) \u2014 reproduced the 4x sample-presentation defect; RuntimeAdmissionController (full-chain admission, signed activation receipts, rollback, scripts/admit_runtime.py, runtime authority role, decision expires_at) with the plan's four named attacks refused; cost-aware mechanism controller + AttemptReceipts; campaign3 configs pinned to microbatch_size=1 + malformed_policy=fail; 561/561 Python (1 skipped: Linux-only RLIMIT_AS on macOS)",
+   "utc": "2026-10-08T08:46:30.656995+00:00"
+  },
+  {
+   "manifest_sha256": "95fab8e0d2d3fedfda4fecc644f14e56bcb5205d79fa368672b60104e8d5d697",
+   "reason": "v16.4.0 batch 2: native CTest suite rebuilt and rerun (28/28 PASS, macOS CPU/stub; no C++ changes \u2014 toolchain re-verification); Campaign 3A preregistration sealed \u2014 authority-side holdout generator (refuses in-repo output, fresh vocabulary) + manifest digest bound in configs/campaign3a.yaml (sha256:ff9e4340..., 24 rows / 4 fresh families; file held outside the repository), sealer disjointness re-checked; preregistration regression tests (generator/sealer/binding invariants); 571/571 Python (1 skipped: Linux-only RLIMIT_AS on macOS). Campaign execution remains GPU-blocked",
+   "utc": "2026-10-08T08:54:45.453869+00:00"
+  },
+  {
+   "manifest_sha256": "cccee0a0a70856467b05cbd2859d6dc85255d73e7e7f2b7833e8a74461985c29",
+   "reason": "v16.4.0 batch 3: Campaign 3A launched on Colab T4 (session v166-c3a-1) under the signed plan \u2014 verified the banked plan binds the sealed holdout digest and the corrected schedule (microbatch 1 / gacc 1 / malformed_policy fail, lr 5e-5); scripts/campaign3a_supervisor.py added (resumable per-seed evidence banking + runner relaunch); CHANGELOG/README/RELEASE_VALIDATION record the execution status; 571/571 Python (1 skipped). Results pending independent qualification",
+   "utc": "2026-10-08T09:39:10.011031+00:00"
+  },
+  {
+   "manifest_sha256": "cc48fe63eb8344e4cdae2e326bf30d264f936a5de7856beb0f62889148d40025",
+   "reason": "v16.4.0 batch 4: VM reclamation recovery + finalize pipeline \u2014 the first Colab VM was reclaimed mid-seed-1 and recovered on a fresh VM from the pushed branch with the model revision pinned to the originally resolved commit; recomputed plan digest byte-identical (sha256:e9ecd87e...), banked seed-0 evidence counted, resume at seed 1; authority ledger reconstructed deterministically; scripts/campaign3a_finalize.py added (assemble -> independent qualification with the authority-held holdout -> results report -> results-branch publication, private keys excluded) and exercised end to end on partial evidence (fail-closed INVALID_EVIDENCE with per-cell reasons); 571/571 Python (1 skipped)",
+   "utc": "2026-10-08T21:35:32.993335+00:00"
+  },
+  {
+   "manifest_sha256": "6c85e76064ea8247eba98dccb69477e8c2a89b5c60fc33ec29ccc5cc73a9fbb4",
+   "reason": "v16.4.0 batch 5: supervisor banking fix \u2014 the VM-side bank script now creates /content/ck3a on a fresh VM (banking silently failed there after recovery; the local seed-0 copy was unaffected). Verified by re-banking seed 0 + meta on the recovered VM. 571/571 Python (1 skipped)",
+   "utc": "2026-10-08T21:38:01.406042+00:00"
+  },
+  {
+   "manifest_sha256": "920654b3a9e28b70974a88c771b1234390c8adca8593983ae9a854da95ee500f",
+   "reason": "v16.4.0 batch 6 (review fixes): campaign3a_finalize.py hardened from the review pass \u2014 tracked-uncommitted-changes guard before the results-branch switch (fail closed, verified), path-traversal-safe tar extraction (data filter where supported), results-branch base falls back to origin/<branch> when only the remote exists; docstring records the results-branch checkout convention. 571/571 Python (1 skipped)",
+   "utc": "2026-10-08T21:48:57.452551+00:00"
+  },
+  {
+   "manifest_sha256": "b7b82c28f23ca7e8c26a2611eab82f9dc1b26ec22957a5c67534a258a60e22e4",
+   "reason": "v16.4.0 batch 7 (review finding): campaign3a/b/c configs pin the model revision to 7ae55760... \u2014 the commit the executed 3A plan resolved \u2014 so the repository matches the executed plan and future runs (3B/3C, reproductions) cannot silently resolve a different upstream commit. 571/571 Python (1 skipped)",
+   "utc": "2026-10-08T21:49:19.591241+00:00"
+  },
+  {
+   "manifest_sha256": "1a76811e6907fd657094f2f03f5d665a5cc57d29332b098b17a9dd957eee23d3",
+   "reason": "v16.4.1 runtime security closure (v17 plan Phase 1 follow-up, audit SEC-001..SEC-004): mandatory admission via TrustedRuntimeLauncher (physical measurement, immutable single-pass-verified snapshot, snapshot-only backend loading, signed production receipt binding load-measured artifact digests + replay nonce); canonical artifact closure refuses symlinks/special files/unlisted files instead of skipping them; unsigned receipts refused (schema v2, require_production); strict versioned schemas + mandatory protocol/evaluation bindings + revocation freshness; +60 adversarial tests (631/631 Python, 1 skipped); release change manifest + remaining-defects register included",
+   "utc": "2026-10-08T23:14:30.507210+00:00"
+  },
+  {
+   "manifest_sha256": "9908f5c48dbc00ef94fb212f4ec5791fb3983f6c115ddf4bd2a8c017198b4ace",
+   "reason": "v16.4.1 review repairs (post-release audit): tokenizer identity convention unified on the signed plan's physical_identity_digests shape (shared artifact_closure.tokenizer_artifact_digest; launcher re-measures from the staged model, backend serves the tokenizer from the verified model artifact, explicit tokenizer root is an optional cross-check; runner delegates so plan digests and Campaign 3A resume are unchanged); serving loads without an ApprovedSnapshot refused and research-plane base-model loads marked purpose='research'; verify_release.py refuses symlinks in the governed tree; stage_snapshot validates artifact names up front and discards on any staging failure; +8 regression tests (639/639 Python, 1 skipped)",
+   "utc": "2026-10-09T00:10:59.174470+00:00"
+  },
+  {
+   "manifest_sha256": "0e3f5dea9caa70a8c4aa396428a1a59348d4d61e64c6ff6f3e5023eecda50a58",
+   "reason": "v16.4.1 lint contract (dedicated hygiene pass): pyproject.toml [tool.ruff] + .flake8 declare one deliberate contract for both tools (E4/E7/E9/F enforced; compact one-line statements, post-bootstrap imports, ~100-column style, and pycodestyle formatting families documented as intentionally not enforced; __init__.py re-export barrels exempt from F401; references/ and third_party/ excluded). Enforced rules satisfied repo-wide \u2014 ruff check . / flake8 . report zero findings \u2014 via behavior-preserving fixes across 180 files (unused imports and locals, multi-import lines, lambda assignments, ambiguous names, f-strings, one redundant re-import, one unnecessary nonlocal); the F811 re-import was resolved by importing ImmutableCAS from its defining module (the naive removal would have broken the v164 qualification path). Tests unchanged: 639 passed, 1 skipped",
+   "utc": "2026-10-09T01:36:36.326396+00:00"
+  },
+  {
+   "manifest_sha256": "21502601d2fa7a337164e4ecb0812c96c56d57e0f7e8e83a5f1f8cbbf9039eb9",
+   "reason": "lint contract follow-up: fixed a latent arity defect surfaced by the same pass \u2014 egai/bench/sequential_governed.py called VerifiedEpisode with 14 positional args against a 12-field dataclass (every other call site passes 12), so the verified-repair branch raised TypeError; now 12 and exercised with a probe. Also dropped an unused unpacked variable in the same file. Remaining pre-existing issue in that untested path (reported, not fixed \u2014 would require inventing semantics): SandboxSkillMemory has no health(), called at the end of a run. Tests unchanged: 639 passed, 1 skipped",
+   "utc": "2026-10-09T01:39:16.192567+00:00"
+  },
+  {
+   "manifest_sha256": "2392e5fe28c082e9f6fa6802d400d3b82faf459d4c81f3d481a1f7cf435c3117",
+   "reason": "lint follow-up: EvidenceLedger gains a documented public head() accessor (the private _head() stays for internal use) and egai/bench/sequential_governed.py uses it \u2014 removes the last protected-access warning in that harness. Behavior-identical (head() == _head(), verified). Tests unchanged: 639 passed, 1 skipped; ruff/flake8 zero findings",
+   "utc": "2026-10-09T01:40:56.754481+00:00"
+  },
+  {
+   "manifest_sha256": "f569e2e1d4dab05df3a36822c9d04c8fc5439d61911c6e61b4f9fe896afe6cc9",
+   "reason": "governed-harness completion: SandboxSkillMemory gains the two members the run loop calls and that existed nowhere in the codebase \u2014 mark_success (mirror of mark_failure) and health() (degraded = procedures with more failures than successes, i.e. confidence < 0.5 stated on the counters; retired = 0, the ephemeral memory has no retirement mechanism, documented in the method). The previously-uncovered harness now has a regression suite (tests-python/research/test_sequential_governed.py) driving the success path, the verified-repair path, the health summary, and the evidence chain. Tests: 641 passed, 1 skipped; ruff/flake8 zero findings",
+   "utc": "2026-10-09T01:43:09.738889+00:00"
+  },
+  {
+   "manifest_sha256": "6d7889dbca454894abece7979a43d16a98afc51f2a258c230141c7138fd59cc6",
+   "reason": "Pylint contract: [tool.pylint] in pyproject.toml declares the same lint contract as [tool.ruff]/.flake8 (C/R/W families disabled, optional extras and platform modules ignored, error category enabled). 17,896 default findings on the release surface become 2 \u2014 both real and not suppressed: the drifted donor minagi/rc14/system.py (GovernedRC14System passes kwargs its base does not accept; nothing imports it), now recorded as RC14-001 in the remaining-defects register. Three further Pylint errors were verified false positives before disabling (guarded subscripts, mirrored-condition assignment, dynamic 'object' attributes). Tests unchanged: 641 passed, 1 skipped; ruff/flake8 zero findings",
+   "utc": "2026-10-09T02:17:57.901759+00:00"
+  },
+  {
+   "manifest_sha256": "469416267a4f6b0b7c334552816228fad35e61c660752814dd1e87946cc35c4a",
+   "reason": "lint contract enforced in CI: flake8 and pylint join ruff in the dev extras, and scripts/rc11/lint.sh (new CI lint job) runs all three over the release surface. The gate tolerates exactly the two documented RC14-001 findings and fails on anything else \u2014 verified both ways locally (clean tree exits 0; a probe finding in another file exits 1 via ruff, and a Pylint-only finding exits 1 via the RC14-001 allowlist check). Tests unchanged: 641 passed, 1 skipped",
+   "utc": "2026-10-09T02:23:25.547265+00:00"
+  },
+  {
+   "manifest_sha256": "c17ee72088d7a16ac5f89fa93ec0d860b7659e18068bade6b584990777a235c9",
+   "reason": "CI repair: the validate job has been red since a2a7295 (Route-B), which started importing torch/transformers/safetensors in the test suites without adding them to the workflow install line (collection failed on safetensors). The line now installs torch, transformers, peft and safetensors \u2014 the ML dependencies the suites import; faiss/trl are imported nowhere. Verified by watching the CI run for this commit",
+   "utc": "2026-10-09T02:25:03.601642+00:00"
+  },
+  {
+   "manifest_sha256": "3bff1ed6cc177e34301243396517e24833c90bb85bb28adb3743b7f6b041fa7a",
+   "reason": "TEST-001 register precision: the entry now names the exact CI failures and evidence \u2014 ubuntu-latest fails 4 tests with SandboxUnavailable (test_v1622_evaluator_sandbox.py::test_memory_limit_denies_large_allocation and three in test_v166_scientific_gates.py), while macos-latest fails a larger set because sandbox-exec exists but cannot start the runner's interpreter. The CI dependency repair in this push moved the validate job from a total collection failure to 4 failed / 625 passed / 13 skipped",
+   "utc": "2026-10-09T02:28:04.296468+00:00"
+  },
+  {
+   "manifest_sha256": "3843211204f4e735693bc1aa94697f3a480d2a08bf8414df20ee1f967f88c4c9",
+   "reason": "TEST-001 closed (pulled forward from v16.4.2): execution_sandbox gains sandbox_usable() \u2014 a memoized probe of whether the selected backend can start the interpreter \u2014 and run_check classifies an unstartable backend as unavailable (SandboxUnavailable) instead of returning a result indistinguishable from a failed check; the sandbox-dependent tests skip under that classification. Fail-closed unchanged: no path runs unsandboxed. Proven with the real probe against a (deny default) profile and a simulated probe failure. Tests: 643 passed, 1 skipped",
+   "utc": "2026-10-09T02:54:17.630956+00:00"
+  },
+  {
+   "manifest_sha256": "fa8fd991b248288fb812f9d6dae0f11c6c171db3a4feaa660e4a9003566a7ef1",
+   "reason": "RC14-001 hardening while the decision stays open: the drifted donor class docstring now states plainly that it is not wired and why (its RC13-era base is absent from the tree), and the CI lint gate's tolerance was tightened from 'any finding in rc14/system.py' to exactly the two documented unexpected-keyword-arg findings matched by file and code \u2014 a new finding in that file now fails the gate (verified with a synthetic E0602 in the same file). Tests unchanged: 643 passed, 1 skipped",
+   "utc": "2026-10-09T03:07:51.840309+00:00"
+  },
+  {
+   "manifest_sha256": "5144700735b53e5f44babb36ccb71dcbd797fcd886ed1b12c1e4c2649e5cfd4b",
+   "reason": "RC14-001 retired (user decision): src-python/minagi/rc14/system.py \u2014 whose only definition was the unconstructible donor class GovernedRC14System \u2014 is deleted, and the package re-export removed with a pointer comment. Provenance remains in git history and the donor archive identity in SOURCE_PROVENANCE.json. With the class gone, the CI lint gate's tolerance is removed: it now requires zero Pylint findings. Tests unchanged: 643 passed, 1 skipped",
+   "utc": "2026-10-09T03:16:45.698173+00:00"
+  },
+  {
+   "manifest_sha256": "2ed685dec053af416d066368ada9cd4d5cc66a6fe0cee052cb3fb28f04abb1e8",
+   "reason": "README.md rewritten as the modern GitHub front page for v16.4.1 (badges, architecture, status, governed chain, campaigns, verification, quality gates, docs index). Documentation-only change; no code or test impact.",
+   "utc": "2026-10-09T03:30:30.184576+00:00"
+  },
+  {
+   "manifest_sha256": "90a17489195b8394df66550e0ea95c35b145908668e166ffa04566b2d15a6c15",
+   "reason": "v16.4.2 authority and activation closure (UPGRADE_PLAN_V17 P0): MeasuredSnapshot separates artifact measurement from authorization; AdmissionGrantV1 issued by the new admission role (short-lived, single-use, audience/backend/epoch-bound); ServingSupervisor drives the REQUESTED..ACTIVE state machine over a fsynced durable journal with atomic pointer swap, signed completion, guaranteed unload on failure, deterministic crash-recovery, and live-handle-only rollback; RevocationSnapshotV2 signed by the dedicated revocation role is monotonic, freshness-and-future bounded, and atomically stored; runtime_admission refuses omitted backend coverage; minagi.runtime.service provides the peer-uid-authenticated AF_UNIX launch boundary; tests: 711 passed, 1 skipped; ruff/flake8/pylint zero findings; service hardening: refused peer-credential checks now return a refusal frame rather than a bare reset, stop() exits the accept loop cleanly, and the test helper waits for listen() (CI flake: connect raced bind\u2192listen)",
+   "utc": "2026-10-09T06:45:19.386443+00:00"
+  },
+  {
+   "manifest_sha256": "d16978825b2cd74c7de71b1d8a84312c5620412cdb98ace2a707a4ce954cf634",
+   "reason": "v16.4.3 hardened runtime: authority store, op authorization, path authority, verified journal + migration, crash-safe recovery, backend manifest, bounded service I/O, serving router (SEC-201..207, OPS-001..003 closed). (manifest regenerated after VERSION/SBOM bump + router callable() fix)",
+   "utc": "2026-10-09T09:05:44.277747Z"
   }
  ],
- "reissued_utc": "2026-10-08T02:41:18.288644+00:00",
+ "reissued_utc": "2026-10-09T09:05:44.277747Z",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -77,10 +225,28 @@
   {
    "manifest_sha256": "fd31a757099bc6be6347e99a1a4debe9087ec8fe50d34c5428f44ed0fc1391a8",
    "reason": "runner --execute-seeds: parallel-VM campaign execution under one signed plan"
+  },
+  {
+   "manifest_sha256": "90a17489195b8394df66550e0ea95c35b145908668e166ffa04566b2d15a6c15",
+   "reissued_utc": "2026-10-09T06:45:19.386443+00:00",
+   "release": "mini-AGI-v16.4.2-Authority-and-Activation-Closure"
   }
  ],
- "release": "mini-AGI-v16.2.1-Colab-Converged",
+ "release": "mini-AGI-v16.4.3-Hardened-Runtime",
+ "runtime_security_closure": {
+  "audit_defects_closed": [
+   "SEC-001 admission mandatory",
+   "SEC-002 symlink/unlisted-file closure",
+   "SEC-003 unsigned activation receipts",
+   "SEC-004 optional schema/protocol requirements"
+  ],
+  "change_manifest": "RELEASE_CHANGE_MANIFEST.json",
+  "detail": "docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md",
+  "remaining_defects": "docs/research/REMAINING_DEFECTS_V1641.md",
+  "review_repairs": "post-release audit repairs (tokenizer identity convention, serving-load snapshot requirement, verifier symlink refusal, snapshot staging cleanup); detail in docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md",
+  "tests": "tests-python/v161/test_v1641_artifact_closure.py, test_v1641_trusted_launcher.py, test_v1641_strict_schema.py, test_v1641_cli.py"
+ },
  "schema": "mini-agi-v16.1-release-attestation-v1",
  "signature_algorithm": "Ed25519",
- "status": "PASS_INTEGRITY_REPAIR_GPU_SMOKE_PENDING"
+ "status": "PASS_HARDENED_RUNTIME_GPU_SMOKE_PENDING"
 }

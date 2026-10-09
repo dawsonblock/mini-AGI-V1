@@ -1,4 +1,5 @@
-import argparse, json
+import argparse
+import json
 from dataclasses import asdict
 from pathlib import Path
 from egai.cognition.model import FrozenModelIdentity
@@ -19,7 +20,8 @@ def make_model_manifest(name,files,out,runtime_family='local'):
 def sequential(experience_path,evaluation_path,backend_config,checkpoints):
     model=load_backend(backend_config);agent=SandboxAdaptiveAgent(model)
     experience=read_jsonl(experience_path);evaluation=read_jsonl(evaluation_path)
-    scorer=lambda p,e:1.0 if str(p).strip()==str(e).strip() else 0.0
+    def scorer(p, e):
+        return 1.0 if str(p).strip()==str(e).strip() else 0.0
     cps=tuple(int(x) for x in checkpoints.split(','))
     report=SequentialExperiment(experience,evaluation,scorer,checkpoints=cps).run(model,agent)
     print(json.dumps({'model_digest':model.model_digest,'model_digest_constant':report.model_digest_constant,'leakage_clean':report.leakage_clean,'learned_procedures':report.learned_procedures,'points':[asdict(x) for x in report.points]},indent=2))

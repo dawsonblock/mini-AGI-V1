@@ -19,9 +19,9 @@ class Backend:
 def test_adaptive_seam_escalates_until_acceptable():
     ident = CacheIdentity("b", "a", "t", "l", "rope", "r")
     store = BlockStore()
-    I = np.eye(2)
+    eye = np.eye(2)
     for i in ["A", "D"]:
-        store.put(HybridMemoryBlock(i, 0, 1, [1], {0: AffineSummary(I, np.zeros((2,2)))}, ident))
+        store.put(HybridMemoryBlock(i, 0, 1, [1], {0: AffineSummary(eye, np.zeros((2,2)))}, ident))
     rt = ReconstructionRuntime(store, Backend())
     r = rt.reconstruct(["A", "D"], ident)
     assert r.action == ReconstructionAction.SEAM

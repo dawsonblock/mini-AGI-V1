@@ -23,13 +23,12 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import fcntl
 import hashlib
 import importlib.util
 import json
-import math
 import os
 from pathlib import Path
 import re
@@ -38,7 +37,7 @@ import subprocess
 import sys
 import time
 from types import ModuleType
-from typing import Any, Callable
+from typing import Any
 
 import pyarrow.parquet as pq
 

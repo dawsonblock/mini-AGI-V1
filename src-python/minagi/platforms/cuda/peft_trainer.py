@@ -1,4 +1,4 @@
-"""v16.2.1 corrected LoRA trainer (REPAIR-019..024).
+"""v16.3.0 corrected LoRA trainer (REPAIR-019..024 + Phase-2.1).
 
 Two input modes:
 
@@ -11,6 +11,20 @@ Two input modes:
              examples — empty response, or response fully truncated
              by max_length — are rejected, never silently dropped.
 
+v16.3.0 (Phase 2.1) — explicit training schedule. Every microbatch
+carries exactly `microbatch_size` examples, every optimizer update
+accumulates exactly `gradient_accumulation_steps` microbatches, so
+
+    effective_batch_size = microbatch_size * gradient_accumulation_steps
+    optimizer_updates    = steps
+    sample_presentations = steps * effective_batch_size
+
+The original trainer placed `gradient_accumulation_steps` examples in
+each microbatch *and* accumulated over `gradient_accumulation_steps`
+microbatches, silently squaring the effective batch size. The receipt
+binds all schedule quantities, the actual sample order, per-update
+gradient statistics, and the produced adapter artifact digest.
+
 The training receipt records the full curve, the canonical data-order
 digest, resolved optimizer, library versions, trainable parameter
 counts, and wall-clock cost — the protocol binds the config; the
@@ -21,7 +35,9 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Mapping, Sequence
 import importlib.metadata
-import json, random, time
+import json
+import random
+import time
 from egai.common.canonical import digest, sha256_bytes
 
 LABEL_IGNORE = -100
@@ -39,15 +55,26 @@ class LoraTrainSpec:
     seed: int = 0
     optimizer: str = "adamw"
     gradient_accumulation_steps: int = 1
+    microbatch_size: int = 1
     response_only_loss: bool = False
-    schema: str = "mini-agi-v16.1-lora-train-spec-v1"
+    malformed_policy: str = "reject"   # reject | fail (strict campaigns)
+    schema: str = "mini-agi-v16.3-lora-train-spec-v2"
 
     def __post_init__(self):
         if self.gradient_accumulation_steps < 1:
             raise ValueError("gradient_accumulation_steps must be >= 1")
+        if self.microbatch_size < 1:
+            raise ValueError("microbatch_size must be >= 1")
         if self.optimizer not in ("adamw", "adamw-torch", "adamw_fused",
                                   "sgd"):
             raise ValueError(f"unsupported optimizer: {self.optimizer}")
+        if self.malformed_policy not in ("reject", "fail"):
+            raise ValueError("malformed_policy must be reject|fail")
+
+    @property
+    def effective_batch_size(self) -> int:
+        """Examples per optimizer update."""
+        return self.microbatch_size * self.gradient_accumulation_steps
 
     @property
     def digest(self): return digest(self)
@@ -130,6 +157,37 @@ def _make_optimizer(model, spec):
     return torch.optim.AdamW(params, lr=spec.learning_rate, fused=fused)
 
 
+def _grad_norm(model) -> float:
+    """L2 norm of the currently accumulated parameter gradients —
+    recorded once per optimizer update (gradient statistics)."""
+    total = 0.0
+    for p in model.parameters():
+        if p.grad is not None:
+            total += float(p.grad.detach().pow(2).sum().cpu())
+    return total ** 0.5
+
+
+def adapter_artifact_digest(adapter_dir) -> str:
+    """Digest of the produced adapter weight+config bytes only.
+
+    Stable across the later receipt/spec writes (those evidence files
+    are covered by the directory closure digest in runtime manifests),
+    so the training receipt can bind the exact artifact it produced
+    before the receipt itself exists on disk."""
+    d = Path(adapter_dir)
+    rows = []
+    cfg = d / "adapter_config.json"
+    if not cfg.is_file():
+        raise ValueError("adapter_config.json missing from output dir")
+    rows.append(("adapter_config.json", sha256_bytes(cfg.read_bytes())))
+    weights = sorted(p for p in d.glob("adapter_model*") if p.is_file())
+    if not weights:
+        raise ValueError("adapter_model weights missing from output dir")
+    for p in weights:
+        rows.append((p.name, sha256_bytes(p.read_bytes())))
+    return digest(rows)
+
+
 def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                examples: Sequence[Mapping] | None = None,
                output_dir: str | Path, spec: LoraTrainSpec):
@@ -162,8 +220,11 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
     device = next(model.parameters()).device
     pad_id = tokenizer.pad_token_id or tokenizer.eos_token_id or 0
     gacc = spec.gradient_accumulation_steps
+    mb = spec.microbatch_size
 
     losses, rejected = [], 0
+    grad_norms: list[float] = []
+    updates = 0
     started = time.time_ns()
     if examples is not None:
         mode = "response-masked" if spec.response_only_loss else \
@@ -177,14 +238,21 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                 encoded.append(supervised_tokens(
                     tokenizer, str(e["prompt"]), str(e["response"]),
                     spec.max_length))
-            except ValueError:
+            except ValueError as exc:
                 rejected += 1
+                if spec.malformed_policy == "fail":
+                    raise ValueError(
+                        "malformed training example under strict "
+                        f"malformed_policy='fail' — run invalidated: "
+                        f"{exc}") from exc
         if not encoded:
             raise ValueError("every training example was rejected")
         rnd = random.Random(spec.seed)
         total_micro = spec.steps * gacc
+        sampled: list[int] = []
         for micro in range(total_micro):
-            idx = [rnd.randrange(len(encoded)) for _ in range(gacc)]
+            idx = [rnd.randrange(len(encoded)) for _ in range(mb)]
+            sampled.extend(idx)
             batch = [encoded[i] for i in idx]
             ids, labels, attn = _pad_batch(batch, pad_id)
             batch_t = {"input_ids": torch.tensor(ids, device=device),
@@ -202,25 +270,35 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
             loss.backward()
             losses.append(float(loss.detach().cpu()) * gacc)
             if (micro + 1) % gacc == 0 or micro == total_micro - 1:
+                grad_norms.append(_grad_norm(model))
                 opt.step()
                 opt.zero_grad(set_to_none=True)
+                updates += 1
         example_count = len(encoded)
+        presentations = len(sampled)
+        sample_order_digest = digest([int(i) for i in sampled])
     else:
         mode = "concatenated-legacy"
         order_d = digest([sha256_bytes(str(t).encode()) for t in texts])
+        sampled = []
         for step in range(spec.steps):
-            text = texts[step % len(texts)]
-            batch = tokenizer(text, return_tensors="pt", truncation=True,
-                              max_length=spec.max_length)
+            i = step % len(texts)
+            sampled.append(i)
+            batch = tokenizer(texts[i], return_tensors="pt",
+                              truncation=True, max_length=spec.max_length)
             batch = {k: v.to(device) for k, v in batch.items()}
             labels = batch["input_ids"].clone()
             labels[batch["attention_mask"] == 0] = LABEL_IGNORE
             out = model(**batch, labels=labels)
             out.loss.backward()
+            grad_norms.append(_grad_norm(model))
             opt.step()
             opt.zero_grad(set_to_none=True)
+            updates += 1
             losses.append(float(out.loss.detach().cpu()))
         example_count = len(texts)
+        presentations = len(sampled)
+        sample_order_digest = digest([int(i) for i in sampled])
 
     trainable = int(sum(p.numel() for p in model.parameters()
                         if p.requires_grad))
@@ -228,18 +306,29 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
     outdir = Path(output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(outdir, safe_serialization=True)
-    receipt = {"schema": "mini-agi-v16.2.1-training-receipt-v1",
+    artifact_digest = adapter_artifact_digest(outdir)
+    receipt = {"schema": "mini-agi-v16.3-training-receipt-v2",
                "train_spec_digest": spec.digest,
                "supervision_mode": mode,
                "optimizer": spec.optimizer,
                "learning_rate": spec.learning_rate,
                "steps": spec.steps,
                "gradient_accumulation_steps": gacc,
+               "microbatch_size": mb,
+               "effective_batch_size": spec.effective_batch_size,
+               "optimizer_updates": updates,
+               "sample_presentations": presentations,
+               "malformed_policy": spec.malformed_policy,
                "example_count": example_count,
                "rejected_examples": rejected,
                "data_order_digest": order_d,
+               "sample_order_digest": sample_order_digest,
+               "adapter_artifact_digest": artifact_digest,
                "loss_first": losses[0], "loss_last": losses[-1],
                "loss_curve": losses,
+               "grad_norms": grad_norms,
+               "grad_norm_mean": (sum(grad_norms) / len(grad_norms))
+                                 if grad_norms else 0.0,
                "trainable_params": trainable, "total_params": total,
                "library_versions": _library_versions(),
                "started_ns": started, "finished_ns": time.time_ns()}

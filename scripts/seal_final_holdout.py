@@ -40,8 +40,8 @@ def _member(row: dict) -> DatasetMember:
 
 
 def _load(path: Path) -> list:
-    return [json.loads(l) for l in path.read_text().splitlines()
-            if l.strip()]
+    return [json.loads(line) for line in path.read_text().splitlines()
+            if line.strip()]
 
 
 def main() -> int:

@@ -1,6 +1,8 @@
-import json, os, subprocess, urllib.request
+import json
+import os
+import subprocess
+import urllib.request
 from pathlib import Path
-from dataclasses import dataclass
 from .model import FrozenModel, FrozenModelIdentity
 
 class FrozenHTTPChatModel(FrozenModel):

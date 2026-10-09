@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from kvcontinual.execution.digests import sha256_json
 from kvcontinual.execution.types import ExecutionIdentity

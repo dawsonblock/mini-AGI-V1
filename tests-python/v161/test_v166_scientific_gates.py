@@ -26,6 +26,7 @@ from minagi.v161.dataset_manifest import (DatasetMember,  # noqa: E402
                                           DatasetMembershipManifest,
                                           DatasetPartitionSet,
                                           DatasetPartitionSetV2)
+from minagi.v161 import execution_sandbox  # noqa: E402
 from minagi.v161.evaluators import (exact_match, executor_score,  # noqa: E402
                                     score_row)
 from minagi.v161.evidence_receipt_v3 import (  # noqa: E402
@@ -187,8 +188,44 @@ def test_false_activation_ignores_wrong_to_wrong():
     assert fa["n_false_activation"] == 0
 
 
+def test_false_activation_denominator_is_baseline_correct():
+    """FIX-004: the rate is conditioned on previously-correct L1 cases,
+    not diluted by rows L1 already failed (1/2, not 1/3)."""
+    golds = {"a": "1", "b": "2", "c": "3"}
+    base = {"a": "1", "b": "2", "c": "0"}   # L1 correct on a,b only
+    arm = {"a": "9", "b": "2", "c": "0"}    # L6 breaks 'a'
+    fa = false_activation_rate(base, arm, golds, exact_match)
+    assert fa["n_pairs"] == 3
+    assert fa["n_baseline_correct"] == 2
+    assert fa["n_false_activation"] == 1
+    assert fa["false_activation_rate"] == 0.5
+
+
+def test_conditional_regression_reported():
+    """FIX-004: P(arm incorrect | L1 correct) is reported alongside the
+    harmful-flip rate."""
+    golds = {"a": "1", "b": "2", "c": "3"}
+    base = {"a": "1", "b": "2", "c": "0"}
+    arm = {"a": "9", "b": "2", "c": "0"}
+    fa = false_activation_rate(base, arm, golds, exact_match)
+    assert fa["n_conditional_regression"] == 1
+    assert fa["conditional_regression_rate"] == 0.5
+    assert fa["changed_ids"] == ["a"]
+
+
+def test_no_baseline_correct_rows_yield_zero_rate():
+    golds = {"a": "1"}
+    fa = false_activation_rate({"a": "x"}, {"a": "y"}, golds, exact_match)
+    assert fa["n_baseline_correct"] == 0
+    assert fa["false_activation_rate"] == 0.0
+    assert fa["conditional_regression_rate"] == 0.0
+
+
 # ---------- executor-verified scoring ---------------------------------
 
+@pytest.mark.skipif(not execution_sandbox.sandbox_usable(),
+                    reason="no usable OS sandbox backend on this host "
+                           "(TEST-001 classification)")
 def test_score_row_dispatches_verify_spec():
     row = {"id": "x", "expected": "42",
            "verify": {"type": "python_assert",
@@ -208,6 +245,9 @@ def test_executor_score_rejects_unknown_verify_type():
         executor_score("x", "y", {"type": "shell", "check": "true"})
 
 
+@pytest.mark.skipif(not execution_sandbox.sandbox_usable(),
+                    reason="no usable OS sandbox backend on this host "
+                           "(TEST-001 classification)")
 def test_executor_score_check_is_authoritative_over_expected():
     """The verify check, not the expected string, decides correctness —
     a swapped check that demands a different output flips the score."""
@@ -217,6 +257,9 @@ def test_executor_score_check_is_authoritative_over_expected():
     assert executor_score("abc", "abd", v) == 0.0
 
 
+@pytest.mark.skipif(not execution_sandbox.sandbox_usable(),
+                    reason="no usable OS sandbox backend on this host "
+                           "(TEST-001 classification)")
 def test_executor_score_timeout_returns_zero():
     v = {"type": "python_assert",
          "check": "import time; time.sleep(60)"}
@@ -530,6 +573,7 @@ def test_v166_false_activation_gate_trips(tmp_path):
     doc = json.loads(out.read_text())
     assert _decision(doc) == "REFUSED"
     assert "false_activation" in json.dumps(doc)
+    assert "conditional_regression_rate_mean" in json.dumps(doc)
 
 
 def test_v166_holdout_digest_in_signed_plan(tmp_path):

@@ -8,7 +8,6 @@ import html
 import json
 import math
 import re
-import statistics
 from pathlib import Path
 
 import attention_step_kl_curve as kl

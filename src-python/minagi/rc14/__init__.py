@@ -28,6 +28,11 @@ from .executed_runs import (DatasetSplitManifestRC14, ExecutedRunReceiptRC14, Ex
 from .independent_reproduction import (IndependentReproductionPlanRC14, IndependentReproductionReplicateRC14, IndependentReproductionCertificateRC14, IndependentReproductionStoreRC14, REPRODUCTION_VARIANTS)
 from .neural_memory import IsolatedNeuralMemoryManifestRC14, FrozenFoundationProofRC14, IsolatedNeuralMemoryQualificationRC14, IsolatedNeuralMemoryQualificationEngineRC14
 from .orchestrator import GovernedContinualOrchestratorRC14
-from .system import GovernedRC14System
+# GovernedRC14System (rc14/system.py) was retired: it was written against an
+# RC13-era GovernedSystem that was never imported (state_epochs /
+# runtime_activation / verify_control_plane exist nowhere in this tree), so it
+# could not be constructed and nothing instantiated it. The module remains in
+# git history and its donor archive identity in SOURCE_PROVENANCE.json — see
+# RC14-001 in docs/research/REMAINING_DEFECTS_V1641.md.
 
 __all__ = [name for name in globals() if not name.startswith("_")]

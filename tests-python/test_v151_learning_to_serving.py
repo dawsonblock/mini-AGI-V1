@@ -1,4 +1,3 @@
-from dataclasses import asdict
 
 import pytest
 
@@ -69,7 +68,7 @@ def test_compiled_skill_ir_executes_transfer_qualified_candidate(tmp_path):
 
 
 def test_compiler_rejects_nonqualified_candidate(tmp_path):
-    cas = ImmutableCAS(tmp_path / "cas")
+    ImmutableCAS(tmp_path / "cas")
     report = TrajectorySkillInducerV145().induce((traj(1, "abc", "ABC"), traj(2, "def", "DEF")))
     with pytest.raises(PermissionError):
         SkillIRCompiler().compile(report.candidates[0])
@@ -79,7 +78,6 @@ def test_fresh_task_a0_a1_learning_changes_served_policy_root(tmp_path):
     cas = ImmutableCAS(tmp_path / "cas")
     candidate = qualified_candidate(cas)
     skill = SkillIRCompiler().compile(candidate)
-    runtime = SkillPolicyRuntime.__new__(SkillPolicyRuntime)
 
     signer = Ed25519Signer.generate("fresh-task")
     metadata = FreshTaskMetadataStoreV143(tmp_path / "fresh-meta.sqlite3")

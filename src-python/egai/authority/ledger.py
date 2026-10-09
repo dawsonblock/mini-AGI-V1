@@ -1,5 +1,4 @@
 import json
-from dataclasses import asdict
 from egai.common.store import SQLiteStore
 from egai.common.canonical import digest
 from egai.common.crypto import SignedEnvelope

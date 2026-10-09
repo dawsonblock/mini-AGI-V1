@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse, gc, hashlib, json, os, random, sys
+import argparse
+import gc
+import json
+import random
+import sys
 from dataclasses import asdict
 from pathlib import Path
 import yaml
@@ -91,7 +95,7 @@ def main():
         if (run_dir/"COMPLETE").is_file() and seed_result_path.is_file():
             all_results.append(json.loads(seed_result_path.read_text())); continue
         random.seed(seed)
-        tokenizer=load_tokenizer(spec); model=load_causal_lm(spec)
+        tokenizer=load_tokenizer(spec); model=load_causal_lm(spec,purpose="research")
         model_digest=model_identity(model,spec); tok_digest=tokenizer_identity(tokenizer,spec)
         a0_score,a0_outputs=evaluate(model,tokenizer,hidden,int(cfg.get("max_new_tokens",8)),score_fn)
         a0=ExecutedRunReceiptV161.sign(signer=signer,campaign_digest=plan.digest,arm="A0",seed=seed,environment_digest=env.digest,model_digest=model_digest,tokenizer_digest=tok_digest,adapter_digest=ZERO,dataset_digest=parts.hidden.digest,evaluator_digest=arts[0].digest,metrics={"hidden_exact_match":a0_score})
@@ -107,7 +111,7 @@ def main():
             import torch
             if torch.cuda.is_available(): torch.cuda.empty_cache()
         except Exception: pass
-        model=load_causal_lm(spec,adapter_path=str(adapter_dir)); a1_score,a1_outputs=evaluate(model,tokenizer,hidden,int(cfg.get("max_new_tokens",8)),score_fn)
+        model=load_causal_lm(spec,adapter_path=str(adapter_dir),purpose="research"); a1_score,a1_outputs=evaluate(model,tokenizer,hidden,int(cfg.get("max_new_tokens",8)),score_fn)
         retention_rows=train[:max(1,min(len(train),int(cfg.get("retention_samples",2))))]
         retention,ret_outputs=evaluate(model,tokenizer,retention_rows,int(cfg.get("max_new_tokens",8)),retention_fn)
         security_count=sum(int(security_fn(x["prediction"],x["expected"])) for x in a1_outputs)

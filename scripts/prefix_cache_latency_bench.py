@@ -35,7 +35,7 @@ import subprocess
 import sys
 import time
 import urllib.parse
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 
 def wait_for_server(base_url: str, timeout_s: float) -> bool:

@@ -2,8 +2,18 @@
 """Verify a mini-AGI signed release.
 
 Checks that every governed file on disk exactly matches SOURCE_MANIFEST.json
-(missing / extra / changed all fail) and that the manifest carries a valid
-Ed25519 signature from a TRUSTED release key.
+(missing / extra / changed all fail), that symbolic links are refused
+rather than silently skipped (v16.4.1 closure policy), and that the
+manifest carries a valid Ed25519 signature from a TRUSTED release key.
+
+FIX-006: also checks release-metadata reconciliation — the attestation's
+manifest_sha256 / reissued_utc must agree with the signed manifest (top
+level and last reissue_history entry) and the attestation release name
+must name the VERSION. Drift fails with exit 5.
+
+`--root` verifies a tree other than this repository (used by the
+adversarial suite in tests-python/v161/test_v1622_verify_release_script.py
+to exercise the tamper/forgery failure paths against a signed fixture).
 
 Trust model (REPAIR-004): the bundled RELEASE_PUBLIC_KEY.pem is NOT trusted
 merely because it sits inside the package. Its fingerprint must equal a
@@ -68,6 +78,9 @@ def key_fingerprint(pub) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default=str(ROOT),
+                    help="tree to verify (default: the repository this "
+                         "script lives in)")
     ap.add_argument("--trusted-key", default=None,
                     help="external PEM public key to verify with; overrides "
                          "the bundled RELEASE_PUBLIC_KEY.pem")
@@ -77,10 +90,11 @@ def main() -> int:
                          "key (default: the pinned v16.x release fingerprint; "
                          "env: MINIAGI_RELEASE_KEY_FP)")
     args = ap.parse_args()
+    root = Path(args.root).resolve()
 
-    manifest_path = ROOT / 'SOURCE_MANIFEST.json'
-    sig_path = ROOT / 'RELEASE_SIGNATURE.bin'
-    pub_path = ROOT / 'RELEASE_PUBLIC_KEY.pem'
+    manifest_path = root / 'SOURCE_MANIFEST.json'
+    sig_path = root / 'RELEASE_SIGNATURE.bin'
+    pub_path = root / 'RELEASE_PUBLIC_KEY.pem'
     doc = json.loads(manifest_path.read_text())
     if doc.get('schema_version') != 1 \
             or doc.get('hash_algorithm') != 'sha256' \
@@ -91,8 +105,8 @@ def main() -> int:
                 'RELEASE_PUBLIC_KEY.pem', 'RELEASE_ATTESTATION.json'}
 
     def skip(p):
-        rel = p.relative_to(ROOT).as_posix()
-        parts = p.relative_to(ROOT).parts
+        rel = p.relative_to(root).as_posix()
+        parts = p.relative_to(root).parts
         # Gitignored build-artifact dirs (see .gitignore: build/,
         # build-cuda, build-*/) can never be release-controlled —
         # git ls-files excludes them, so flagging them in a developer
@@ -101,12 +115,24 @@ def main() -> int:
         artifact_dir = parts and parts[0].startswith('build')
         return (rel in excluded or artifact_dir or '__pycache__' in parts
                 or '.git' in parts or '.pytest_cache' in parts
+                or '.ruff_cache' in parts
                 or p.name.endswith('.pyc')
                 or any(part.endswith('.egg-info') for part in parts))
 
-    actual = {p.relative_to(ROOT).as_posix(): sha(p)
-              for p in ROOT.rglob('*')
+    actual = {p.relative_to(root).as_posix(): sha(p)
+              for p in root.rglob('*')
               if p.is_file() and not p.is_symlink() and not skip(p)}
+    # v16.4.1 closure policy: symbolic links anywhere in the governed
+    # tree are refused, not silently skipped — a link is not a governed
+    # file and a downstream consumer must never follow one out of the
+    # archive. The release builder excludes them for the same reason.
+    symlinks = sorted(p.relative_to(root).as_posix()
+                      for p in root.rglob('*')
+                      if p.is_symlink() and not skip(p))
+    if symlinks:
+        print(json.dumps({'status': 'FAIL', 'reason': 'symlinks_in_tree',
+                          'symlinks': symlinks[:20]}, indent=2))
+        return 2
     if expected != actual:
         missing = sorted(set(expected) - set(actual))
         extra = sorted(set(actual) - set(expected))
@@ -143,11 +169,44 @@ def main() -> int:
                          indent=2))
         return 4
 
+    # FIX-006: release metadata reconciliation — the attestation must
+    # agree with the signed manifest and the version identities, and
+    # the signature must cover the manifest the attestation names.
+    manifest_sha = hashlib.sha256(canonical_manifest_bytes(doc)).hexdigest()
+    att_path = root / 'RELEASE_ATTESTATION.json'
+    problems = []
+    att = None
+    if not att_path.is_file():
+        problems.append('RELEASE_ATTESTATION.json missing')
+    else:
+        att = json.loads(att_path.read_text())
+        if att.get('manifest_sha256') != manifest_sha:
+            problems.append(
+                'attestation manifest_sha256 != signed manifest digest')
+        history = att.get('reissue_history') or []
+        if not history or history[-1].get('manifest_sha256') != manifest_sha:
+            problems.append(
+                'last reissue_history entry != signed manifest digest')
+        if history and att.get('reissued_utc') != history[-1].get('utc'):
+            problems.append('reissued_utc != last reissue_history utc')
+    version_path = root / 'VERSION'
+    if version_path.is_file() and att is not None:
+        number = version_path.read_text().strip().split('-', 1)[0]
+        if f'v{number}' not in str(att.get('release', '')):
+            problems.append(
+                f"attestation release {att.get('release')!r} does not "
+                f"name VERSION {number}")
+    if problems:
+        print(json.dumps({'status': 'FAIL',
+                          'reason': 'release_metadata_inconsistent',
+                          'problems': problems}, indent=2))
+        return 5
+
     print(json.dumps({
         'status': 'PASS', 'files_verified': len(actual),
         'key_source': source, 'key_fingerprint': fp,
-        'manifest_sha256': hashlib.sha256(
-            canonical_manifest_bytes(doc)).hexdigest()}, indent=2))
+        'manifest_sha256': manifest_sha,
+        'release': (att or {}).get('release')}, indent=2))
     return 0
 
 

@@ -37,9 +37,9 @@ def main() -> int:
     ap.add_argument("--output", default=None, help="default: <campaign-dir>/QUALIFICATION_RECORD.json")
     args = ap.parse_args()
 
-    root = ensure_path(Path(args.root).resolve() if args.root else detect_root())
+    ensure_path(Path(args.root).resolve() if args.root else detect_root())
 
-    from egai.common.crypto import Ed25519Verifier, SignedEnvelope
+    from egai.common.crypto import Ed25519Verifier
     from minagi.v161.campaign_plan import ColabCampaignPlanV161
     from minagi.v161.executed_run import ExecutedRunReceiptV161
     from minagi.v161.runtime_closure3 import sha256_path

@@ -41,8 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Any
 
-from egai.common.canonical import (digest, sha256_bytes, validate_digest,
-                                   canonical_bytes)
+from egai.common.canonical import (digest, sha256_bytes, validate_digest)
 from egai.common.crypto import Ed25519Signer, SignedEnvelope
 
 from .executed_run import ARMS_V162

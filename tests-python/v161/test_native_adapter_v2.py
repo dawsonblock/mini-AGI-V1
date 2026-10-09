@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from safetensors.numpy import save_file  # noqa: E402
 
-from egai.common.canonical import digest, sha256_bytes  # noqa: E402
+from egai.common.canonical import sha256_bytes  # noqa: E402
 from minagi.v15.native_adapter import (  # noqa: E402
     NativeAttentionDims, NativeQW3Adapter2Compiler,
     native_adapter2_supports_target, native_adapter_supports_target)

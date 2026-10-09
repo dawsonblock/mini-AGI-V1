@@ -21,7 +21,6 @@ import shutil
 import statistics
 import subprocess
 import sys
-import time
 from typing import Any
 
 import pyarrow.parquet as pq

@@ -221,7 +221,8 @@ def test_signed_current_state_detects_metadata_tampering(tmp_path):
 
 
 def test_manifest_artifact_path_rejects_symlink(tmp_path):
-    import json, os
+    import json
+    import os
     reg = AdapterRegistry(str(tmp_path / "registry"))
     f = tmp_path / "adapter.safetensors"; f.write_bytes(b"candidate")
     c = reg.register_candidate(str(f), "sha256:base", "sha256:data", {"lr": 1e-5})
@@ -333,7 +334,8 @@ def _sha_text(text: str) -> str:
 
 
 def _passing_bundle(*, model: str, tokenizer: str, execution: str):
-    import hashlib, json
+    import hashlib
+    import json
     from kvcontinual.execution.qualification_bundle import build_qualification_bundle
     from kvcontinual.execution.qualification_harness import MacQualificationThresholds, QualificationObservation
     probe = {

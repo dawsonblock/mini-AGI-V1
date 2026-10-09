@@ -160,8 +160,8 @@ def main() -> int:
                                               DatasetMembershipManifest,
                                               DatasetPartitionSet)
     from egai.common.canonical import sha256_bytes
-    rows = [json.loads(l) for l in dataset_cfg.read_text().splitlines()
-            if l.strip()]
+    rows = [json.loads(line) for line in dataset_cfg.read_text().splitlines()
+            if line.strip()]
 
     def _member(row):
         payload = json.dumps(row, sort_keys=True, separators=(",", ":"),
@@ -195,9 +195,9 @@ def main() -> int:
                             "--holdout was not supplied for verification")
         else:
             try:
-                hrows = [json.loads(l) for l in
+                hrows = [json.loads(line) for line in
                          Path(args.holdout).read_text().splitlines()
-                         if l.strip()]
+                         if line.strip()]
                 hman = DatasetMembershipManifest(
                     "final_holdout",
                     tuple(_member(r) for r in hrows))
@@ -236,10 +236,9 @@ def main() -> int:
                                             retention_score, score_row,
                                             security_regression)
         from minagi.v161.evidence_receipt_v3 import (
-            EvidenceReceiptV3, evaluation_bundle,
-            input_manifest_digest, predictions_digest_of,
+            EvidenceReceiptV3, input_manifest_digest, predictions_digest_of,
             read_predictions)
-        from minagi.v161.stats import (bootstrap_ci, cluster_bootstrap_ci,
+        from minagi.v161.stats import (cluster_bootstrap_ci,
                                        false_activation_rate)
         from egai.common.canonical import digest as _digest, sha256_bytes as _sha
         ret_impl = {"containment_match": containment_match,
@@ -623,8 +622,11 @@ def main() -> int:
                             f"{cci['lower']:.4f} <= "
                             f"{plan.min_delta_ft_ci_lower}")
                 # false activation: L6 changed a correct L1 answer to a
-                # wrong one — learned behavior firing off-task
+                # wrong one — learned behavior firing off-task. The rate
+                # is conditioned on previously-correct L1 cases; the
+                # broader conditional regression is reported alongside.
                 fa_rates = []
+                cr_rates = []
                 for seed in plan.seeds:
                     base = hidden_outputs.get((seed, "L1"), {})
                     armed = hidden_outputs.get((seed, "L6"), {})
@@ -634,9 +636,12 @@ def main() -> int:
                     fa = false_activation_rate(base, armed, golds,
                                                exact_match)
                     fa_rates.append(fa["false_activation_rate"])
+                    cr_rates.append(fa["conditional_regression_rate"])
                 if fa_rates:
                     stats["false_activation_rate_mean"] = \
                         statistics.fmean(fa_rates)
+                    stats["conditional_regression_rate_mean"] = \
+                        statistics.fmean(cr_rates)
                     if statistics.fmean(fa_rates) > \
                             plan.max_false_activation_rate:
                         reasons.append(

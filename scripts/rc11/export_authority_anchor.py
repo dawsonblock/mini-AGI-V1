@@ -5,7 +5,11 @@ An external copy supplies the monotonic floor that local files alone cannot
 provide against whole-registry rollback/replay.
 """
 from __future__ import annotations
-import argparse, json, os, sys, tempfile
+import argparse
+import json
+import os
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]

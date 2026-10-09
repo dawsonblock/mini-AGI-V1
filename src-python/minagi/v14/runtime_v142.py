@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-import json, time
+import json
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
 from egai.common.canonical import digest, validate_digest
 from .models import LearningProposalV14
 from .policy import GovernancePolicyV14
-from .storage_v142 import GovernanceDBV142, ImmutableCAS
+from .storage import ImmutableCAS
+from .storage_v142 import GovernanceDBV142
 from .qualification_v142 import (
     EvaluationAuthorityV142, EvaluationValidatorV142, QualificationAuthorityV142,
     QualificationPolicyV142, QualificationRecordV142, QualificationValidatorV142,

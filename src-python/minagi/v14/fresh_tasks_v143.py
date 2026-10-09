@@ -1,9 +1,12 @@
 from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
-import json,secrets,sqlite3,time,uuid
+import json
+import secrets
+import sqlite3
+import time
+import uuid
 from pathlib import Path
 from egai.common.canonical import digest, validate_digest
-from egai.common.crypto import SignedEnvelope
 from minagi.egai.canonical import sha256_json
 from .fresh_tasks import HiddenTaskCommitment, FreshTaskLease
 

@@ -11,7 +11,7 @@ from dataclasses import asdict
 
 import pytest
 
-from egai.common.canonical import digest, sha256_bytes, validate_digest
+from egai.common.canonical import digest, sha256_bytes
 from egai.common.crypto import Ed25519Signer, Ed25519Verifier
 from minagi.v161.authority import (AuthorityLedger, AuthorityRegistry,
                                    AuthorityRecord, provision_role,
@@ -20,7 +20,7 @@ from minagi.v161.evidence_receipt_v3 import (
     EvidenceReceiptV3, evaluation_bundle, input_manifest_digest,
     load_verified_seed_result_v3, prediction_record,
     predictions_canonical_bytes, predictions_digest_of,
-    read_predictions, write_predictions, RECEIPT_V3_SCHEMA)
+    read_predictions, write_predictions)
 
 D = digest({"anchor": 1})
 Z = "sha256:" + "0" * 64

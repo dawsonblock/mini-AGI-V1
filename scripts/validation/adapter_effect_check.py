@@ -122,7 +122,8 @@ def main() -> int:
     tokenizer = load_tokenizer(spec)
 
     def fresh_outputs(adapter=None):
-        model = load_causal_lm(spec, adapter_path=str(adapter) if adapter else None)
+        model = load_causal_lm(spec, adapter_path=str(adapter) if adapter
+                               else None, purpose="research")
         outs = {pid: generate(model, tokenizer, rows[pid], max_new) for pid in prompt_ids}
         free_model(model)
         return outs

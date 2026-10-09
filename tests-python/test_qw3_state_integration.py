@@ -35,14 +35,15 @@ def test_manifest_artifact_root_changes_when_kv_changes():
 
 def test_contract_accepts_exact_loaded_state():
     m = manifest()
-    fetch = lambda path: {
-        "governed": True,
-        "epoch_id": m.epoch_digest,
-        "manifest_digest": m.manifest_digest,
-        "artifact_root": m.artifact_root,
-        "adapter_set_root": m.adapter_set_root,
-        "model_id": "qwen",
-    }
+    def fetch(path):
+        return {
+            "governed": True,
+            "epoch_id": m.epoch_digest,
+            "manifest_digest": m.manifest_digest,
+            "artifact_root": m.artifact_root,
+            "adapter_set_root": m.adapter_set_root,
+            "model_id": "qwen",
+        }
     c = GovernedServingContract(base_url="http://unused", fetch_json=fetch)
     headers = c.request_headers(lease=Lease(), manifest=m)
     assert headers["X-MiniAGI-State-Epoch"] == m.epoch_digest

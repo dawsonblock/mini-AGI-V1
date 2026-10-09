@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import monotonic
-from typing import Callable, Mapping, Sequence, Any
+from typing import Callable, Mapping, Any
 
 from egai.common.canonical import digest, validate_digest
 from minagi.v14.adaptive_v149 import (

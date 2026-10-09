@@ -33,9 +33,9 @@ def main() -> int:
     from minagi.v161.evaluators import containment_match
     from egai.common.canonical import digest
 
-    rows = [json.loads(l) for l in
+    rows = [json.loads(line) for line in
             (root / "configs" / "scorer_calibration.jsonl").read_text().splitlines()
-            if l.strip()]
+            if line.strip()]
     cases = []
     agree = 0
     for r in rows:

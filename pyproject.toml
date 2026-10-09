@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mini-agi-converged"
-version = "16.2.1"
+version = "16.4.3"
 description = "Converged governed continual-learning research runtime with Colab/CUDA campaigns and externally executed evidence closure"
 requires-python = ">=3.11"
 dependencies = ["numpy>=2.0", "cryptography>=43", "fastapi>=0.115", "uvicorn>=0.30", "pydantic>=2.8", "httpx>=0.27", "PyYAML>=6.0"]
@@ -13,7 +13,7 @@ dependencies = ["numpy>=2.0", "cryptography>=43", "fastapi>=0.115", "uvicorn>=0.
 ml = ["torch>=2.5", "transformers>=4.53", "peft>=0.14", "trl>=0.15", "safetensors>=0.4", "faiss-cpu>=1.9"]
 colab = ["torch>=2.5", "transformers>=4.53", "peft>=0.14", "accelerate>=1.2", "safetensors>=0.4", "huggingface-hub>=0.27", "bitsandbytes>=0.45; platform_system == 'Linux'"]
 mac = ["mlx-lm>=0.31.3; platform_system == 'Darwin' and platform_machine == 'arm64'"]
-dev = ["pytest>=8", "build>=1", "ruff>=0.8"]
+dev = ["pytest>=8", "build>=1", "ruff>=0.8", "flake8>=7,<8", "pylint>=4,<5"]
 
 [project.scripts]
 minagi = "minagi.cli:main"
@@ -27,3 +27,113 @@ include = ["kvcontinual*", "minagi*", "egai*", "dream_rsi_governed*"]
 pythonpath = ["src-python", "tests-python/research"]
 testpaths = ["tests-python"]
 addopts = "--import-mode=importlib"
+
+[tool.ruff]
+# Deliberate, repo-wide lint contract (mirrored for Flake8 in .flake8).
+# The research code has an established compact style; the settings below
+# are what this repository actually enforces — everything else is
+# documented as intentionally not enforced rather than left to defaults.
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    "build*",
+    "dist",
+    "references",
+    "third_party",
+]
+
+[tool.ruff.lint]
+# E4 import hygiene, E7 statement structure, E9 syntax, F pyflakes.
+# Intentionally not enforced:
+#   E402 — scripts and legacy modules import after a sys.path bootstrap
+#          (the package is not pip-installed on the Colab runners)
+#   E501 — lines are kept to ~100 chars, not the 88/79 tool defaults
+#   E701/E702/E703 — the compact one-line statement style used
+#          deliberately throughout the research code
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E402", "E501", "E701", "E702", "E703"]
+
+[tool.ruff.lint.per-file-ignores]
+# Re-export barrels: an unused import here is the module's public API.
+"__init__.py" = ["F401"]
+
+[tool.pylint]
+# Pylint view of the same contract (some editors run Pylint instead of,
+# or in addition to, ruff/Flake8). Pylint enforces its error category —
+# real defects such as undefined names, bad call signatures and
+# unresolvable imports — and stays quiet on everything the contract
+# already declares as not enforced. The pyflakes-equivalents
+# (unused imports/variables, redefinition) are enforced by ruff's F
+# family, which is clean; Pylint's variants additionally flag unused
+# loop variables, which the compact style uses deliberately.
+[tool.pylint.main]
+py-version = "3.11"
+jobs = 4
+ignore = [
+    "build",
+    "references",
+    "third_party",
+    ".pytest_cache",
+    ".ruff_cache",
+]
+# Optional extras and platform modules are not installed in every
+# environment (they are declared as extras in pyproject.toml).
+ignored-modules = [
+    "torch",
+    "torch.*",
+    "transformers",
+    "transformers.*",
+    "peft",
+    "trl",
+    "safetensors",
+    "safetensors.*",
+    "faiss",
+    "mlx",
+    "mlx.*",
+    "accelerate",
+    "bitsandbytes",
+    "huggingface_hub",
+    "tokenizers",
+    "requests",
+    "pyarrow",
+    "pyarrow.*",
+    "cutlass",
+    "cutlass.*",
+    "cuda",
+    "cuda.*",
+    "flashinfer",
+    "flashinfer.*",
+    "tiktoken",
+    "nltk",
+    "PIL",
+    "utils",
+    "utils.*",
+    "scripts.common",
+    "scripts.common.*",
+]
+
+[tool.pylint."messages control"]
+disable = [
+    # Convention (C) and refactor (R) families: naming, docstrings,
+    # line length, design metrics — the compact research style is
+    # deliberate (see .flake8 for the same declaration).
+    "C",
+    "R",
+    # Warnings: either duplicates of the ruff/flake8 F family (which is
+    # enforced and clean) or conventions this codebase does not follow
+    # (one-line statements, ~100-column lines, missing docstrings,
+    # broad excepts, unprotected _private access in research code).
+    "W",
+    # astroid's inference is unreliable on this codebase's dynamically
+    # typed dicts, attribute-heavy objects and platform-specific
+    # syscalls (os.O_DIRECT / posix_fallocate / fadvise are Linux-only);
+    # each of these was verified as a false positive (guarded
+    # subscripts, variables assigned under the mirrored condition,
+    # attributes inferred as 'object'). The real defects these checks
+    # surfaced in this pass were fixed (governed harness) or are
+    # reported (rc14 drift, still flagged below via
+    # unexpected-keyword-arg).
+    "no-member",
+    "unsubscriptable-object",
+    "possibly-used-before-assignment",
+]

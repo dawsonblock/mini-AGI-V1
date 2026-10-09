@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import bisect
-from collections import defaultdict
 import importlib.util
 import json
 from pathlib import Path

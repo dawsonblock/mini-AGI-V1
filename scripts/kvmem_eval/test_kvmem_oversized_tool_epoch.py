@@ -125,7 +125,7 @@ def main() -> int:
             args.base_url, messages, 8, args.timeout
         )
     else:
-        second_status, second, second_body = 0, {}, "first request failed"
+        second_status, _, second_body = 0, {}, "first request failed"
     time.sleep(0.2)
     log = log_path.read_bytes()[second_start:].decode(
         "utf-8", errors="replace"

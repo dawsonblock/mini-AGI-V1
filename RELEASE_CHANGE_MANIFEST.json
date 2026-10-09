@@ -1,0 +1,204 @@
+{
+  "schema": "mini-agi-v16.4.2-change-manifest-v1",
+  "release": "mini-AGI-v16.4.2-Authority-and-Activation-Closure",
+  "version": "16.4.2",
+  "base_version": "16.4.1",
+  "summary": "Authority and activation closure: MeasuredSnapshot/AdmissionGrant/ActiveRuntime separation, transactional activation with durable journal and rollback, explicit backend coverage, signed monotonic revocation snapshots, supervised AF_UNIX launch service with peer-credential authentication.",
+  "audit_mapping": {
+    "admission_not_mandatory": "SEC-001",
+    "artifact_hashing_overlooks_symlinks": "SEC-002",
+    "unsigned_activation_receipts_pass": "SEC-003",
+    "schema_and_protocol_requirements_optional": "SEC-004",
+    "controller_accepts_unsupported_prerequisite_evidence": "SEC-005 (v16.4.3, open)",
+    "controller_can_recommend_negative_utility": "SEC-006 (v16.4.3, open)",
+    "real_model_learning_and_serving_qualification_incomplete": "SEC-007 (v16.5.0, open)",
+    "measured_artifact_implied_authorization": "ACT-002 (v16.4.2, closed)",
+    "backend_load_before_durable_evidence": "ACT-001 (v16.4.2, closed)",
+    "missing_backend_coverage_defaulted": "AUTH-001 (v16.4.2, closed)",
+    "unsigned_revocation_list": "REV-001 (v16.4.2, closed)"
+  },
+  "repairs": [
+    {
+      "id": "ACT-001",
+      "title": "Transactional activation: durable intent before routing, atomic pointer, signed completion, rollback",
+      "files": [
+        "src-python/minagi/runtime/activation_state.py",
+        "src-python/minagi/runtime/durable_journal.py",
+        "src-python/minagi/runtime/supervisor.py",
+        "src-python/minagi/v161/trusted_launcher.py",
+        "src-python/minagi/v161/peft_serving.py",
+        "scripts/trusted_launch.py"
+      ],
+      "tests": [
+        "tests-python/runtime/test_activation_supervisor.py",
+        "tests-python/v161/test_v1642_activation_closure.py"
+      ],
+      "behavior": "The supervisor journals every transition before it takes effect; the active-version pointer is atomically swapped; the signed completion lands after; any failure aborts and unloads the candidate; recovery reconciles journal against pointer deterministically; rollback restores only a live handle."
+    },
+    {
+      "id": "AUTH-001",
+      "title": "Explicit backend coverage: a qualification that omits runtime_backends covers nothing",
+      "files": [
+        "src-python/minagi/v161/runtime_admission.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1642_activation_closure.py"
+      ],
+      "behavior": "The QUALIFIED_BACKENDS default is removed; a signed qualification must declare a nonempty runtime_backends list; hf-peft coverage never transitively qualifies native backends."
+    },
+    {
+      "id": "ACT-002",
+      "title": "Measurement != authorization: MeasuredSnapshot + AdmissionGrantV1 + supervised service",
+      "files": [
+        "src-python/minagi/v161/immutable_snapshot.py",
+        "src-python/minagi/security/admission_grants.py",
+        "src-python/minagi/runtime/service.py",
+        "src-python/minagi/security/trusted_authority_client.py",
+        "src-python/minagi/v161/authority.py",
+        "src-python/minagi/v161/strict_schema.py"
+      ],
+      "tests": [
+        "tests-python/security/test_admission_grants.py",
+        "tests-python/runtime/test_supervised_service.py",
+        "tests-python/runtime/test_activation_supervisor.py"
+      ],
+      "behavior": "A staged artifact carries no deployment authority; the `admission` role issues short-lived single-use grants binding decision/qualification/manifest/artifact-root/backend/epochs/audience; the service process owns signing keys behind an authenticated Unix socket."
+    },
+    {
+      "id": "REV-001",
+      "title": "Authenticated monotonic revocation snapshots",
+      "files": [
+        "src-python/minagi/security/signed_revocations.py"
+      ],
+      "tests": [
+        "tests-python/security/test_signed_revocations.py"
+      ],
+      "behavior": "RevocationSnapshotV2 is signed by the dedicated `revocation` role, epoch-monotonic, freshness-and-future bounded; the durable store publishes atomically and refuses epoch regression/replay; missing evidence fails closed."
+    }
+  ],
+  "features": [
+    {
+      "id": "FEAT-001",
+      "title": "v2 runtime manifest with explicit authorized file listing",
+      "files": [
+        "src-python/minagi/v161/peft_serving.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_peft_trainer_v1621.py",
+        "tests-python/v161/test_v1641_strict_schema.py"
+      ],
+      "note": "mini-agi-v16.5-peft-runtime-manifest-v2 binds adapter_files; serving requires v2 (the launcher refuses aggregate-digest-only manifests)."
+    },
+    {
+      "id": "FEAT-002",
+      "title": "RevocationList with generation time and freshness enforcement",
+      "files": [
+        "src-python/minagi/v161/runtime_admission.py",
+        "src-python/minagi/v161/trusted_launcher.py",
+        "scripts/admit_runtime.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_strict_schema.py",
+        "tests-python/v161/test_v1641_trusted_launcher.py",
+        "tests-python/v161/test_v1641_cli.py"
+      ],
+      "note": "The launcher requires a revocation list (default max age 7 days); a stale list refuses instead of being treated as empty."
+    },
+    {
+      "id": "FEAT-003",
+      "title": "Replay nonces recorded in an append-only journal",
+      "files": [
+        "src-python/minagi/v161/trusted_launcher.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_trusted_launcher.py"
+      ],
+      "note": "Each production receipt carries a fresh 128-bit nonce; the journal makes reuse detectable."
+    },
+    {
+      "id": "FEAT-004",
+      "title": "Trusted launch CLI and launcher rollback lineage",
+      "files": [
+        "scripts/trusted_launch.py",
+        "src-python/minagi/v161/trusted_launcher.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_cli.py",
+        "tests-python/v161/test_v1641_trusted_launcher.py"
+      ],
+      "note": "scripts/trusted_launch.py --backend-factory module:callable; rollback re-admits a previously receipted release and records rollback_of in the receipt."
+    }
+  ],
+  "verification": {
+    "python_suite": "python -m pytest tests-python -q",
+    "release_integrity": "python scripts/verify_release.py",
+    "adversarial_acceptance": [
+      "a forged or caller-constructed snapshot is refused at supervisor stage()",
+      "an object with a path() method is refused",
+      "a qualification omitting runtime_backends is refused; hf-peft does not qualify qwen-native-cuda",
+      "one substituted adapter byte or an added symlink prevents activation",
+      "unsigned, forged, future-dated, stale, or epoch-regressing revocation evidence is refused",
+      "unsigned, wrong-role, wrong-audience, wrong-backend, digest-mismatched, expired, or stale-epoch grants are refused",
+      "receipt persistence failure after commit leaves no externally active candidate",
+      "a crash between commit and traffic switch is reconciled deterministically from the journal",
+      "revoking the active version quarantines it and restores the previous live runtime",
+      "a failed health probe leaves the previous healthy version serving"
+    ]
+  },
+  "review_repairs": [
+    {
+      "id": "REVIEW-1",
+      "title": "Tokenizer identity uses one shared plan convention",
+      "files": [
+        "src-python/minagi/v161/artifact_closure.py",
+        "src-python/minagi/v161/runtime_admission.py",
+        "src-python/minagi/v161/trusted_launcher.py",
+        "src-python/minagi/v161/peft_serving.py",
+        "scripts/run_campaign1.py",
+        "scripts/trusted_launch.py",
+        "scripts/admit_runtime.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_artifact_closure.py",
+        "tests-python/v161/test_v1641_trusted_launcher.py",
+        "tests-python/v161/test_v164_runtime_admission.py"
+      ],
+      "note": "artifact_closure.tokenizer_artifact_digest is the single implementation of the plan's convention (tokenizer-named files inside the model snapshot); the runner delegates (plan digests unchanged, Campaign 3A resume preserved), the launcher re-measures it from the staged model, the backend serves the tokenizer from the verified model artifact, and an explicit tokenizer root is an optional cross-check."
+    },
+    {
+      "id": "REVIEW-2",
+      "title": "Serving loads require an ApprovedSnapshot",
+      "files": [
+        "src-python/minagi/platforms/cuda/hf_runtime.py",
+        "scripts/run_campaign1.py",
+        "scripts/run_colab_campaign.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_trusted_launcher.py"
+      ],
+      "note": "load_causal_lm() with the default purpose='serving' previously fell through to a bare from_pretrained(spec.model_id) when no snapshot was passed; it now refuses, and the research-plane base-model call sites pass purpose='research'."
+    },
+    {
+      "id": "REVIEW-3",
+      "title": "Release verifier refuses symlinks",
+      "files": [
+        "scripts/verify_release.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1622_verify_release_script.py"
+      ],
+      "note": "An added symlink previously passed verification silently; links are now refused (symlinks_in_tree, exit 2), consistent with the artifact-closure policy and build_zip.py."
+    },
+    {
+      "id": "REVIEW-4",
+      "title": "Snapshot staging validates names and always cleans up",
+      "files": [
+        "src-python/minagi/v161/immutable_snapshot.py"
+      ],
+      "tests": [
+        "tests-python/v161/test_v1641_artifact_closure.py"
+      ],
+      "note": "An unauthorized artifact name raised a raw KeyError and left a partially staged, unfrozen tree behind; names are validated up front (SnapshotError, nothing staged) and any staging failure discards the destination."
+    }
+  ]
+}

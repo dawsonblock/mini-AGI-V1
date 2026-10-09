@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Iterable, Sequence
 
 from .canonical import sha256_json
 

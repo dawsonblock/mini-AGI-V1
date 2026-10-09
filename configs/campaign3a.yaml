@@ -8,16 +8,21 @@
 # Phase-6 additions vs v165:
 #   * final_holdout_digest — evaluator-sealed confirmation partition,
 #     bound by digest only; the runner never reads the file. Produce
-#     with:  python scripts/seal_final_holdout.py HOLDOUT.jsonl \
-#                configs/campaign3a_tasks.jsonl
+#     with:  python scripts/generate_holdout.py \
+#                --corpus configs/campaign3_tasks.jsonl --out <authority> \
+#                --seed <authority-secret>
+#            python scripts/seal_final_holdout.py HOLDOUT.jsonl \
+#                configs/campaign3_tasks.jsonl
 #   * cluster_unit=family — bootstrap uncertainty resamples task
 #     families, not rows (same-template rows are correlated).
 #   * max_false_activation_rate — L6 flipping L1-correct hidden rows
 #     to wrong answers is capped (learned behavior firing off-task).
 #   * n_comparisons_preregistered — declared comparison count.
 #
-# BEFORE RUNNING: create the sealed holdout with the evaluator
-# authority, fill final_holdout_digest below, then sign the plan.
+# BEFORE RUNNING: the sealed holdout is bound below; the holdout FILE
+# is held by the evaluation authority (NOT in this repository) and must
+# be supplied at qualification time via qualify_campaign1.py --holdout.
+# Then sign the plan.
 campaign_id: campaign3a-v166
 plan_version: v166
 dataset: configs/campaign3_tasks.jsonl   # same corpus as campaign3
@@ -26,7 +31,9 @@ require_family_disjoint_hidden: true
 require_native_servable_adapter: false
 model:
   id: Qwen/Qwen2.5-0.5B-Instruct
-  revision: auto
+  revision: 7ae557604adf67be50417f59c2c2f167def9a775
+  # pinned: the executed 3A plan resolved this commit (2026-10-08);
+  # the signed plan binds the resolved revision either way
   dtype: bfloat16
   quantization: none
   trust_remote_code: false
@@ -56,7 +63,11 @@ metric_tolerance: 0.05
 minimum_retention: 0.0
 
 # Phase-6 fields
-final_holdout_digest: ""        # REQUIRED before signing — seal first
+final_holdout_digest: "sha256:ff9e434021288cf86ff05dbaf4d3dbcbdb5d90498cdba68be1d5d349d1fa0ec9"
+# sealed 2026-10-08 by the evaluation authority (24 rows, 4 fresh
+# families; generator seed + file held outside the repository at
+# ~/.local/share/minagi/holdouts/campaign3a-holdout.jsonl on the
+# authority host)
 cluster_unit: family            # family | seed | none
 max_false_activation_rate: 0.05 # per-seed L6 flips of L1-correct rows
 n_comparisons_preregistered: 3  # 3A primary delta + retention + security
@@ -72,3 +83,5 @@ lora:
   optimizer: adamw
   response_only_loss: true
   gradient_accumulation_steps: 1
+  microbatch_size: 1            # explicit schedule (Phase 2.1)
+  malformed_policy: fail        # strict: unapproved rejection invalidates the run

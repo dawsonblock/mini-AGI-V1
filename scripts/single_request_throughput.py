@@ -22,7 +22,6 @@ import json
 import re
 import subprocess
 import threading
-import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional

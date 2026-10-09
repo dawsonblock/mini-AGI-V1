@@ -355,7 +355,7 @@ def main(argv: List[str] | None = None) -> int:
               "--kvmem-interval", str(args.interval),
               "--kvmem-gpu-memory-ratio", str(args.gpu_ratio)]
 
-    print(f"=== kvmem tiered-offload sweep ===", flush=True)
+    print("=== kvmem tiered-offload sweep ===", flush=True)
     print(f"model={model.name} window={args.window}tok ratio={args.gpu_ratio} "
           f"cpu={args.cpu_gb}GiB nvme={args.nvme_gb}GiB chain={args.chain} "
           f"max_tokens={args.max_tokens} kv={args.kv_dtype}", flush=True)

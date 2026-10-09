@@ -1,4 +1,540 @@
+# v16.4.3 — Hardened Runtime
+
+Closes all ten v16.4.2 authority/concurrency/filesystem/recovery/
+journal/backend/service/routing findings (SEC-201..207,
+OPS-001..003), at the source, with executable regressions.
+Details: `docs/research/RUNTIME_SECURITY_CLOSURE_V1643.md`;
+threat model: `docs/research/THREAT_MODEL_V1643.md`; open items:
+`docs/research/REMAINING_DEFECTS_V1641.md`. No scientific claim
+changes.
+
+One transactional authority (WP1):
+
+- `runtime/authority_store.py` — SQLite (WAL, `synchronous=FULL`,
+  `BEGIN IMMEDIATE`) owns admission-grant reservations (unique
+  grant id / nonce / digest / activation id), the hash-chained
+  signed runtime-event log, idempotent request outcomes, audit, and
+  the active-pointer projection in one database. A consumed grant
+  stays consumed across restarts and failed activations; the store
+  fails closed when unavailable or corrupt.
+
+Per-operation authorization (WP2):
+
+- `runtime/access_policy.py` — `PrincipalContext` from authenticated
+  peer uid (never request fields), per-operation role checks, signed
+  audit of allowed and refused decisions. The service exposes
+  `research.sock` (proposal/status/infer) and `operator.sock`
+  (lifecycle); endpoint whitelists are enforced in the dispatcher.
+
+Filesystem authority (WP3):
+
+- Activation ids are `secrets.token_hex(16)` generated inside the
+  service; receipts land under a service-owned root. `secure_dir` /
+  `contained_child` refuse symlinked roots/parents, traversal,
+  absolute paths, and non-opaque names.
+
+Verified journal + migration (WP4):
+
+- `runtime/journal_v2.py` — every event digest-, chain-, role-, and
+  grammar-verified; signed-checkpoint anchor makes tail truncation
+  loud. `scripts/migrate_journal_v1_to_v2.py` re-issues V1 history
+  under the `migration` authority with original signatures preserved.
+
+Crash-safe recovery (WP5):
+
+- Serving states (`UNAVAILABLE`…`SERVING`) are explicit; cold start
+  never serves. `recover()` re-verifies the log, qualification,
+  revocation freshness, and artifacts, obtains fresh admission,
+  probes health, and commits before routing. Rollback re-checks the
+  revocation epoch and only targets verified-live predecessors.
+
+Backend identity (WP6):
+
+- `runtime/backend_manifest.py` — `RuntimeBackendManifestV1` binds
+  backend id, implementation digest, dependency lock, inference
+  configuration, qualification digest, and policy epoch; the
+  supervisor enforces it at admission and rollback.
+
+Bounded service I/O (WP7):
+
+- `readline(MAX_REQUEST_BYTES + 1)` under socket deadlines, fixed
+  worker pool with bounded queue, connection and per-principal
+  quotas, auth-failure rate limiting, graceful drain. Socket
+  directory is service-owned; dev insecure mode requires an
+  explicit `dev_role` and cannot grant `admin`.
+
+Serving router (WP8):
+
+- `runtime/serving_router.py` — versioned routing under one lock;
+  only the committed+healthy instance receives `infer()` traffic;
+  activation/quarantine/rollback serialize; `PeftServingBackend`
+  gained `infer()`. `integration/test_full_admission_chain.py`
+  covers admit → route → activate → rollback → refuse → recover.
+
+Suite: 767 passed, 1 skipped; ruff/flake8/pylint zero findings;
+CTest 28/28.
+
+# v16.4.2 — Authority and Activation Closure
+
+Closes the three activation-authority weaknesses confirmed in the v17
+upgrade spec (UPGRADE_PLAN_V17 §1/§3), at the source, with a 13-row
+executable qualification table and fault-injection recovery tests.
+Details: `docs/research/RUNTIME_SECURITY_CLOSURE_V1642.md`; open items:
+`docs/research/REMAINING_DEFECTS_V1641.md`. No scientific claim
+changes.
+
+Measurement is not authorization (§3.1):
+
+- `ApprovedSnapshot` renamed `MeasuredSnapshot` — it proves content
+  only. New `minagi.security.admission_grants.AdmissionGrantV1` is the
+  signed, short-lived, single-use authorization binding the promotion
+  decision, qualification, runtime manifest, measured artifact root,
+  backend, policy/revocation epochs, and the runtime identity it is
+  issued to. Two new authority roles: `revocation`, `admission`.
+
+Transactional activation (§3.5/§3.6):
+
+- New `minagi.runtime` package: `activation_state` (legal-transition
+  protocol), `durable_journal` (fsynced transitions + atomic
+  active-version pointer), `supervisor` (REQUESTED → AUTHORIZED →
+  STAGED → PREPARED → READY → COMMITTED → ACTIVE with ABORTED/
+  QUARANTINED terminals, mandatory unload on failure, journal-based
+  crash recovery, live-handle-only rollback).
+- `PeftServingBackend` gained `health_probe()`/`unload()`; `load()`
+  still refuses anything but a staged `MeasuredSnapshot`.
+- `trusted_launcher.py` now issues the admission grant and drives the
+  supervisor transactionally; evidence-persistence failure quarantines
+  the candidate rather than leaving it serving.
+
+OS-enforced boundary (§3.2):
+
+- New `minagi.runtime.service` (AF_UNIX, peer-uid authenticated, fails
+  closed where credentials cannot be extracted) and
+  `minagi.security.trusted_authority_client`. The backend is
+  constructed inside the service; clients submit documents only.
+
+Strict backend + revocation authorization (§3.3/§3.4):
+
+- `runtime_admission.py` refuses a qualification that omits
+  `runtime_backends` — hf-peft coverage never qualifies the native
+  backends.
+- New `minagi.security.signed_revocations.RevocationSnapshotV2` +
+  `RevocationStore`: signed by the `revocation` role, monotonic epochs,
+  freshness-and-future bounded, atomically published, replay-refused.
+
+New test suites: `tests-python/security/` (snapshot + grant adversarial
+rows), `tests-python/runtime/` (supervisor lifecycle, fault injection,
+recovery dispositions, the socket service), and
+`test_v1642_activation_closure.py` — the spec's full 13-row table.
+
+# v16.4.1 — Runtime Security Closure
+
+Closes the four runtime-security defects from the v16.4.0 audit at the
+source, with executable adversarial regression tests for each. No
+scientific claim changes (Campaign 1b QUALIFIED, Campaign 2 REFUSE,
+Campaign 3A still executing). Details:
+`docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md`; open items:
+`docs/research/REMAINING_DEFECTS_V1641.md`.
+
+Admission is now mandatory (SEC-001):
+
+- New `TrustedRuntimeLauncher` (`minagi/v161/trusted_launcher.py`) +
+  `scripts/trusted_launch.py`: resolves the signed plan/qualification/
+  promotion decision and the authorized runtime manifest, verifies every
+  signature, role, validity window, expiry, and revocation entry,
+  physically measures the model, tokenizer, and adapter, stages an
+  immutable snapshot, loads the backend ONLY from that snapshot, and
+  emits a signed production activation receipt after the load succeeds.
+  Any failure refuses and no receipt exists.
+- `PeftServingBackend.load()` accepts only an `ApprovedSnapshot`
+  (constructible solely by the staging function); raw paths are
+  refused. `minagi/platforms/cuda/hf_runtime.load_causal_lm()` refuses
+  `adapter_path=` in serving mode — the research plane must pass
+  `purpose="research"` explicitly (the reviewable record that the load
+  evaluates a candidate rather than serving it). Call sites updated.
+
+Artifact closure repaired (SEC-002):
+
+- New `artifact_closure.close_tree()`: symlinks and unsupported special
+  files anywhere in an authorized tree are REFUSED, not skipped (the
+  v16.4.0 walker silently skipped them, so adding a symlink did not
+  change the digest); path traversal is rejected; the complete
+  (path, size, sha256) listing is returned. `verify_entries()` fails on
+  missing, unexpected, resized, or modified files individually.
+- Digest compatibility with v16.4.0 semantics is preserved for clean
+  trees (existing recorded evidence still verifies); trees that
+  previously hashed incompletely are now refused. HF-cache snapshot
+  symlinks use the documented `resolve_symlinks=True` policy.
+- Runtime manifest v2 (`mini-agi-v16.5-peft-runtime-manifest-v2`) binds
+  the explicit authorized `adapter_files` listing; serving requires v2.
+
+Signed activation evidence enforced (SEC-003):
+
+- Receipt schema v2 binds candidate/qualification/promotion/manifest
+  digests, the artifact digests actually measured at load, backend id,
+  a 128-bit replay nonce, activation time, runtime signer, and
+  signature. `write_activation_receipt` refuses unsigned receipts;
+  `check_activation_receipt` reports unsigned receipts as problems by
+  default and `require_production=True` refuses admission-only
+  receipts (signature validity alone is not enough — the signer must
+  have measured and loaded the artifacts). `admit_runtime.py` lost its
+  unsigned mode and now requires physical `--runtime-model-path` /
+  `--runtime-tokenizer-path` measurements.
+
+Protocol made strict (SEC-004):
+
+- New `strict_schema.py`: one versioned validator per authority-bearing
+  artifact; unknown versions, absent/malformed digests, unsupported
+  backend identifiers, and unsafe listing paths are refused. Admission
+  now requires the signed plan's `experiment_protocol_digest` to equal
+  the manifest's `protocol_digest` and the qualification's
+  `evaluation_bundle_digest` to equal the decision's; `promote.py`
+  refuses to sign decisions with unbound evaluation or protocol.
+- `RevocationList` carries a generation time; the launcher requires a
+  revocation list and refuses a stale one (default 7 days); the
+  admission CLI accepts `--max-revocation-age-days`. Production
+  receipts carry replay nonces recorded in an append-only journal.
+
+Time-of-check/time-of-use: `immutable_snapshot.stage_snapshot()`
+copies-and-verifies in a single pass (the staged bytes are the hashed
+bytes), requires the staged digest to equal the authorized digest,
+freezes the tree read-only, and re-measures it immediately before load.
+
+Tests: +60 (571 → 631 passing, 1 skipped — Linux-only `RLIMIT_AS` on
+the macOS host). New suites: `test_v1641_artifact_closure.py` (21),
+`test_v1641_trusted_launcher.py` (20), `test_v1641_strict_schema.py`
+(11), `test_v1641_cli.py` (8); `test_v164_runtime_admission.py` updated
+to the measured-artifact CLI contract. Release change manifest:
+`RELEASE_CHANGE_MANIFEST.json`.
+
+## Review repairs (post-release audit)
+
+A review of this release found four defects, each fixed with a
+regression test; no scientific claim changes.
+
+- **Tokenizer identity convention.** The signed plan binds the
+  tokenizer as the tokenizer-named files inside the model snapshot
+  (`physical_identity_digests`), but the launcher expected a tree
+  closure of a separate `--tokenizer-path` — different digests, so no
+  plan-derived manifest could ever be admitted (fail-closed, but the
+  sanctioned serving path was unusable end-to-end, and the tests
+  encoded the launcher's convention only). The convention is now one
+  shared implementation (`artifact_closure.tokenizer_artifact_digest`,
+  byte-identical to the recorded plans); the launcher re-measures it
+  from the staged model, the serving backend loads the tokenizer from
+  the verified model artifact, and `--tokenizer-path` /
+  `--runtime-tokenizer-path` are optional cross-checks. The runner
+  delegates to the shared implementation — plan digests are unchanged,
+  so the in-flight Campaign 3A resume semantics are preserved.
+- **CUDA loader serving default.** `load_causal_lm()` with the default
+  `purpose="serving"` silently loaded a bare base model when no
+  snapshot was passed. A serving load without an `ApprovedSnapshot` is
+  now refused, and the research-plane base-model call sites pass
+  `purpose="research"` explicitly (the flag is now the reviewable
+  record for every research-plane load, not only adapter loads).
+- **Release verifier symlinks.** `verify_release.py` silently ignored
+  symbolic links in the verified tree (the same "skipped, not refused"
+  pattern SEC-002 fixed in the artifact closure). Links are now refused
+  (`symlinks_in_tree`, exit 2); the builder already excludes them. Tool
+  caches are also skipped consistently (`.ruff_cache` joins
+  `.pytest_cache` in the verifier, the reseal enumerator, the builder,
+  and `.gitignore`), so a local `ruff` run cannot produce a false
+  release failure.
+- **Snapshot staging cleanup.** `stage_snapshot()` raised a raw
+  `KeyError` and left a partially staged, unfrozen tree behind when
+  handed an artifact name the manifest did not authorize. Names are now
+  validated up front (`SnapshotError`, nothing staged), and any
+  staging failure discards the destination.
+
+Docs: `docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md` (tokenizer
+convention, verifier policy). Tests: +8 (631 → 639 passing, 1 skipped).
+
+## Lint contract (dedicated hygiene pass)
+
+The repository had no lint configuration, so tools ran with their own
+defaults (ruff 0.16's broad rule set, Flake8's 79-column pycodestyle)
+and flagged the codebase's deliberate conventions as thousands of
+errors. `pyproject.toml` (`[tool.ruff]`) and `.flake8` now declare one
+contract for both tools: E4 import hygiene, E7 statement structure, E9
+syntax, and pyflakes (F) are enforced. Documented as intentionally not
+enforced: the compact one-line statement style (E701/E702/E703), the
+post-`sys.path` bootstrap imports (E402 — the package is not installed
+on the Colab runners), the ~100-column line style (E501), and the
+pycodestyle formatting families (E1/E2/E3/E5/W). `__init__.py`
+re-export barrels are exempt from F401; `references/` and
+`third_party/` keep their upstream style.
+
+The enforced rules are then satisfied repo-wide: unused imports (F401),
+multi-import lines (E401), unused locals (F841), lambda assignments
+(E731), ambiguous names (E741), f-strings without placeholders (F541),
+a redundant re-import (F811), and an unnecessary `nonlocal` (F824)
+were fixed across 180 files. Every fix is behavior-preserving
+(side-effecting calls kept; dead assignments removed) — with one
+deliberate exception: the F811 "fix" would have broken the v164
+qualification path (the first binding serves it when the v165 branch is
+skipped), so `ImmutableCAS` is now imported from its defining module
+instead. `ruff check .` and `flake8 .` both report zero findings;
+tests unchanged at 639 passed (1 skipped).
+
+The pass also surfaced a latent defect in the legacy governed-repair
+harness: `egai/bench/sequential_governed.py` constructed
+`VerifiedEpisode` with 14 positional arguments against a 12-field
+dataclass (every other call site — including its sibling
+`egai/bench/sequential.py` — passes 12), so the verified-repair branch
+raised `TypeError` before it could run. Fixed to the 12-argument form
+and exercised with a probe harness; the branch now executes. The same
+harness reached into the ledger's private `_head()`; `EvidenceLedger`
+now exposes a documented `head()` accessor and the harness uses it
+(the private helper stays for internal use).
+
+Finishing that harness exposed two more missing pieces on
+`SandboxSkillMemory`, both called by the run loop and neither existing
+anywhere in the codebase: `mark_success` (the success path would raise
+`AttributeError` whenever a retrieved skill was credited) and
+`health()` (the end-of-run summary). Both are implemented against the
+memory's own model: `mark_success` increments `successes`, the exact
+mirror of the existing `mark_failure`; `health()` reports
+`degraded` = procedures that have failed more often than they have
+succeeded (the same condition as `confidence < 0.5`, stated on the
+counters so no new threshold is introduced) and `retired` = 0 — the
+ephemeral sandbox memory has no retirement mechanism, and the method
+docstring says so rather than inventing one. The harness is no longer
+uncovered: `tests-python/research/test_sequential_governed.py` drives
+the success path, the verified-repair path, the health summary, and
+the evidence chain. Tests: 639 → 641 passing (1 skipped).
+
+Pylint — which some editors run alongside ruff/Flake8 — now reads the
+same contract from `[tool.pylint]`: the convention and refactor
+families and the warning family are disabled (the pyflakes-equivalents
+are enforced by ruff's F family, which is clean; Pylint's variants
+additionally flag unused loop variables, which the compact style uses
+deliberately), the optional extras and platform modules are declared
+as ignored modules, and the error category stays enabled. Pylint's
+defaults reported 17,896 findings on the release surface; the
+configured run reports two — both real, and deliberately not
+suppressed: they point at the drifted donor `minagi/rc14/system.py`
+(its `GovernedRC14System` passes two keyword arguments the base class
+does not accept and reads attributes the base never defines; nothing
+imports it). That is recorded as RC14-001 in the remaining-defects
+register rather than hidden by the config. Three further Pylint errors
+were verified as false positives before being disabled (guarded
+subscripts, a variable assigned under the mirrored condition, and
+dynamic attributes inferred as `object`).
+
+The contract is now declared and enforced: `flake8` and `pylint` join
+`ruff` in the `dev` extras (pinned ranges), and CI runs
+`scripts/rc11/lint.sh` — ruff, Flake8 and Pylint over the release
+surface. The gate tolerates exactly the two documented RC14-001
+findings and fails on anything else (verified: a probe finding in
+another file exits 1).
+
+Separately, CI had been red since the Route-B commit (`a2a7295`), which
+started importing `torch`/`transformers`/`safetensors` in the test
+suites without adding them to the workflow's install line — the
+`validate` job could not even collect the tests. The install line now
+includes `torch transformers peft safetensors` (the ML dependencies the
+suites import; `faiss`/`trl` are imported nowhere and stay out).
+
+With the suite running again, the only remaining CI failures were the
+documented sandbox-portability ones (TEST-001). Closed here, pulled
+forward from v16.4.2: `execution_sandbox.sandbox_usable()` probes
+whether the selected backend can actually start the interpreter
+(memoized per process), and `run_check` classifies a backend that
+cannot start as unavailable — raising `SandboxUnavailable` rather than
+returning a result that is indistinguishable from a failed check. The
+sandbox-dependent tests now skip under that classification instead of
+failing, so a runner without a usable sandbox is reported honestly
+instead of showing red. The fail-closed property is unchanged: no path
+runs a checker unsandboxed, and a *misconfigured* sandbox still refuses
+to evaluate. Reproduced with the real probe against a `(deny default)`
+profile (`test_real_probe_detects_a_profile_that_cannot_start_the_interpreter`)
+and with a simulated probe failure; tests: 641 → 643 passing
+(1 skipped).
+
+RC14-001 is closed by retirement: the drifted donor class
+(`minagi/rc14/system.py`, whose only definition it was) is deleted and
+the package re-export removed with a pointer comment. Its RC13-era base
+(`state_epochs`, `runtime_activation`, `verify_control_plane`) exists
+nowhere in this tree, so it could never be constructed, and nothing
+instantiated it; provenance remains in git history and the donor archive
+identity in `SOURCE_PROVENANCE.json`. The CI lint gate now requires
+zero Pylint findings — the two tolerated `unexpected-keyword-arg`
+findings are gone with the class.
+
+# v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
+
+Phases 2, 3, and (early) 5 of the v17 plan. Scientific claims unchanged
+(Campaign 1b QUALIFIED stands, Campaign 2 REFUSE stands, Campaign 3
+still drafted/unexecuted). Details and the record chain:
+`docs/research/TRAINING_AND_ADMISSION_V164.md`.
+
+Training schedule (Phase 2.1, v16.3.0 scope):
+
+- The structured trainer no longer places `gradient_accumulation_steps`
+  examples in each microbatch while also accumulating over that many
+  microbatches (which silently squared the effective batch size).
+  `LoraTrainSpec` and `ExperimentProtocolV1` gain explicit
+  `microbatch_size` / `train_microbatch_size`; effective batch =
+  microbatch × accumulation, optimizer updates = steps, presentations =
+  steps × effective batch. Reproduced: the original engine ran 48
+  presentations for a declared 12 (steps=3, gacc=4); the repaired
+  engine runs 12.
+- Receipt v2 binds the full schedule, actual sample order, per-update
+  gradient statistics, the malformed-sample policy/outcome, and
+  `adapter_artifact_digest` (weight+config bytes; the directory closure
+  digest in runtime manifests covers the receipt/spec evidence files).
+- `malformed_policy: reject | fail` — strict preregistered campaigns
+  fail the run on any unapproved sample rejection instead of silently
+  changing the training dataset; Campaign 3A/3B/3C configs set
+  `microbatch_size: 1` and `malformed_policy: fail` explicitly.
+
+Runtime admission (Phase 3, v16.4.0 scope):
+
+- New `minagi.v161.runtime_admission` + `scripts/admit_runtime.py`:
+  `RuntimeAdmissionController` verifies the full chain (plan →
+  qualification → promotion decision → runtime manifest → exact
+  adapter bytes) before serving and emits an ActivationReceipt;
+  rollback re-admits a previously receipted release and records the
+  lineage. Refused, with adversarial tests: unsigned/forged/expired/
+  revoked decisions, research-plane promotion attempts, one altered
+  adapter byte, substituted qualifications, model/tokenizer/backend
+  substitution, tampered manifests, incomplete chains, revoked
+  replays.
+- Sixth authority role `runtime` (trust root + `activation_receipt`
+  ledger kind); `promote.py` decisions carry `expires_at` (30-day
+  default).
+
+Mechanism controller (Phase 5, ahead of the v16.6.0 milestone):
+
+- `MechanismEstimate` + frozen `ObjectiveWeights`
+  (`U = ΔQ − λ_C·C − λ_R·R − λ_L·L`), `rank_candidates` with hard
+  regression-risk cap and confidence floor applied before ranking,
+  `select_mechanism` (weights require recorded cheaper attempts;
+  uncertain causes select a diagnostic experiment), and digest-chained
+  `AttemptReceipt`s (FailureEvidence → MechanismProposal →
+  AttemptReceipt → EvaluationBundle).
+
+Tests: +40 (engine-level schedule counts, policy behavior, receipt
+binding; the plan's four named admission attacks plus expiry/forgery/
+substitution/rollback/CLI; controller arithmetic, safety caps, ladder
+enforcement, attempt records). Suite: 561 passed, 1 skipped
+(Linux-only RLIMIT_AS on macOS). Manifest resealed.
+
+v16.4.0 batch 2 — native suite + Campaign 3A preregistration:
+
+- Native CTest suite rebuilt and rerun for this release: 28/28 PASS
+  (macOS CPU/stub build; no C++ sources changed since v16.2.1, so this
+  is a toolchain re-verification, not a new native claim).
+- Campaign 3A preregistration completed on the CPU side: the sealed
+  final holdout (24 rows, 4 fresh families) was generated by the
+  evaluation authority (`scripts/generate_holdout.py` — refuses
+  in-repo output, asserts a fresh vocabulary, seed + file held outside
+  the repository) and bound by manifest digest
+  (`sha256:ff9e4340…`) into `configs/campaign3a.yaml`;
+  `scripts/seal_final_holdout.py` re-checked id/family disjointness.
+  Campaign execution remains GPU-blocked.
+- Preregistration regression tests: generator in-repo refusal /
+  determinism / vocabulary filtering, sealer round-trip + leakage
+  rejection, and campaign-3 binding invariants (the corpus carries no
+  holdout rows; 3C must reuse 3B's holdout; the bound digest
+  re-derives from the authority-held file when present). Suite:
+  571 passed, 1 skipped.
+
+v16.4.0 batch 3 — Campaign 3A launched on Colab:
+
+- The preregistered 3A matrix (10 seeds x 7 arms) is executing on a
+  Colab T4 under the signed plan. Verified from the banked plan: the
+  campaign binds the sealed holdout digest (sha256:ff9e4340...) and
+  the corrected schedule (microbatch 1 / gacc 1 / malformed_policy
+  fail; lr 5e-5 as the single lever vs Campaign 2).
+- Per-seed evidence banking is armed: completed seeds are tarballed
+  (seed evidence + L6/NC adapters + arm states) and pulled locally;
+  `scripts/campaign3a_supervisor.py` is the resumable lane supervisor
+  (banks completed seeds, relaunches the runner if it dies — COMPLETE
+  seeds are skipped by the runner's per-seed atomicity).
+- Execution is in progress; independent qualification with the
+  authority-held `--holdout` file follows when all seeds are banked.
+
+v16.4.0 batch 4 — VM reclamation recovery + finalize pipeline:
+
+- The first Colab VM was reclaimed mid-seed-1. Recovery validated the
+  resume design end to end: the runner was relaunched on a fresh VM
+  from the pushed branch with the model revision pinned to the
+  originally resolved commit; the recomputed plan digest is
+  byte-identical (sha256:e9ecd87e...), so the banked seed-0 evidence
+  verifies under it and was counted, and execution resumed at seed 1.
+  The authority ledger was reconstructed deterministically (same key +
+  same plan doc -> identical signed entry), and restoring it makes any
+  plan mismatch fail closed ("refusing to mix campaign identities").
+- `scripts/campaign3a_finalize.py`: assemble banked evidence -> run the
+  independent qualifier with the authority-held holdout -> write the
+  results report -> publish a results branch (evidence force-added per
+  repo convention; private keys never committed). Exercised end to end
+  on partial evidence: the qualifier failed closed with
+  INVALID_EVIDENCE and explicit per-cell reasons, and the results
+  branch mechanics were verified on a throwaway branch.
+
+# v16.2.2 — Security and Correctness Repair (Phase 1)
+
+Phase 1 of the v17 plan: the six security/correctness defects from the
+audit are repaired, each with a reproducing test that fails on v16.2.1
+and passes here. No scientific claims change — Campaign 1b's
+qualification and Campaign 2's qualified-negative result stand under
+their original schemas; Campaign 3 remains drafted/unexecuted.
+
+Evaluator isolation (FIX-001):
+
+- `executor_score` no longer runs corpus python with the evaluator's
+  environment and privileges. Deterministic tasks prefer a declarative
+  evaluator (allowlisted ops — equals/contains/numeric/json/regex
+  composition — no code execution); `python_assert` checkers run only
+  under an OS-enforced sandbox (`minagi.v161.execution_sandbox`):
+  macOS `sandbox-exec` SBPL profile or Linux `bwrap --unshare-all`,
+  minimal environment (os.environ never inherited), workspace-only
+  writes, no network, rlimits, process-group termination on timeout.
+- No sandbox backend => `SandboxUnavailable` (fail closed; there is no
+  unsandboxed fallback). `MINIAGI_SANDBOX_BACKEND` pins a backend or
+  forces the fail-closed path.
+- Adversarial suite: secret read, authority-state read, outside write,
+  network, env visibility, orphaned-process survival, read-only
+  reference inputs, workspace cleanup, fail-closed paths. Residual
+  risks (macOS memory-cap best-effort, deprecated sandbox-exec,
+  bwrap/userns availability, regex bounds): see
+  `docs/research/SECURITY_REPAIR_V1622.md`.
+
+Mathematical correctness:
+
+- FIX-002 — `RankAllocator.grow()` clamps to
+  `min(per_task, max_rank, current + headroom)`; growth is strictly
+  non-decreasing and blocked growth leaves state unchanged (the
+  original could drive a task's rank to zero on budget exhaustion).
+  Randomized invariant test added.
+- FIX-004 — false-activation rate divides by previously-correct
+  baseline cases (matching the preregistered bound); conditional
+  regression reported alongside and surfaced in qualifier stats.
+
+Authority and promotion:
+
+- FIX-005 — `not_before`/`not_after` validity windows are enforced at
+  an explicit verification time in `is_authorized`/`assert_authorized`/
+  `verifier()` and `AuthorityLedger.verify`; expired or not-yet-valid
+  keys fail closed; malformed bounds and naive datetimes are rejected.
+- FIX-003 — generation promotion is an append-only `PromotionEvent`
+  validated against the promotion authority: signed envelope, bound
+  generation record/campaign/qualification digests, authorized signer
+  valid at verification time, unexpired, unrevoked. A bare
+  digest-shaped string no longer unlocks the next generation; the
+  chain re-verifies every event on `verify()`.
+
+Release metadata (FIX-006):
+
+- Attestation reconciled with the signed manifest and version
+  identities (VERSION, pyproject, package, SBOM, validation docs);
+  `scripts/verify_release.py` fails on attestation/manifest/version
+  drift (exit 5); reconciliation regression-tested.
+
 # v16.2.1 — Evidence-Verified Research Baseline (integrity repair)
+
 
 Integrity repair release — no scientific claims changed; Campaign 2's
 qualified-negative result stands unchanged under its original V164

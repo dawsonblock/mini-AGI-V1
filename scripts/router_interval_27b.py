@@ -575,7 +575,7 @@ def markdown_summary(result: dict[str, Any]) -> str:
         f"- Model: `{result['model']}`",
         f"- Endpoint: `{result['endpoint']}`",
         f"- Samples per task/condition: {result['n']}",
-        f"- Sampling: temperature 1.0, top-p 0.95, top-k 20",
+        "- Sampling: temperature 1.0, top-p 0.95, top-k 20",
         "- Primary metric: first tool action (fix → explore; build → produce)",
         "",
     ]

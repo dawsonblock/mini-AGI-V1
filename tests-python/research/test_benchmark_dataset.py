@@ -1,4 +1,5 @@
-import tempfile,unittest
+import tempfile
+import unittest
 from egai.common.artifacts import ArtifactStore
 from egai.bench.engine import TaskCase
 from egai.bench.dataset import persist_benchmark_sets,decode_cases

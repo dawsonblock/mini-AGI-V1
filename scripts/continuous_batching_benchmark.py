@@ -18,7 +18,6 @@ import os
 import re
 import statistics
 import subprocess
-import sys
 import threading
 import time
 import urllib.parse

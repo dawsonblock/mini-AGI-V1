@@ -3,11 +3,10 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 import json
 import time
-from typing import Any
 
 from egai.common.canonical import digest, validate_digest
 from egai.common.crypto import SignedEnvelope
-from .evaluation_v143 import EvaluationCaseResultV143, SignedEvaluationBundleV143
+from .evaluation_v143 import SignedEvaluationBundleV143
 from .fresh_tasks_v143 import FreshTaskConsumptionReceiptV143
 
 

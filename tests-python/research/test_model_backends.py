@@ -1,4 +1,5 @@
-import tempfile,unittest
+import tempfile
+import unittest
 from pathlib import Path
 from egai.cognition.backends import LlamaCppCLIModel
 class T(unittest.TestCase):

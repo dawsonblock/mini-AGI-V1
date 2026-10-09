@@ -1,5 +1,5 @@
 from dataclasses import dataclass,field
-from .router import Budget,CognitiveRouter
+from .router import CognitiveRouter
 @dataclass
 class CognitiveTrace:
     steps:list[dict]=field(default_factory=list)

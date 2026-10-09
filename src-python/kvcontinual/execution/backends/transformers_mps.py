@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-import math
 import numpy as np
 
-from kvcontinual.execution.recurrent.interfaces import ApproximateExecution, BackendCapabilities
+from kvcontinual.execution.recurrent.interfaces import BackendCapabilities
 from kvcontinual.execution.source import SourceSegmentStore
-from kvcontinual.execution.types import OracleMetrics, RuntimeRiskSignals
+from kvcontinual.execution.types import OracleMetrics
 
 
 @dataclass

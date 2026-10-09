@@ -31,7 +31,8 @@ class AuditAuthorityClientV143:
         self.__checkpoint=checkpoint
     def checkpoint(self): return self.__checkpoint()
 
-import json,socket
+import json
+import socket
 
 for _cls in (EvidenceAuthorityClientV143,EvaluationAuthorityClientV143,QualificationAuthorityClientV143,PromotionAuthorityClientV143,AuditAuthorityClientV143):
     _cls.is_local = True
@@ -106,7 +107,8 @@ class UnixAuthorityServerV143:
     """
     def __init__(self,socket_path,handlers): self.socket_path=str(socket_path);self.handlers=dict(handlers);self._server=None
     def serve_forever(self):
-        import os,socketserver
+        import os
+        import socketserver
         try: os.unlink(self.socket_path)
         except FileNotFoundError: pass
         handlers=self.handlers

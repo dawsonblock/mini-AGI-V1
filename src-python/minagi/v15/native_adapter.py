@@ -10,7 +10,7 @@ from typing import Mapping
 
 import numpy as np
 
-from egai.common.canonical import digest, validate_digest
+from egai.common.canonical import validate_digest
 from minagi.integration.qw3_state import ServedArtifactManifest
 from minagi.v15.adapter_learning import (
     AdapterArtifactManifest,

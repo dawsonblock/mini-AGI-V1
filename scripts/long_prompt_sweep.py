@@ -21,11 +21,10 @@ import os
 import re
 import statistics
 import subprocess
-import sys
 import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Iterable, List, Optional, Sequence
 
 
 _PASSAGE = (

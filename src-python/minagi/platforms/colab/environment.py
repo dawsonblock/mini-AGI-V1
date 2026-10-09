@@ -1,7 +1,10 @@
 from __future__ import annotations
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import importlib.metadata
-import os, platform, shutil, subprocess, sys
+import os
+import platform
+import shutil
+import sys
 from egai.common.canonical import digest
 
 @dataclass(frozen=True)

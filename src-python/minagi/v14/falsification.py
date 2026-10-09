@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Iterable
 
 from minagi.egai.canonical import sha256_json
 

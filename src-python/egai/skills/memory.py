@@ -21,6 +21,20 @@ class SandboxSkillMemory:
     def mark_failure(self,procedure_id):
         p=self._procedures.get(procedure_id)
         if p:self._procedures[procedure_id]=replace(p,failures=p.failures+1)
+    def mark_success(self,procedure_id):
+        p=self._procedures.get(procedure_id)
+        if p:self._procedures[procedure_id]=replace(p,successes=p.successes+1)
+    def health(self):
+        """Skill-health summary for the governed benchmark report.
+
+        degraded: procedures that have failed more often than they have
+        succeeded (confidence below 0.5 — the same condition stated on
+        the counters, so no threshold is invented here).
+        retired: always 0 — this ephemeral memory has no retirement
+        mechanism; the field exists for report-shape parity with a
+        production registry that may retire skills."""
+        degraded=sum(1 for p in self._procedures.values() if p.failures>p.successes)
+        return {'degraded':degraded,'retired':0}
     def all(self): return tuple(sorted(self._procedures.values(),key=lambda p:p.procedure_id))
     def retrieve(self,query,task_kind='',k=3):
         q=toks(query); scored=[]

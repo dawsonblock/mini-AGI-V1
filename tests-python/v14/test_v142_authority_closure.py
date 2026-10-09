@@ -6,8 +6,7 @@ import pytest
 from egai.common.crypto import Ed25519Signer, Ed25519Verifier
 from minagi.v14 import (
     EvidenceStrength, GovernanceCoordinates, GovernancePolicyV14, GovernedContinualRuntimeV142,
-    LearningMechanism, LearningProposalV14, PermanenceLevel, QualificationPolicyV142,
-    DurableFreshTaskAuthority, EpisodeVerificationAuthority, EpisodeVerificationValidator,
+    LearningMechanism, LearningProposalV14, PermanenceLevel, DurableFreshTaskAuthority, EpisodeVerificationAuthority, EpisodeVerificationValidator,
 )
 
 
@@ -99,7 +98,6 @@ def test_authorization_scope_is_resolved_from_signed_body_for_belief(tmp_path):
 def test_signed_audit_checkpoint_detects_rewritten_chain(tmp_path):
     rt=runtime(tmp_path); build_chain(rt); cp=rt.checkpoint_audit(); assert cp.signer_key_id; assert rt.verify_audit()
     # An attacker with DB write access can recompute an ordinary hash chain, but not the signed checkpoint.
-    row=rt.db.conn.execute("SELECT * FROM audit_events WHERE seq=?",(cp.event_seq,)).fetchone()
     rt.db.conn.execute("UPDATE audit_events SET event_digest=? WHERE seq=?",(d("f"),cp.event_seq))
     with pytest.raises((RuntimeError,PermissionError)): rt.verify_audit()
 
@@ -107,7 +105,7 @@ def test_signed_audit_checkpoint_detects_rewritten_chain(tmp_path):
 def test_fresh_task_vault_separates_secret_and_reclaims_expired_lease(tmp_path):
     meta=tmp_path/"fresh.sqlite3"; a=DurableFreshTaskAuthority(meta); c=a.seal({"secret":"x"},generation=2)
     cols={r[1] for r in sqlite3.connect(meta).execute("PRAGMA table_info(tasks)")}; assert "task_json" not in cols and "salt" not in cols
-    l=a.lease(task_id=c.task_id,consumer_id="e",ttl_seconds=.001); time.sleep(.01)
+    a.lease(task_id=c.task_id,consumer_id="e",ttl_seconds=.001); time.sleep(.01)
     assert a.reclaim_expired() == 1
     l2=a.lease(task_id=c.task_id,consumer_id="e2"); assert a.consume(l2)=={"secret":"x"}
 

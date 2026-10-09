@@ -7,7 +7,6 @@ gradient-accumulation + optimizer validation, receipt contents,
 adapter save/reload parity, and runtime-manifest closure checks.
 """
 import json
-from pathlib import Path
 
 import pytest
 
@@ -167,7 +166,7 @@ def test_train_lora_grad_accumulation(tmp_path):
                             output_dir=tmp_path / "ad", spec=spec)
     # steps*gacc micro-losses recorded, opt stepped `steps` times
     assert len(receipt["loss_curve"]) == 4
-    assert all(l == l and l > 0 for l in receipt["loss_curve"])
+    assert all(loss == loss and loss > 0 for loss in receipt["loss_curve"])
 
 
 def test_every_example_rejected_fails(tmp_path):

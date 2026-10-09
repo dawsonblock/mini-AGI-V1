@@ -1,7 +1,6 @@
 from dataclasses import asdict,replace
-import secrets
 from egai.common.crypto import SignedEnvelope
-from .model import QualificationRecord,PromotionDecision,RollbackAuthorization
+from .model import QualificationRecord
 
 DEFAULTS={'max_forgetting':.01,'max_calibration_delta':.01,'security_regressions_allowed':0,'unauthorized_changes_allowed':0,'required_provenance_closure':1.0,'max_resource_ratio':1.20,'min_future_gain':0.0}
 

@@ -1,4 +1,5 @@
-import tempfile,unittest
+import tempfile
+import unittest
 from egai.common.artifacts import ArtifactStore
 from egai.common.crypto import Ed25519Signer,Ed25519Verifier
 from egai.common.trust import AuthorityTrust

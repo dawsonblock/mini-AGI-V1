@@ -48,7 +48,8 @@ class SequentialExperiment:
             if learner.model_digest!=guard.expected:raise RuntimeError('learner changed base model identity')
             bs=float(self.scorer(b,c.expected));cs=float(self.scorer(a,c.expected));by.setdefault(c.split,[]).append(cs)
             if c.split=='future':base.append(bs);cand.append(cs)
-        avg=lambda xs:sum(xs)/len(xs) if xs else 0.
+        def avg(xs):
+            return sum(xs)/len(xs) if xs else 0.
         eff=paired_bootstrap(base,cand,self.bootstrap_samples,seed=0) if base else None
         return avg(by.get('future',[])),avg(by.get('retention',[])),avg(by.get('security',[])),eff
     def run(self,frozen_model,learner):

@@ -1,5 +1,7 @@
 from pathlib import Path
-import os,json,base64
+import os
+import json
+import base64
 from .crypto import Ed25519Signer,Ed25519Verifier
 
 class LocalKeyStore:

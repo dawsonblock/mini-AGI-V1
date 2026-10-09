@@ -1,4 +1,5 @@
-import unittest,math
+import unittest
+import math
 from egai.common.canonical import digest
 class T(unittest.TestCase):
  def test_nonfinite_rejected(self):

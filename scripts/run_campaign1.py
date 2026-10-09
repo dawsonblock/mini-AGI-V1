@@ -34,7 +34,12 @@ PASS — because only the full preregistered matrix may qualify.
 """
 from __future__ import annotations
 
-import argparse, gc, json, random, sys, time
+import argparse
+import gc
+import json
+import random
+import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 import yaml
@@ -58,8 +63,7 @@ from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
 from minagi.v161.evaluators import (containment_match, exact_match,
                                     retention_score, score_row,
                                     security_regression)
-from minagi.v161.authority import (AuthorityLedger, AuthorityRegistry,
-                                   provision_role)
+from minagi.v161.authority import (AuthorityLedger, AuthorityRegistry)
 from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
                                        ColabCampaignPlanV163,
                                        ColabCampaignPlanV164,
@@ -75,13 +79,14 @@ from minagi.v161.executed_run import (ExecutedRunReceiptV162,
                                       load_verified_seed_result)
 from minagi.v161.experiment_protocol import ExperimentProtocolV1
 from minagi.v161.stats import bootstrap_ci
+from minagi.v161.artifact_closure import tokenizer_artifact_digest
 from minagi.v161.runtime_closure3 import sha256_path
 from minagi.v15.native_adapter import (native_adapter2_supports_target,
                                        native_adapter_supports_target)
 
 
 def load_rows(path: Path):
-    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
 def member(row):
@@ -159,7 +164,7 @@ def identity_digests(spec: HFLoadSpec):
     generation call, so identity digests match what receipts compute.
     """
     tok = load_tokenizer(spec)
-    model = load_causal_lm(spec)
+    model = load_causal_lm(spec, purpose="research")
     model_d = model_identity(model, spec)
     tok_d = tokenizer_identity(tok, spec)
     template = getattr(tok, "chat_template", "") or ""
@@ -195,26 +200,12 @@ def _artifact_root(spec) -> Path:
         return Path(snapshot_download(spec.model_id, revision=spec.revision))
 
 
-_TOKENIZER_FILES = frozenset({
-    "tokenizer.json", "tokenizer_config.json", "vocab.json", "vocab.txt",
-    "merges.txt", "special_tokens_map.json", "added_tokens.json",
-    "chat_template.jinja", "tokenizer.model", "spiece.model"})
-
-
 def sha256_snapshot(root: Path) -> str:
     rows = [(rel, real.stat().st_size, sha256_path(real))
             for rel, real in _snapshot_files(root)]
     if not rows:
         raise FileNotFoundError(f"empty artifact snapshot: {root}")
     return digest(rows)
-
-
-def tokenizer_artifact_digest(root: Path) -> str:
-    arts = {rel: sha256_path(real) for rel, real in _snapshot_files(root)
-            if Path(rel).name in _TOKENIZER_FILES}
-    if not arts:
-        raise FileNotFoundError(f"no tokenizer artifacts under {root}")
-    return digest(arts)
 
 
 def physical_identity_digests(spec: HFLoadSpec):
@@ -307,7 +298,6 @@ def main() -> int:
     # v164: rows with probe=delayed are the seed-end persistence probes.
     # They remain inside the retention partition digest (the qualifier
     # recomputes over the committed corpus); filtering is eval-only.
-    retention_eval_rows_all = retention_rows  # partition view: unfiltered
     delayed_rows = [r for r in retention_rows if r.get("probe") == "delayed"]
     retention_probe_rows = [r for r in retention_rows if r.get("probe") != "delayed"]
     parts = DatasetPartitionSet(
@@ -604,12 +594,12 @@ def main() -> int:
         # cannot legitimately precede a trusted plan. Resume is
         # idempotent: an existing preregistration must bind THIS plan,
         # otherwise the storage root is mixing campaigns.
-        existing = [json.loads(l) for l in
+        existing = [json.loads(line) for line in
                     authority_ledger.path.read_text().splitlines()
-                    if l.strip()] \
+                    if line.strip()] \
             if authority_ledger.path.is_file() else []
-        reg = [l for l in existing
-               if l.get("kind") == "experiment_preregistration"]
+        reg = [line for line in existing
+               if line.get("kind") == "experiment_preregistration"]
         if reg:
             if reg[0].get("body_digest") != digest(plan_doc):
                 raise SystemExit(
@@ -647,7 +637,6 @@ def main() -> int:
     all_seeds = []
     for seed in plan.seeds:
         final_dir = campaign_dir / f"seed-{seed}"
-        seed_result_path = final_dir / "SEED_RESULT.json"
         if v3:
             sd = load_verified_seed_result_v3(
                 final_dir, seed, plan.digest, plan.arms, verifier)
@@ -677,7 +666,7 @@ def main() -> int:
             stale.unlink()
         random.seed(seed)
         tokenizer = load_tokenizer(spec)
-        model = load_causal_lm(spec)
+        model = load_causal_lm(spec, purpose="research")
         if isinstance(plan, ColabCampaignPlanV164):
             model_digest, tok_digest = plan.model_digest, plan.tokenizer_digest
         else:
@@ -801,7 +790,7 @@ def main() -> int:
             if arm_id not in plan.arms:
                 continue
             arm_t0 = time.time()
-            model = load_causal_lm(spec)
+            model = load_causal_lm(spec, purpose="research")
             ts = LoraTrainSpec(
                 **(protocol.lora_train_spec_kwargs() if protocol is not None
                    else cfg.get("lora", {})), seed=seed)
@@ -819,7 +808,8 @@ def main() -> int:
             # fully frozen (requires_grad=False), which would report 0.
             trainable = int(sum(p.numel() for p in model.parameters() if p.requires_grad))
             free_model(model)
-            model = load_causal_lm(spec, adapter_path=str(adir))
+            model = load_causal_lm(spec, adapter_path=str(adir),
+                                   purpose="research")
             metrics, outputs, preds = run_eval_block(None, arm_id)
             metrics["arm_state_bytes"] = dir_size_bytes(adir)
             metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
@@ -838,7 +828,7 @@ def main() -> int:
         if isinstance(plan, ColabCampaignPlanV164) and delayed_rows:
             v3 = isinstance(plan, ColabCampaignPlanV165)
             dblock = "retention_delayed" if v3 else None
-            model = load_causal_lm(spec)
+            model = load_causal_lm(spec, purpose="research")
             d1, d1_out, _, _, d1_preds = evaluate(
                 model, tokenizer, delayed_rows, max_new, retention_fn,
                 block=dblock)
@@ -849,7 +839,9 @@ def main() -> int:
                  {"probe_kind": "delayed"}, out_name="L1_delayed",
                  preds=d1_preds)
             if "L6" in adapter_dirs:
-                model = load_causal_lm(spec, adapter_path=str(adapter_dirs["L6"]))
+                model = load_causal_lm(spec,
+                                       adapter_path=str(adapter_dirs["L6"]),
+                                       purpose="research")
                 d6, d6_out, _, _, d6_preds = evaluate(
                     model, tokenizer, delayed_rows, max_new, retention_fn,
                     block=dblock)

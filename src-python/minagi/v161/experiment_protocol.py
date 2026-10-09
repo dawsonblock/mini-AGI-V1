@@ -42,6 +42,8 @@ class ExperimentProtocolV1:
     train_max_length: int
     optimizer: str = "adamw"
     gradient_accumulation_steps: int = 1
+    train_microbatch_size: int = 1
+    malformed_policy: str = "reject"
     response_only_loss: bool = True
     # memory / replay arms
     retrieval_k: int = 3
@@ -72,6 +74,12 @@ class ExperimentProtocolV1:
             raise ValueError("learning_rate must be positive")
         if self.train_steps <= 0 or self.train_max_length <= 0:
             raise ValueError("train_steps/train_max_length must be positive")
+        if int(self.train_microbatch_size) < 1:
+            raise ValueError("train_microbatch_size must be >= 1")
+        if int(self.gradient_accumulation_steps) < 1:
+            raise ValueError("gradient_accumulation_steps must be >= 1")
+        if self.malformed_policy not in ("reject", "fail"):
+            raise ValueError("malformed_policy must be reject|fail")
         for name in ("retrieval_k", "memory_k", "replay_k",
                      "practice_samples", "retention_samples",
                      "max_new_tokens"):
@@ -100,7 +108,16 @@ class ExperimentProtocolV1:
                 "optimizer": str(self.optimizer),
                 "gradient_accumulation_steps":
                     int(self.gradient_accumulation_steps),
+                "microbatch_size": int(self.train_microbatch_size),
+                "malformed_policy": str(self.malformed_policy),
                 "response_only_loss": bool(self.response_only_loss)}
+
+    @property
+    def effective_batch_size(self) -> int:
+        """Examples per optimizer update — the quantity the signed
+        protocol actually declares (Phase 2.1)."""
+        return int(self.train_microbatch_size) * \
+            int(self.gradient_accumulation_steps)
 
     @classmethod
     def from_config(cls, cfg: Mapping[str, Any]) -> "ExperimentProtocolV1":
@@ -127,6 +144,8 @@ class ExperimentProtocolV1:
             optimizer=str(lora.get("optimizer", "adamw")),
             gradient_accumulation_steps=int(
                 lora.get("gradient_accumulation_steps", 1)),
+            train_microbatch_size=int(lora.get("microbatch_size", 1)),
+            malformed_policy=str(lora.get("malformed_policy", "reject")),
             response_only_loss=bool(lora.get("response_only_loss", True)),
             retrieval_k=int(cfg.get("retrieval_k", 3)),
             memory_k=int(cfg.get("memory_k", 2)),

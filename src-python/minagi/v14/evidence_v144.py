@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
-import json, time
+import json
+import time
 from typing import Mapping
 
 from egai.common.canonical import digest, validate_digest
@@ -137,7 +138,7 @@ class EvidenceStageAuthorityV144:
         # Before extending the chain, prove all parents are appropriate.
         if strength == EvidenceStrength.E2_INDEPENDENTLY_VERIFIED:
             # Temporary unsigned receipt lets validator enforce parent coverage.
-            probe = EvidenceStageReceiptV144(int(strength), evidence, parents, self.authority_id, self.generation, time.time(),
+            EvidenceStageReceiptV144(int(strength), evidence, parents, self.authority_id, self.generation, time.time(),
                                             signer_key_id=self.signer.key_id, signature_b64="x")
             # Validate the parents directly; signature of the new receipt does not yet exist.
             covered = set()

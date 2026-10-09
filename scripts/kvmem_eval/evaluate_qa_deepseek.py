@@ -116,7 +116,7 @@ def call_chat(
                 raw = json.loads(resp.read().decode("utf-8"))
             text = raw["choices"][0]["message"].get("content") or ""
             return text.strip(), raw
-        except (HTTPError, URLError, TimeoutError) as exc:
+        except (HTTPError, URLError, TimeoutError):
             if attempt == retries - 1:
                 raise
             time.sleep(2**attempt)

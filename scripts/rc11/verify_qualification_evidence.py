@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Verify a deterministic RC11 Mac qualification evidence ZIP."""
 from __future__ import annotations
-import argparse, hashlib, json, stat, sys, zipfile
+import argparse
+import hashlib
+import json
+import stat
+import sys
+import zipfile
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]

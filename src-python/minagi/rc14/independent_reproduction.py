@@ -12,7 +12,6 @@ from typing import Any, Mapping
 from kvcontinual.execution.durability.file_lock import ProcessFileLock
 from minagi.egai.canonical import sha256_json
 from .experiment_protocol import PreregisteredContinualExperimentStoreRC14, _result_from_doc
-from .experiments import ContinualExperimentResultRC14
 from .models import require_digest
 
 GENESIS = "0" * 64
@@ -245,7 +244,8 @@ class IndependentReproductionStoreRC14:
             parsed[rep.variant].append(result); digests.append(rep.digest); ids.add(rep.reproducer_id)
         if len(ids)<plan.min_distinct_reproducers: reasons.append("insufficient_distinct_reproducers")
         isolated=parsed["isolated_neural_memory"]; replay=parsed["replay"]
-        mean=lambda items,attr: sum(float(getattr(x.metrics,attr)) for x in items)/len(items) if items else 0.0
+        def mean(items, attr):
+            return sum(float(getattr(x.metrics,attr)) for x in items)/len(items) if items else 0.0
         ig=mean(isolated,"fresh_task_gain"); rg=mean(replay,"fresh_task_gain"); inc=ig-rg; mf=mean(isolated,"mean_forgetting"); wf=max((x.metrics.worst_case_forgetting for x in isolated),default=0.0); repro=mean(isolated,"reproducibility")
         if ig<plan.min_fresh_task_gain: reasons.append("fresh_task_gain")
         if inc<plan.min_incremental_gain_over_replay: reasons.append("incremental_gain_over_replay")

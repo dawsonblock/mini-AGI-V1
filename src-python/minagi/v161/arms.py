@@ -23,10 +23,8 @@ Arm states are materialized to disk and digest-bound by
 from __future__ import annotations
 
 import json
-import math
 import random
 import re
-from collections import Counter
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -239,8 +237,6 @@ ARMS = {"L1": FrozenArm, "L2": RetrievalArm, "L3": SemanticMemoryArm,
 def shuffled_label_texts(rows: Sequence[Mapping], seed: int) -> list[str]:
     """NC negative control: same train texts, answers permuted within
     the train set — identical compute, corrupted supervision."""
-    texts = [str(r.get("train_text") or (str(r["prompt"]) + " " + str(r["expected"])))
-             for r in rows]
     answers = [str(r["expected"]) for r in rows]
     n = len(rows)
     rnd = random.Random(seed)

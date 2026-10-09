@@ -28,10 +28,10 @@ from pathlib import Path
 
 try:
     from .dataset import Sample, load_all
-    from .prompt import SYSTEM_INSTRUCTION, render_history, render_messages
+    from .prompt import render_messages
 except ImportError:
     from dataset import Sample, load_all  # type: ignore
-    from prompt import SYSTEM_INSTRUCTION, render_history, render_messages  # type: ignore
+    from prompt import render_messages  # type: ignore
 
 NATIVE_CTX = 262144  # Qwen3.6-27B native context (256K)
 
@@ -152,7 +152,6 @@ def main() -> None:
     # Reconstruct the full prompt text for char->token mapping.
     msgs = render_messages(s)
     sys_txt, hist_txt, q_txt = msgs[0]["content"], msgs[1]["content"], msgs[2]["content"]
-    history = render_history(s)  # the raw history (spans are computed against this)
     hist_prefix = len(sys_txt) + 2  # system + a couple template chars (negligible)
     total_chars = len(sys_txt) + len(hist_txt) + len(q_txt)
     tok_per_char = total_tokens / max(1, total_chars)
@@ -177,7 +176,8 @@ def main() -> None:
     rank_of = {order[r]: r for r in range(n)}  # block index (position) -> 0-based rank
     smax = max(scores) if scores else 0.0
     smin = min(scores) if scores else 0.0
-    p = lambda q: sorted(scores)[min(n - 1, int(q * n))]
+    def p(q):
+        return sorted(scores)[min(n - 1, int(q * n))]
     print(f"score dist: max={smax:.4g} p99={p(0.99):.4g} p90={p(0.90):.4g} "
           f"med={p(0.50):.4g} min={smin:.4g}")
 

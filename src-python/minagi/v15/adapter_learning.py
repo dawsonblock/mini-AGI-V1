@@ -2,12 +2,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-import hashlib
 import json
-import os
 import subprocess
-import tempfile
-from typing import Callable, Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Sequence
 
 from egai.common.canonical import digest, sha256_bytes, validate_digest
 from minagi.integration.qw3_state import ServedArtifactManifest

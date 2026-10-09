@@ -129,7 +129,6 @@ class GroundedReplayEngine:
         if world.kind is not WorldKind.GROUNDED:
             raise ValueError("GroundedReplayEngine accepts grounded worlds only")
         workers = max(1, int(workers))
-        by_id = {x.node_id: x for x in world.nodes}
         root = next(x for x in world.nodes if x.parent_id is None)
         children: dict[str, list[ExperienceNode]] = {x.node_id: [] for x in world.nodes}
         for node in world.nodes:

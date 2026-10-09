@@ -1,4 +1,5 @@
-import tempfile,unittest
+import tempfile
+import unittest
 from egai.common.artifacts import ArtifactStore
 class T(unittest.TestCase):
  def test_roundtrip_and_parser(self):

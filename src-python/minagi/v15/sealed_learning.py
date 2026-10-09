@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Callable, Mapping, Sequence
+from typing import Callable, Sequence
 
 from egai.common.canonical import digest, validate_digest
 from minagi.v14.experiment_v145 import FrozenArmRecordV145, FrozenBaselineGateV145, FrozenBaselineReportV145

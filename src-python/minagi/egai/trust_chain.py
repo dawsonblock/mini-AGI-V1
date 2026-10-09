@@ -1,6 +1,7 @@
 """Role-scoped research evidence verification, with no runtime promotion capability."""
 from dataclasses import asdict, dataclass
-import math, json
+import math
+import json
 from statistics import mean
 from egai.common.crypto import SignedEnvelope
 from egai.common.canonical import digest

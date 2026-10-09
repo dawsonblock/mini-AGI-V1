@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 import time
-from typing import Any, Mapping
+from typing import Any
 
 from egai.common.canonical import digest, validate_digest
 from egai.common.crypto import SignedEnvelope

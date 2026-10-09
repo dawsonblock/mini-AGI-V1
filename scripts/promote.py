@@ -46,6 +46,9 @@ def main(argv=None):
     ap.add_argument("--adapter", default="L6",
                     help="adapter arm to promote (subject to gates)")
     ap.add_argument("--out", required=True, help="RuntimeManifest path")
+    ap.add_argument("--expires-in-days", type=float, default=30.0,
+                    help="validity window of the promotion decision; "
+                         "runtime admission refuses expired decisions")
     args = ap.parse_args(argv)
 
     storage = Path(args.storage_root).resolve()
@@ -82,6 +85,10 @@ def main(argv=None):
     if record.get("decision") != "QUALIFIED":
         return _fail(f"campaign decision {record.get('decision')!r} "
                      "— only QUALIFIED evidence may be promoted")
+    if not record.get("evaluation_bundle_digest"):
+        return _fail("qualification record does not bind an evaluation "
+                     "bundle digest — v16.4.1 admission refuses decisions "
+                     "whose evaluation is unbound")
 
     # adapter must be among the receipts actually qualified — build a
     # per-seed runtime manifest binding model/tokenizer/adapter/protocol
@@ -98,8 +105,23 @@ def main(argv=None):
                 ExperimentProtocolV1
             protocol = ExperimentProtocolV1(
                 **json.loads(protocol_doc.read_text())["value"])
-        except Exception:
-            protocol = None
+        except Exception as exc:
+            return _fail(f"EXPERIMENT_PROTOCOL.json unreadable: {exc}")
+    # v16.4.1: the runtime manifest must bind the protocol the signed
+    # plan declares — a manifest that cannot name its protocol cannot
+    # be admitted, so refuse to sign one.
+    if plan_value.get("experiment_protocol_digest") and protocol is None:
+        return _fail("signed plan declares an experiment protocol digest "
+                     "but EXPERIMENT_PROTOCOL.json is missing/unreadable")
+    if protocol is not None and \
+            protocol.digest != plan_value.get("experiment_protocol_digest"):
+        return _fail("EXPERIMENT_PROTOCOL.json digest does not match the "
+                     "signed plan")
+    for field in ("model_digest", "tokenizer_digest"):
+        if not plan_value.get(field):
+            return _fail(f"signed plan does not bind a physical {field} — "
+                         "v16.4.1 admission requires measured artifact "
+                         "identity")
     from minagi.v161.peft_serving import (AdapterClosureError,
                                           runtime_manifest)
     promoted = {}
@@ -135,6 +157,7 @@ def main(argv=None):
     if not registry.is_authorized("promotion", signer.key_id):
         return _fail("promotion key not registered in trust root")
 
+    now = int(time.time())
     decision = {
         "schema": "mini-agi-v16.5-promotion-decision-v1",
         "campaign_id": args.campaign_id,
@@ -145,10 +168,12 @@ def main(argv=None):
         "adapter_artifact_digests": seeds,
         "runtime_manifest_digests": {k: v["digest"]
                                     for k, v in manifests.items()},
-        "authorized_at": int(time.time()),
+        "authorized_at": now,
+        "expires_at": now + int(args.expires_in_days * 86400),
         "note": "Binds the EXACT qualified adapter digests. Promotion "
                 "authority only; runtime admission control must still "
-                "enforce it.",
+                "enforce it — RuntimeAdmissionController.admit() refuses "
+                "unsigned, expired, revoked, or byte-mismatched artifacts.",
     }
     env = signer.sign(decision)
     doc = {"value": decision, "digest": digest(decision),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import json, time
+import json
+import time
 from typing import Iterable, Mapping
 
 from egai.common.canonical import digest, validate_digest

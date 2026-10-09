@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 import json
 import math
-from typing import Callable, Iterable, Mapping, Protocol, Sequence
+from typing import Callable, Iterable, Protocol, Sequence
 
 from egai.common.canonical import digest, validate_digest
 
@@ -198,17 +198,17 @@ class TrajectorySkillInducerV145:
         for t in xs:
             if not t.verified or t.outcome_score < 1.0 or (t.task_family,t.input_digest) in blocked:
                 rejected.add(t.digest); continue
-            l=self.extractor.extract(t)
-            if l is None: rejected.add(t.digest); continue
-            lessons.append(l); accepted.add(t.digest)
+            lesson=self.extractor.extract(t)
+            if lesson is None: rejected.add(t.digest); continue
+            lessons.append(lesson); accepted.add(t.digest)
         grouped={}
-        for l in lessons: grouped.setdefault((l.task_family,l.operation_signature,l.trigger,l.procedure),[]).append(l)
+        for lesson in lessons: grouped.setdefault((lesson.task_family,lesson.operation_signature,lesson.trigger,lesson.procedure),[]).append(lesson)
         candidates=[]
         for (family,sig,trigger,procedure),group in grouped.items():
-            ts=[by_digest[l.source_trajectory_digest] for l in group]; inputs=sorted({t.input_digest for t in ts})
+            ts=[by_digest[lesson.source_trajectory_digest] for lesson in group]; inputs=sorted({t.input_digest for t in ts})
             if len(group)<self.min_support or len(inputs)<self.min_distinct_inputs: continue
-            evid=sorted({d for l in group for d in l.evidence_digests}); rec=sorted({d for l in group for d in l.verification_receipt_digests})
-            lesson_ds=sorted({l.digest for l in group}); traj_ds=sorted({l.source_trajectory_digest for l in group})
+            evid=sorted({d for lesson in group for d in lesson.evidence_digests}); rec=sorted({d for lesson in group for d in lesson.verification_receipt_digests})
+            lesson_ds=sorted({lesson.digest for lesson in group}); traj_ds=sorted({lesson.source_trajectory_digest for lesson in group})
             sid="skill-"+digest({"family":family,"signature":sig,"procedure":procedure}).split(":",1)[1][:20]
             candidates.append(SkillCandidateArtifactV145(sid,f"{family}: {sig}",family,trigger,procedure,
                 f"consolidated {len(group)} independently verified trajectories using {sig}",sig,

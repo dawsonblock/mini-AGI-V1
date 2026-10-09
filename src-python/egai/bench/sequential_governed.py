@@ -37,13 +37,13 @@ class GovernedSequentialExperiment:
         for c in self.evaluation:
             bp=model.generate(f"TASK_KIND: {c.task_kind}\nVERIFIED PROCEDURES:\n(none)\nTASK:\n{c.input}\nReturn only the answer.")
             cp=self._text(learner.solve(c.input,c.task_kind));bs=float(self.scorer(bp,c.expected));cs=float(self.scorer(cp,c.expected));base[c.split].append(bs);cand[c.split].append(cs)
-        avg=lambda x:sum(x)/len(x) if x else 0.;eff=paired_bootstrap(base['future'],cand['future'],self.bootstrap_samples,seed=0) if base['future'] else None
+        def avg(x): return sum(x)/len(x) if x else 0.
+        eff=paired_bootstrap(base['future'],cand['future'],self.bootstrap_samples,seed=0) if base['future'] else None
         pairs=list(zip(base['future']+base['retention'],cand['future']+cand['retention']));neg=sum(1 for b,c in pairs if c+1e-12<b)/len(pairs) if pairs else 0.
         return {s:avg(base[s]) for s in base},{s:avg(cand[s]) for s in cand},eff,neg,len(base['future'])
     def run(self,model,learner,environment_digest='',checkpoint_callback=None,verification_callback=None):
         guard=FrozenModelGuard(model);session=EvidenceSession(self.evidence_ledger,model.model_digest,environment_digest);points=[];traces=[];repairs=failures=0;cp=set(x for x in self.checkpoints if x<=len(self.experience))
         def checkpoint(ep):
-            nonlocal points
             guard.assert_unchanged(model);b,c,e,n,fn=self._eval(model,learner);g=e.mean_gain if e else 0.;bp=BenchmarkPoint(0,b['future'],b['retention'],0.,0.,0.);ap=BenchmarkPoint(ep,c['future'],c['retention'],0.,float(ep),0.)
             points.append(GovernedPoint(ep,c['future'],c['retention'],c['security'],b['future'],b['retention'],b['security'],g,e.ci_low if e else 0.,e.ci_high if e else 0.,model.model_digest,learner.snapshot_digest,fte(bp,ap,max(ep,1)) if ep else 0.,failures,repairs,n,fn))
             if checkpoint_callback:checkpoint_callback(points[-1])
@@ -60,11 +60,11 @@ class GovernedSequentialExperiment:
                 for sid in resp.used_skills:learner.skills.mark_failure(sid);failures+=1
             repair=self.repair_provider.repair(c,attempt);receipt=self.feedback.verify_repair(c,attempt,repair.output_text);self.validator.validate(receipt,c,attempt,repair.output_text)
             rscore=float(self.scorer(repair.output_text,c.expected));ev=session.record(c,attempt,ascore,repair,receipt,rscore);repairs+=1
-            ep=VerifiedEpisode(c.case_id,c.task_kind,str(c.input),repair.output_text,'',rscore,True,'',tuple(c.tags),attempt,ascore,receipt.verifier_id,receipt.digest,ev.root)
+            ep=VerifiedEpisode(c.case_id,c.task_kind,str(c.input),repair.output_text,'',rscore,True,'',tuple(c.tags),attempt,ascore,receipt.verifier_id)
             learner.observe(ep);traces.append(GovernedTrace(c.case_id,c.task_kind,str(c.input),attempt,repair.output_text,ascore,rscore,tuple(getattr(resp,'used_skills',())),tuple(getattr(resp,'cognitive_actions',())),ev.root,receipt.digest))
             if verification_callback:verification_callback(receipt)
             guard.assert_unchanged(model)
             if i in cp:checkpoint(i)
         beliefs=BeliefCompiler().compile(self.evidence_ledger.eligible('belief'));from egai.common.canonical import digest
-        seq,head=self.evidence_ledger._head();health=learner.skills.health()
+        _,head=self.evidence_ledger.head();health=learner.skills.health()
         return GovernedReport(tuple(points),True,all(x.model_digest==guard.expected for x in points),len(learner.skills.all()),repairs,failures,tuple(traces),max((x.negative_transfer_rate for x in points),default=0.),head,digest([b.derivation_receipt for b in beliefs]),health.get('degraded',0),health.get('retired',0))

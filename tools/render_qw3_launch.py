@@ -1,6 +1,9 @@
 """Render an exact governed QW3 command from a v15.8 launch-spec JSON file."""
 from __future__ import annotations
-import argparse, json, shlex, sys
+import argparse
+import json
+import shlex
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src-python"))

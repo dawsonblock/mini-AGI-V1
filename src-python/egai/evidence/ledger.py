@@ -13,6 +13,9 @@ class EvidenceLedger(SQLiteStore):
         self.execute("""CREATE TABLE IF NOT EXISTS checkpoints(seq INTEGER PRIMARY KEY,head_hash TEXT NOT NULL,signer_key_id TEXT NOT NULL,signature_b64 TEXT NOT NULL)""")
     def _head(self):
         r=self.db.execute("SELECT seq,record_hash FROM evidence ORDER BY seq DESC LIMIT 1").fetchone();return (r['seq'],r['record_hash']) if r else (0,'GENESIS')
+    def head(self):
+        """Public accessor for the chain head: (sequence, record_hash)."""
+        return self._head()
     def append(self,record):
         if record.record_hash or record.signature_b64 or record.sequence: raise ValueError('caller may not pre-authorize evidence')
         seq,prev=self._head();seq+=1

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-import json, time, uuid
+import json
+import time
+import uuid
 
 from egai.common.canonical import digest, validate_digest
 

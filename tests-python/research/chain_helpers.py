@@ -32,8 +32,10 @@ def prepare_chain(root,proposal,bundle,candidate_doc=None):
     cases.extend([TaskCase('retention','retention',-1,-1),TaskCase('security','security',-2,-2)])
     scorers=ScorerRegistry();scorers.register('numeric',lambda p,e:float(p))
     bm=BenchmarkRegistrar('benchmark',signers['benchmark'],store).register_cases('benchmark','1',cases,scorer_id='numeric')
-    baseline=lambda x:0. if x>=0 else 1.
-    candidate_solver=lambda x:bundle.metrics.forward_transfer_delta if x>=0 else 1.
+    def baseline(x):
+        return 0. if x>=0 else 1.
+    def candidate_solver(x):
+        return bundle.metrics.forward_transfer_delta if x>=0 else 1.
     results=BenchmarkRunner('runner',signers['runner'],verifier,trust,scorers).run('run',build,bm,cases,baseline,candidate_solver,resource_fn=lambda *a:(1.,1.))
     evaluation=IndependentEvaluator('independent-q',signers['evaluator'],verifier,trust).evaluate('evaluation',build,bm,results,1.)
     qualification=Qualifier('qualifier',signers['qualifier'],verifier,trust).evaluate(evaluation)
