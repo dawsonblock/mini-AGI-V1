@@ -20,10 +20,10 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "2392e5fe28c082e9f6fa6802d400d3b82faf459d4c81f3d481a1f7cf435c3117",
+ "manifest_sha256": "f569e2e1d4dab05df3a36822c9d04c8fc5439d61911c6e61b4f9fe896afe6cc9",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
- "python_validation": "639/639 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
+ "python_validation": "641/641 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
  "reissue": {
   "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)",
   "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
@@ -127,9 +127,14 @@
    "manifest_sha256": "2392e5fe28c082e9f6fa6802d400d3b82faf459d4c81f3d481a1f7cf435c3117",
    "reason": "lint follow-up: EvidenceLedger gains a documented public head() accessor (the private _head() stays for internal use) and egai/bench/sequential_governed.py uses it \u2014 removes the last protected-access warning in that harness. Behavior-identical (head() == _head(), verified). Tests unchanged: 639 passed, 1 skipped; ruff/flake8 zero findings",
    "utc": "2026-10-09T01:40:56.754481+00:00"
+  },
+  {
+   "manifest_sha256": "f569e2e1d4dab05df3a36822c9d04c8fc5439d61911c6e61b4f9fe896afe6cc9",
+   "reason": "governed-harness completion: SandboxSkillMemory gains the two members the run loop calls and that existed nowhere in the codebase \u2014 mark_success (mirror of mark_failure) and health() (degraded = procedures with more failures than successes, i.e. confidence < 0.5 stated on the counters; retired = 0, the ephemeral memory has no retirement mechanism, documented in the method). The previously-uncovered harness now has a regression suite (tests-python/research/test_sequential_governed.py) driving the success path, the verified-repair path, the health summary, and the evidence chain. Tests: 641 passed, 1 skipped; ruff/flake8 zero findings",
+   "utc": "2026-10-09T01:43:09.738889+00:00"
   }
  ],
- "reissued_utc": "2026-10-09T01:40:56.754481+00:00",
+ "reissued_utc": "2026-10-09T01:43:09.738889+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",

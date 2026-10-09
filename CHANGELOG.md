@@ -156,11 +156,23 @@ raised `TypeError` before it could run. Fixed to the 12-argument form
 and exercised with a probe harness; the branch now executes. The same
 harness reached into the ledger's private `_head()`; `EvidenceLedger`
 now exposes a documented `head()` accessor and the harness uses it
-(the private helper stays for internal use). A further
-pre-existing issue remains in the same path — `SandboxSkillMemory` has
-no `health()`, which the harness calls at the end of a run — reported,
-not fixed: the intended degraded/retired semantics do not exist in the
-memory model, so implementing it would be inventing behavior.
+(the private helper stays for internal use).
+
+Finishing that harness exposed two more missing pieces on
+`SandboxSkillMemory`, both called by the run loop and neither existing
+anywhere in the codebase: `mark_success` (the success path would raise
+`AttributeError` whenever a retrieved skill was credited) and
+`health()` (the end-of-run summary). Both are implemented against the
+memory's own model: `mark_success` increments `successes`, the exact
+mirror of the existing `mark_failure`; `health()` reports
+`degraded` = procedures that have failed more often than they have
+succeeded (the same condition as `confidence < 0.5`, stated on the
+counters so no new threshold is introduced) and `retired` = 0 — the
+ephemeral sandbox memory has no retirement mechanism, and the method
+docstring says so rather than inventing one. The harness is no longer
+uncovered: `tests-python/research/test_sequential_governed.py` drives
+the success path, the verified-repair path, the health summary, and
+the evidence chain. Tests: 639 → 641 passing (1 skipped).
 
 # v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
 
