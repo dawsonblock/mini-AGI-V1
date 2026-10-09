@@ -20,7 +20,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "6d7889dbca454894abece7979a43d16a98afc51f2a258c230141c7138fd59cc6",
+ "manifest_sha256": "469416267a4f6b0b7c334552816228fad35e61c660752814dd1e87946cc35c4a",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "641/641 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -137,9 +137,14 @@
    "manifest_sha256": "6d7889dbca454894abece7979a43d16a98afc51f2a258c230141c7138fd59cc6",
    "reason": "Pylint contract: [tool.pylint] in pyproject.toml declares the same lint contract as [tool.ruff]/.flake8 (C/R/W families disabled, optional extras and platform modules ignored, error category enabled). 17,896 default findings on the release surface become 2 \u2014 both real and not suppressed: the drifted donor minagi/rc14/system.py (GovernedRC14System passes kwargs its base does not accept; nothing imports it), now recorded as RC14-001 in the remaining-defects register. Three further Pylint errors were verified false positives before disabling (guarded subscripts, mirrored-condition assignment, dynamic 'object' attributes). Tests unchanged: 641 passed, 1 skipped; ruff/flake8 zero findings",
    "utc": "2026-10-09T02:17:57.901759+00:00"
+  },
+  {
+   "manifest_sha256": "469416267a4f6b0b7c334552816228fad35e61c660752814dd1e87946cc35c4a",
+   "reason": "lint contract enforced in CI: flake8 and pylint join ruff in the dev extras, and scripts/rc11/lint.sh (new CI lint job) runs all three over the release surface. The gate tolerates exactly the two documented RC14-001 findings and fails on anything else \u2014 verified both ways locally (clean tree exits 0; a probe finding in another file exits 1 via ruff, and a Pylint-only finding exits 1 via the RC14-001 allowlist check). Tests unchanged: 641 passed, 1 skipped",
+   "utc": "2026-10-09T02:23:25.547265+00:00"
   }
  ],
- "reissued_utc": "2026-10-09T02:17:57.901759+00:00",
+ "reissued_utc": "2026-10-09T02:23:25.547265+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",

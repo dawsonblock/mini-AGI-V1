@@ -21,6 +21,20 @@ jobs:
       - run: cmake --build ../native-build --parallel 4
       - run: ctest --test-dir ../native-build --output-on-failure
 
+  # Lint contract (pyproject.toml [tool.ruff]/[tool.pylint], .flake8).
+  # Runs on Linux only: the contract is platform-independent and the
+  # findings are identical across runners; the matrix job below covers
+  # platform behaviour.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install '.[dev]'
+      - run: bash scripts/rc11/lint.sh
+
   # Clean-extraction release check: a tag checkout is the closest CI
   # equivalent of unzipping a published archive — every governed file
   # must match the signed manifest and the bundled key must carry the

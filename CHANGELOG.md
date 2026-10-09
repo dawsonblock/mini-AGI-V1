@@ -192,6 +192,13 @@ were verified as false positives before being disabled (guarded
 subscripts, a variable assigned under the mirrored condition, and
 dynamic attributes inferred as `object`).
 
+The contract is now declared and enforced: `flake8` and `pylint` join
+`ruff` in the `dev` extras (pinned ranges), and CI runs
+`scripts/rc11/lint.sh` — ruff, Flake8 and Pylint over the release
+surface. The gate tolerates exactly the two documented RC14-001
+findings and fails on anything else (verified: a probe finding in
+another file exits 1).
+
 # v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
 
 Phases 2, 3, and (early) 5 of the v17 plan. Scientific claims unchanged
