@@ -60,9 +60,9 @@
   ],
   "metadata": {
     "component": {
-      "name": "mini-AGI Colab Converged",
+      "name": "mini-AGI-V1-v16.4.4-Verified-Runtime-Closure",
       "type": "application",
-      "version": "16.4.3"
+      "version": "16.4.4"
     }
   },
   "specVersion": "1.5",
