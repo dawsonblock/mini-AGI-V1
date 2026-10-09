@@ -9,6 +9,10 @@ The campaign chain distinguishes six signing roles:
     promotion           authorizes deployment of qualified artifacts
     runtime             admits artifacts at load time and attests the
                         activation receipt (v16.4.0)
+    revocation          signs monotonic revocation snapshots (v16.4.2)
+    admission           issues short-lived admission grants binding
+                        measured artifacts to a verified authorization
+                        chain (v16.4.2)
 
 Each role has its own Ed25519 identity, registered in a trust root
 (TRUST_ROOT.json). The registry fail-closed rejects:
@@ -47,7 +51,8 @@ from egai.common.crypto import (Ed25519Signer, Ed25519Verifier,
                                 SignedEnvelope)
 
 AUTHORITY_ROLES = ("plan", "execution_witness", "evaluation",
-                   "qualification", "promotion", "runtime")
+                   "qualification", "promotion", "runtime",
+                   "revocation", "admission")
 
 # ledger record kind -> the only role permitted to sign it
 RECORD_KIND_ROLE = {
@@ -56,6 +61,8 @@ RECORD_KIND_ROLE = {
     "qualification_record": "qualification",
     "promotion_decision": "promotion",
     "activation_receipt": "runtime",
+    "revocation_snapshot": "revocation",
+    "admission_grant": "admission",
 }
 
 TRUST_ROOT_SCHEMA = "mini-agi-v16.5-authority-trust-root-v1"

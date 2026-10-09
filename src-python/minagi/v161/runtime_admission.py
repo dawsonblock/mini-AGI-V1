@@ -72,10 +72,9 @@ ACTIVATION_RECEIPT_SCHEMA = "mini-agi-v16.4.1-activation-receipt-v2"
 PROMOTION_DECISION_SCHEMA = "mini-agi-v16.5-promotion-decision-v1"
 REVOCATION_LIST_SCHEMA = "mini-agi-v16.4.1-revocation-list-v1"
 
-# Serving backends the qualification plane has actually qualified. A
-# qualification record may narrow this set; anything not covered is
-# refused rather than assumed.
-QUALIFIED_BACKENDS = strict_schema.SUPPORTED_BACKENDS
+# Serving backends the qualification plane has actually qualified
+# (strict_schema.SUPPORTED_BACKENDS). v16.4.2: a qualification record
+# must declare backend coverage explicitly — there is no default.
 
 
 class AdmissionRefused(PermissionError):
@@ -271,16 +270,24 @@ def check_activation_receipt(doc, registry, *, now=None,
 
 class RuntimeAdmissionController:
     """Admission control for the serving runtime. Holds the trust-root
-    registry, an optional revocation list of promotion-decision
-    digests, and an optional fixed verification time (tests)."""
+    registry, revocation evidence, and an optional fixed verification
+    time (tests).
+
+    v16.4.2: the production path authenticates revocation evidence — a
+    `RevocationSnapshotV2` signed by the dedicated `revocation` role —
+    instead of a bare digest list. Legacy unsigned `RevocationList`
+    objects remain accepted for research-side admission checks but are
+    refused by the supervised production launch path."""
 
     def __init__(self, registry, *, revoked_decision_digests=(),
                  revocation_list: RevocationList | None = None,
+                 revocation_snapshot=None,
                  max_revocation_age_seconds: int | None = None,
                  now: datetime | None = None):
         self.registry = registry
         self.revoked = {str(d) for d in revoked_decision_digests}
         self.revocation_list = revocation_list
+        self.revocation_snapshot = revocation_snapshot
         self.max_revocation_age_seconds = max_revocation_age_seconds
         self._now = now
 
@@ -290,10 +297,13 @@ class RuntimeAdmissionController:
     def _check_revocation_freshness(self) -> None:
         if self.max_revocation_age_seconds is None:
             return
+        if self.revocation_snapshot is not None:
+            return  # V2 snapshots carry their own issued_at/valid_until
         if self.revocation_list is None:
             raise AdmissionRefused(
-                "revocation freshness required but no revocation list was "
-                "supplied — refusing rather than assuming nothing is revoked")
+                "revocation freshness required but no revocation evidence "
+                "was supplied — refusing rather than assuming nothing is "
+                "revoked")
         age = int(self._at().timestamp()) - int(
             self.revocation_list.generated_at)
         if age > int(self.max_revocation_age_seconds):
@@ -353,9 +363,17 @@ class RuntimeAdmissionController:
         decision_digest = str(decision_doc["digest"])
         if decision_digest in self.revoked or (
                 self.revocation_list is not None
-                and self.revocation_list.contains(decision_digest)):
+                and self.revocation_list.contains(decision_digest)) or (
+                self.revocation_snapshot is not None
+                and self.revocation_snapshot.contains(decision_digest)):
             raise AdmissionRefused(
                 "promotion decision revoked — replay refused")
+        if self.revocation_snapshot is not None and \
+                self.revocation_snapshot.revokes_key(
+                    str(decision_doc.get("signer_key_id", ""))):
+            raise AdmissionRefused(
+                "the key that signed this promotion decision has been "
+                "revoked — evidence signed by it no longer authorizes")
         self._schema("promotion_decision", decision, "promotion decision")
         if decision.get("schema") != PROMOTION_DECISION_SCHEMA:
             raise AdmissionRefused(
@@ -428,12 +446,21 @@ class RuntimeAdmissionController:
                 "runtime manifest digest is not covered by the decision")
 
         # --- backend coverage ---------------------------------------
+        # v16.4.2: coverage must be an explicit, signed declaration.
+        # A qualification that omits runtime_backends covers NOTHING —
+        # there is no default (qualifying hf-peft never transitively
+        # qualifies qwen-native-cuda or qwen-native-metal).
         manifest_backend = str(runtime_manifest.get("serving_stack", ""))
         if manifest_backend != expected_backend:
             raise AdmissionRefused(
                 f"requested backend {expected_backend!r} != manifest "
                 f"backend {manifest_backend!r}")
-        covered = qual.get("runtime_backends") or list(QUALIFIED_BACKENDS)
+        covered = qual.get("runtime_backends")
+        if not covered or not isinstance(covered, (list, tuple)):
+            raise AdmissionRefused(
+                "qualification record omits runtime backend coverage — "
+                "admission requires a nonempty, explicitly signed "
+                "runtime_backends declaration (UPGRADE_PLAN §3.3)")
         if expected_backend not in covered:
             raise AdmissionRefused(
                 f"runtime backend {expected_backend!r} is not covered by "

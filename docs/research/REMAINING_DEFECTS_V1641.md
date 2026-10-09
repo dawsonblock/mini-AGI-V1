@@ -1,11 +1,13 @@
-# Remaining-defects register — v16.4.1
+# Remaining-defects register — v16.4.2
 
-Defects known at the v16.4.1 release point, with severity, status, and
+Defects known at the v16.4.2 release point, with severity, status, and
 the reproducible test case (or the reason none exists yet). The
-runtime-security defects from the v16.4.0 audit are closed; the
-correctness and scientific-qualification items below are deliberately
-NOT addressed by this release (see the roadmap in the release plan:
-v16.4.2 and v16.5.0 have independent gates).
+runtime-security defects from the v16.4.0 audit are closed, and the
+three activation-authority weaknesses confirmed in the v17 upgrade
+spec (UPGRADE_PLAN_V17 §1/§3) are closed by this release. The
+controller-correctness and scientific-qualification items below are
+deliberately NOT addressed here — v16.4.3 and v16.5.0 have independent
+gates.
 
 | ID | Severity | Defect | Status | Reproducing test |
 |---|---|---|---|---|
@@ -13,17 +15,13 @@ v16.4.2 and v16.5.0 have independent gates).
 | SEC-002 | critical | Artifact hashing overlooked symbolic links; unlisted files indistinguishable | **CLOSED v16.4.1** | `test_v1641_artifact_closure.py` |
 | SEC-003 | high | Unsigned activation receipts passed the verification helper | **CLOSED v16.4.1** | `test_v1641_trusted_launcher.py::test_unsigned_and_wrong_role_receipts_are_problems` |
 | SEC-004 | high | Schema/protocol requirements optional (plan, qualification, protocol link, revocation freshness) | **CLOSED v16.4.1** | `test_v1641_strict_schema.py` |
-| SEC-005 | high | Mechanism controller accepts unsupported prerequisite evidence: `prior_attempts` are unverified digest-shaped strings; `MechanismAttemptRecord` (typed, signed, resolvable) does not exist | **OPEN — v16.4.2** | `tests-python/v161/test_v166_mechanism_controller.py` documents the current acceptance; the defect is that a fabricated `sha256:…` string satisfies the ladder check |
-| SEC-006 | high | Mechanism selector may choose the highest-ranked intervention even when its expected utility is negative; no `NO_CHANGE` action and no preregistered minimum-utility threshold τ | **OPEN — v16.4.2** | `test_v166_mechanism_controller.py` (utility arithmetic) — extend with a negative-utility fixture in v16.4.2 |
+| ACT-001 | critical | `TrustedRuntimeLauncher` loaded the backend before activation evidence was durable; a post-load persistence failure had no guaranteed unload | **CLOSED v16.4.2** | `test_v1642_activation_closure.py` rows 10-13; `test_activation_supervisor.py` |
+| AUTH-001 | critical | `RuntimeAdmissionController` defaulted missing `runtime_backends` coverage to the supported-backend list | **CLOSED v16.4.2** | `test_v1642_activation_closure.py::test_row3/4` |
+| AUTH-002 | high | A staged `ApprovedSnapshot` conflated artifact measurement with deployment authorization | **CLOSED v16.4.2** | `test_admission_grants.py`, `test_activation_supervisor.py::test_arbitrary_object_with_path_refused` |
+| REV-001 | high | Revocation evidence was an unsigned, non-monotonic digest list that could not reject future-dated or replayed snapshots | **CLOSED v16.4.2** | `test_signed_revocations.py`, `test_v1642_activation_closure.py` rows 7-9 |
+| SEC-005 | high | Mechanism controller accepts unsupported prerequisite evidence: `prior_attempts` are unverified digest-shaped strings; `VerifiedAttemptRecordV2` (typed, signed, resolvable) does not exist | **OPEN — v16.4.3** | `tests-python/v161/test_v166_mechanism_controller.py` documents the current acceptance; the defect is that a fabricated `sha256:…` string satisfies the ladder check |
+| SEC-006 | high | Mechanism selector may choose the highest-ranked intervention even when its expected utility is negative; no `NO_CHANGE` action and no preregistered minimum-utility threshold τ | **OPEN — v16.4.3** | `test_v166_mechanism_controller.py` (utility arithmetic) — extend with a negative-utility fixture in v16.4.3 |
 | SEC-007 | medium | Real-model learning and end-to-end serving qualification incomplete: Campaign 3A executing (GPU), 3B corpus unsealed, 3C not run; no qualified artifact has been served through the real PEFT backend end to end | **OPEN — v16.5.0** | Campaign 3 execution + `trusted_launch.py --backend hf-peft` on a qualified adapter; `test_v1641_cli.py` uses a test backend |
-| OPS-001 | medium | Operational role separation is not enforced by code: all six role keys live under one storage root in the development scaffold | **OPEN — deployment requirement** | `minagi/v161/authority.py` module docstring; `scripts/authority_bootstrap.py` |
-| OPS-002 | low | Snapshot immutability is process-level (read-only modes + staged copy + pre-load re-verification); a same-identity adversary can chmod and rewrite, which `verify_snapshot` detects but does not prevent | **ACCEPTED RISK** | `test_v1641_artifact_closure.py::test_tampering_with_staged_snapshot_is_detected` |
-| TEST-001 | medium | 4 sandbox-backend-dependent tests fail/skip where no OS sandbox backend is usable; test portability classification (supported / intentionally unavailable / misconfigured / missing ML dependency) is v16.4.2 work. **CLOSED**: `execution_sandbox.sandbox_usable()` probes whether the selected backend can actually start the interpreter (memoized); `run_check` raises `SandboxUnavailable` for a backend that cannot start (fail closed, never a misleading result), and the sandbox-dependent tests skip under that classification instead of failing. Observed in CI before the repair: on `ubuntu-latest` (no usable bwrap) `test_v1622_evaluator_sandbox.py::test_memory_limit_denies_large_allocation` and `test_v166_scientific_gates.py::{test_score_row_dispatches_verify_spec,test_executor_score_check_is_authoritative_over_expected,test_executor_score_timeout_returns_zero}` failed with `SandboxUnavailable` (4 failed, 625 passed, 13 skipped); on `macos-latest` sandbox-exec existed but could not start the runner's interpreter (`realpath: Operation not permitted`), failing a larger set. Reproduced locally with the real probe against a `(deny default)` profile | **CLOSED v16.4.1 (pulled forward from v16.4.2)** | `test_v1622_evaluator_sandbox.py::test_backend_that_cannot_start_is_classified_unavailable`, `::test_real_probe_detects_a_profile_that_cannot_start_the_interpreter` |
-| REL-001 | low | This release's Python matrix ran on macOS 3.12 only. Linux CPU/sandbox, Windows (where supported), and the GPU/PEFT campaign are not re-run here; passing Linux CPU tests must not be represented as CUDA/Metal qualification | **OPEN — CI matrix** | `docs/research/RELEASE_RC8_1.md`, `.github/` workflows |
-| SCI-001 | medium | Campaign 3A execution is incomplete (GPU-blocked, VM reclamation recovered); 3B/3C unsealed. No scientific claim is made or changed by v16.4.1 | **OPEN — v16.5.0** | `scripts/campaign3a_finalize.py`, `docs/research/CAMPAIGN3_DESIGN.md` |
-| RC14-001 | medium | Donor `minagi/rc14/system.py` was not wired into the active system: `GovernedRC14System.__init__` passed `runtime_transition_verifier`/`state_epoch_verifier` to `minagi.system.GovernedSystem`, which does not accept them, and read `self.state_epochs`/`self.runtime_activation`, which the base never defines — its RC13-era base was never imported (neither name exists anywhere in this tree, including `references/`). The package `__init__` re-exported the class, but nothing instantiated it. **RETIRED**: the module (whose only definition was the class) is deleted and the re-export removed with a pointer comment; provenance remains in git history and the donor archive identity in `SOURCE_PROVENANCE.json` | **CLOSED v16.4.1 (retired)** | `git show <retirement-commit>^:src-python/minagi/rc14/system.py`; `grep -rn GovernedRC14System` finds no reference; the CI lint gate requires zero Pylint findings |
-
-Severity: critical = unqualified artifact can be served or
-authorization bypassed; high = authorization/evidence integrity
-weakness; medium = correctness or qualification gap; low = hardening
-or portability gap.
+| OPS-001 | medium | Operational role separation is not enforced by code: all role keys live under one storage root in the development scaffold | **PARTIAL v16.4.2** — `minagi.runtime.service` now runs the supervisor under a dedicated OS identity with peer-uid authentication; the dev scaffold still co-locates keys | `test_supervised_service.py`; `minagi/v161/authority.py` module docstring |
+| OPS-002 | low | Snapshot immutability is process-level (read-only modes + staged copy + pre-load re-verification); a same-identity adversary can chmod and rewrite, which `verify_snapshot` detects but does not prevent | **ACCEPTED RISK** — mitigated: the supervisor re-verifies the grant AND the staged bytes at stage() | `test_v1641_artifact_closure.py::test_tampering_with_staged_snapshot_is_detected` |
+| OPS-003 | low | `peer_uid()` relies on `SO_PEERCRED`/`getpeereid`, which CPython does not expose on macOS — the service fails closed there until a platform transport lands | **OPEN — platform coverage** | `test_supervised_service.py::test_peer_uid_extractable_on_socketpair` |

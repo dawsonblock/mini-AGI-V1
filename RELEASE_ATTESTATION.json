@@ -20,10 +20,10 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "2ed685dec053af416d066368ada9cd4d5cc66a6fe0cee052cb3fb28f04abb1e8",
+ "manifest_sha256": "90a17489195b8394df66550e0ea95c35b145908668e166ffa04566b2d15a6c15",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
- "python_validation": "641/641 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
+ "python_validation": "711/711 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
  "reissue": {
   "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)",
   "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
@@ -172,9 +172,14 @@
    "manifest_sha256": "2ed685dec053af416d066368ada9cd4d5cc66a6fe0cee052cb3fb28f04abb1e8",
    "reason": "README.md rewritten as the modern GitHub front page for v16.4.1 (badges, architecture, status, governed chain, campaigns, verification, quality gates, docs index). Documentation-only change; no code or test impact.",
    "utc": "2026-10-09T03:30:30.184576+00:00"
+  },
+  {
+   "manifest_sha256": "90a17489195b8394df66550e0ea95c35b145908668e166ffa04566b2d15a6c15",
+   "reason": "v16.4.2 authority and activation closure (UPGRADE_PLAN_V17 P0): MeasuredSnapshot separates artifact measurement from authorization; AdmissionGrantV1 issued by the new admission role (short-lived, single-use, audience/backend/epoch-bound); ServingSupervisor drives the REQUESTED..ACTIVE state machine over a fsynced durable journal with atomic pointer swap, signed completion, guaranteed unload on failure, deterministic crash-recovery, and live-handle-only rollback; RevocationSnapshotV2 signed by the dedicated revocation role is monotonic, freshness-and-future bounded, and atomically stored; runtime_admission refuses omitted backend coverage; minagi.runtime.service provides the peer-uid-authenticated AF_UNIX launch boundary; tests: 711 passed, 1 skipped; ruff/flake8/pylint zero findings; service hardening: refused peer-credential checks now return a refusal frame rather than a bare reset, stop() exits the accept loop cleanly, and the test helper waits for listen() (CI flake: connect raced bind\u2192listen)",
+   "utc": "2026-10-09T06:45:19.386443+00:00"
   }
  ],
- "reissued_utc": "2026-10-09T03:30:30.184576+00:00",
+ "reissued_utc": "2026-10-09T06:45:19.386443+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -189,7 +194,7 @@
    "reason": "runner --execute-seeds: parallel-VM campaign execution under one signed plan"
   }
  ],
- "release": "mini-AGI-v16.4.1-Runtime-Security-Closure",
+ "release": "mini-AGI-v16.4.2-Authority-and-Activation-Closure",
  "runtime_security_closure": {
   "audit_defects_closed": [
    "SEC-001 admission mandatory",
@@ -205,5 +210,16 @@
  },
  "schema": "mini-agi-v16.1-release-attestation-v1",
  "signature_algorithm": "Ed25519",
- "status": "PASS_RUNTIME_SECURITY_CLOSURE_GPU_SMOKE_PENDING"
+ "status": "PASS_AUTHORITY_AND_ACTIVATION_CLOSURE_GPU_SMOKE_PENDING",
+ "authority_and_activation_closure": {
+  "defects_closed": [
+   "ACT-001 backend load before durable activation evidence",
+   "AUTH-001 missing backend coverage defaulted to supported list",
+   "ACT-002 measured artifact implied deployment authorization",
+   "REV-001 unsigned non-monotonic revocation list"
+  ],
+  "detail": "docs/research/RUNTIME_SECURITY_CLOSURE_V1642.md",
+  "qualification_table": "tests-python/v161/test_v1642_activation_closure.py (13 rows)",
+  "tests": "tests-python/security/test_signed_revocations.py, tests-python/security/test_admission_grants.py, tests-python/runtime/test_activation_supervisor.py, tests-python/runtime/test_supervised_service.py, tests-python/v161/test_v1642_activation_closure.py"
+ }
 }

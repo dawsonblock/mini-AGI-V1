@@ -1,9 +1,10 @@
-"""v16.4.1 immutable runtime snapshot (REPAIR-105, TOCTOU closure).
+"""v16.4.2 immutable runtime snapshot (REPAIR-105, TOCTOU closure +
+UPGRADE_PLAN §3.1).
 
 Verification alone is not enough: an artifact can be verified and then
 swapped before the serving backend opens it (time-of-check /
 time-of-use). The launcher therefore never hands the backend a
-mutable path. It stages an `ApprovedSnapshot`:
+mutable path. It stages a `MeasuredSnapshot`:
 
   * `stage_snapshot()` copies every authorized artifact exactly once,
     hashing the bytes as they are written (`copy_closure`), then
@@ -13,9 +14,15 @@ mutable path. It stages an `ApprovedSnapshot`:
     were staged.
   * the staged tree is re-measured (`verify_snapshot`) immediately
     before load and the files are frozen read-only (`freeze_tree`).
-  * `ApprovedSnapshot` can only be constructed by this module (a
+  * `MeasuredSnapshot` can only be constructed by this module (a
     module-private sentinel), and the serving backend accepts nothing
     else — there is no public path that loads a mutable artifact.
+
+A `MeasuredSnapshot` proves *content*, not *authorization* (v16.4.2):
+possessing one does not imply that a promotion authority authorized
+serving — that evidence is the `AdmissionGrantV1` issued by the
+admission service (`minagi.security.admission_grants`) and verified
+independently by the serving supervisor (`minagi.runtime.supervisor`).
 
 A failed stage/verify removes the snapshot directory and raises
 `SnapshotError`; nothing is served.
@@ -33,16 +40,20 @@ from .artifact_closure import (ArtifactClosureError, TreeClosure,
 
 _SENTINEL = object()
 
-SNAPSHOT_SCHEMA = "mini-agi-v16.4.1-approved-snapshot-v1"
+SNAPSHOT_SCHEMA = "mini-agi-v16.4.2-measured-snapshot-v1"
 
 
 class SnapshotError(PermissionError):
-    """The approved snapshot could not be staged or verified."""
+    """The measured snapshot could not be staged or verified."""
 
 
-class ApprovedSnapshot:
+class MeasuredSnapshot:
     """A staged, verified, frozen copy of the exact authorized
-    artifacts. Constructible only by `stage_snapshot`."""
+    artifacts. Constructible only by `stage_snapshot`.
+
+    Measurement is not authorization: this object proves content, not
+    that serving was authorized — the `AdmissionGrantV1` binds it to a
+    verified promotion chain (UPGRADE_PLAN §3.1)."""
 
     __slots__ = ("_root", "_digests", "_manifest_digest", "_closures")
 
@@ -51,8 +62,8 @@ class ApprovedSnapshot:
                  _sentinel=None):
         if _sentinel is not _SENTINEL:
             raise SnapshotError(
-                "ApprovedSnapshot can only be produced by stage_snapshot — "
-                "a raw path is not an approved snapshot")
+                "MeasuredSnapshot can only be produced by stage_snapshot — "
+                "a raw path is not a measured snapshot")
         validate_digest(manifest_digest)
         for name, d in digests.items():
             validate_digest(d)
@@ -89,7 +100,7 @@ class ApprovedSnapshot:
         return self._closures[name]
 
     def __repr__(self) -> str:  # pragma: no cover - diagnostics only
-        return (f"ApprovedSnapshot(root={str(self._root)!r}, "
+        return (f"MeasuredSnapshot(root={str(self._root)!r}, "
                 f"artifacts={sorted(self._digests)}, "
                 f"manifest={self._manifest_digest[:20]}...)")
 
@@ -97,7 +108,7 @@ class ApprovedSnapshot:
 def stage_snapshot(dest, artifacts: Mapping[str, object], *,
                    expected_digests: Mapping[str, str],
                    resolve_symlinks: Mapping[str, bool] | None = None,
-                   manifest_digest: str) -> ApprovedSnapshot:
+                   manifest_digest: str) -> MeasuredSnapshot:
     """Copy `artifacts` (name -> path) into `dest` and verify the staged
     bytes against `expected_digests` (name -> authorized digest)."""
     dest = Path(dest)
@@ -128,7 +139,7 @@ def stage_snapshot(dest, artifacts: Mapping[str, object], *,
                     "and staging")
             closures[name] = closure
         freeze_tree(dest)
-        snapshot = ApprovedSnapshot(
+        snapshot = MeasuredSnapshot(
             root=dest, digests=expected_digests, manifest_digest=manifest_digest,
             closures=closures, _sentinel=_SENTINEL)
         verify_snapshot(snapshot)
@@ -141,7 +152,7 @@ def stage_snapshot(dest, artifacts: Mapping[str, object], *,
         raise SnapshotError(f"snapshot staging failed: {exc}") from exc
 
 
-def verify_snapshot(snapshot: ApprovedSnapshot) -> None:
+def verify_snapshot(snapshot: MeasuredSnapshot) -> None:
     """Re-measure every staged artifact from disk and compare against the
     authorized digests. Called immediately before load."""
     problems: list[str] = []

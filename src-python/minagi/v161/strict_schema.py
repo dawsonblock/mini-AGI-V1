@@ -77,12 +77,24 @@ ACTIVATION_RECEIPT_PRODUCTION_SCHEMAS = frozenset({
     "mini-agi-v16.4.1-activation-receipt-v2",
 })
 
+# v16.4.2 — authority closure: authenticated revocation snapshots and
+# admission grants.
+REVOCATION_SNAPSHOT_SCHEMAS = frozenset({
+    "mini-agi-v16.4.2-revocation-snapshot-v2",
+})
+
+ADMISSION_GRANT_SCHEMAS = frozenset({
+    "mini-agi-v16.4.2-admission-grant-v1",
+})
+
 KNOWN_SCHEMAS: Mapping[str, frozenset[str]] = {
     "campaign_plan": CAMPAIGN_PLAN_SCHEMAS,
     "qualification_record": QUALIFICATION_RECORD_SCHEMAS,
     "promotion_decision": PROMOTION_DECISION_SCHEMAS,
     "runtime_manifest": RUNTIME_MANIFEST_SCHEMAS,
     "activation_receipt": ACTIVATION_RECEIPT_SCHEMAS,
+    "revocation_snapshot": REVOCATION_SNAPSHOT_SCHEMAS,
+    "admission_grant": ADMISSION_GRANT_SCHEMAS,
 }
 
 
@@ -326,6 +338,68 @@ def validate_activation_receipt(value: dict, *,
     return value
 
 
+def validate_revocation_snapshot(value: dict) -> dict:
+    """v16.4.2 revocation snapshot — the authenticated, monotonic
+    replacement for the bare RevocationList."""
+    what = "revocation snapshot"
+    value = _object(value, what)
+    _known_schema(value, "revocation_snapshot", what)
+    epoch = _int(value, "epoch", what)
+    if epoch < 0:
+        raise SchemaRefused(f"{what}: epoch must be >= 0")
+    issued = _int(value, "issued_at", what)
+    until = _int(value, "valid_until", what)
+    if until <= issued:
+        raise SchemaRefused(
+            f"{what}: valid_until must be after issued_at")
+    digests = value.get("revoked_decision_digests")
+    if not isinstance(digests, (list, tuple)):
+        raise SchemaRefused(
+            f"{what}: revoked_decision_digests must be a list")
+    for d in digests:
+        if not isinstance(d, str) or not DIGEST_RE.fullmatch(d):
+            raise SchemaRefused(
+                f"{what}: malformed revoked decision digest {d!r}")
+    kids = value.get("revoked_key_ids")
+    if not isinstance(kids, (list, tuple)):
+        raise SchemaRefused(
+            f"{what}: revoked_key_ids must be a list")
+    for k in kids:
+        if not isinstance(k, str) or not k:
+            raise SchemaRefused(
+                f"{what}: malformed revoked key id {k!r}")
+    _digest_optional(value, "previous_snapshot_digest", what)
+    return value
+
+
+def validate_admission_grant(value: dict) -> dict:
+    """v16.4.2 admission grant — the short-lived authorization the
+    admission service issues to the serving supervisor."""
+    what = "admission grant"
+    value = _object(value, what)
+    _known_schema(value, "admission_grant", what)
+    _text(value, "grant_id", what)
+    _digest(value, "promotion_decision_digest", what)
+    _digest(value, "qualification_digest", what)
+    _digest(value, "runtime_manifest_digest", what)
+    _digest(value, "artifact_root_digest", what)
+    _text(value, "backend_id", what)
+    _digest_optional(value, "backend_binary_digest", what)
+    _int(value, "policy_epoch", what)
+    _int(value, "revocation_epoch", what)
+    issued = _int(value, "issued_at", what)
+    expires = _int(value, "expires_at", what)
+    if expires <= issued:
+        raise SchemaRefused(f"{what}: expires_at must be after issued_at")
+    nonce = value.get("nonce")
+    if not isinstance(nonce, str) or len(nonce) != 32 \
+            or any(c not in "0123456789abcdef" for c in nonce):
+        raise SchemaRefused(
+            f"{what}: nonce must be a 128-bit hex string")
+    _text(value, "audience_runtime_identity", what)
+    return value
+
+
 def validate(kind: str, value, *, require_production: bool = False) -> dict:
     """Validate one authority-bearing artifact by kind."""
     if kind == "campaign_plan":
@@ -340,4 +414,8 @@ def validate(kind: str, value, *, require_production: bool = False) -> dict:
     if kind == "activation_receipt":
         return validate_activation_receipt(
             value, require_production=require_production)
+    if kind == "revocation_snapshot":
+        return validate_revocation_snapshot(value)
+    if kind == "admission_grant":
+        return validate_admission_grant(value)
     raise SchemaRefused(f"unknown artifact kind {kind!r}")

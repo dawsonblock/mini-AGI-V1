@@ -53,10 +53,10 @@ every release ships a signed manifest verifiable offline.
 
 | Item | State |
 |---|---|
-| Current release | [**v16.4.1 — Runtime Security Closure**](https://github.com/dawsonblock/mini-AGI-V1/releases/tag/v16.4.1-colab) (`v16.4.1-colab`) |
-| Release integrity | ✅ **PASS** — `scripts/verify_release.py`: 1,455 files, Ed25519 signature, attestation/version reconciliation |
+| Current release | **v16.4.2 — Authority and Activation Closure** (`v16.4.2`, in flight) · latest published: [**v16.4.1**](https://github.com/dawsonblock/mini-AGI-V1/releases/tag/v16.4.1-colab) |
+| Release integrity | ✅ **PASS** — `scripts/verify_release.py`: signed manifest, Ed25519 signature, attestation/version reconciliation |
 | CI | ✅ **green** — lint (ruff · Flake8 · Pylint error-gate), ubuntu + macOS validation, native CMake/CTest, tag-gated release-integrity |
-| Unified Python suite | ✅ **643 passed, 1 skipped** (`tests-python/`) |
+| Unified Python suite | ✅ **711 passed, 1 skipped** (`tests-python/`) |
 | Native CTest | ✅ 28/28 (ubuntu + macOS CPU/stub builds; CUDA paths unverified offline) |
 | Runtime admission | ✅ full chain — plan → qualification → promotion → manifest → exact bytes — with signed activation receipts and rollback |
 | Evaluator sandbox | ✅ fail-closed — usable / unavailable / misconfigured backends classified explicitly; no unsandboxed fallback |
@@ -67,7 +67,60 @@ every release ships a signed manifest verifiable offline.
 | Campaign 3A — `campaign3a` | ⏳ **PREREGISTERED + EXECUTING** — halved-optimization-pressure arm, sealed digest-bound holdout, resumable per-seed evidence banking |
 | Validated designation | **v16.2** — the v16.3+ promotion gate required Campaign 2 to qualify; it did not |
 
-## What's new in v16.4.1
+## What's new in v16.4.2
+
+**Authority and activation closure.** Measured files can no longer
+become deployable by constructing an object, the production backend
+cannot accept unverified paths, a failed launch cannot leave an
+unauthorized model serving, and missing backend coverage or invalid
+revocations fail closed.
+
+<table>
+<tr><td>
+
+**📐 Measurement ≠ authorization**
+
+`MeasuredSnapshot` proves artifact bytes only. The new `admission`
+authority issues short-lived, single-use `AdmissionGrantV1`s binding
+the promotion decision, measured artifact root, backend, and
+revocation epoch — verified independently by the serving supervisor.
+
+</td><td>
+
+**🔁 Transactional activation**
+
+`REQUESTED → AUTHORIZED → STAGED → PREPARED → READY → COMMITTED →
+ACTIVE` over a durable journal: intent before routing, atomic pointer
+swap, signed completion, guaranteed unload on failure, deterministic
+crash recovery, live-handle-only rollback.
+
+</td></tr>
+<tr><td>
+
+**🔌 OS-enforced boundary**
+
+`minagi.runtime.service` runs the supervisor + launcher under a
+dedicated identity behind an authenticated Unix socket — clients
+submit documents and name backends; they never touch signing keys or
+loader objects.
+
+</td><td>
+
+**🚫 Strict authorization**
+
+Missing `runtime_backends` coverage is refused outright (hf-peft
+never transitively qualifies native backends), and revocation evidence
+is now signed, epoch-monotonic, freshness-and-future bounded, and
+stored atomically.
+
+</td></tr>
+</table>
+
+The full 13-row qualification table from the upgrade spec runs in
+`tests-python/v161/test_v1642_activation_closure.py`. Controller
+correctness (SEC-005/006) is the v16.4.3 gate; real-model Campaign 3
+qualification is the v16.5.0 gate — see
+[`docs/research/UPGRADE_PLAN_V17.md`](docs/research/UPGRADE_PLAN_V17.md).
 
 <table>
 <tr><td>
@@ -258,21 +311,23 @@ and manifest identities — any drift fails the check.
 | Path | Role |
 |---|---|
 | `src/`, `include/` | Native QW3/KVMem/GDN inference runtime (C++17, CUDA, Metal) |
-| `src-python/minagi/v161/` | Campaign plans, dataset manifests, evaluator registry, signed receipts, bootstrap stats, runtime closure |
+| `src-python/minagi/v161/` | Campaign plans, dataset manifests, evaluator registry, signed receipts, bootstrap stats, runtime admission |
+| `src-python/minagi/runtime/` | Transactional activation supervisor, durable journal, AF_UNIX supervised launch service |
+| `src-python/minagi/security/` | Admission grants, signed revocation snapshots, authority client |
 | `src-python/minagi/v14` · `v15` · `v16` | StateEpoch governance, physical runtime closure, donor concepts |
 | `src-python/minagi/platforms/` | Colab/CUDA environment probe, CAS storage, HF runtime, PEFT trainer |
 | `src-python/minagi/rc14/` | Qualification engine, falsification, authority artifacts (drifted donor class retired in v16.4.1) |
 | `src-python/egai/` · `dream_rsi_governed/` · `kvcontinual/` | Proposal-side search, evidence infrastructure, continual-KV research |
 | `scripts/` | Campaign runner, validation harness, release tooling |
 | `configs/` | Campaign plans + deterministic task corpora (`*_tasks.jsonl`) |
-| `tests-python/` | Unified Python suite — 643 tests |
+| `tests-python/` | Unified Python suite — 711 tests |
 | `docs/` · `docs/research/` | Architecture, protocols, campaign designs, defect register |
 
 ## Quality gates
 
 | Gate | What it enforces |
 |---|---|
-| `pytest tests-python` | 643 tests — campaigns, governance, sandboxing, admission, evidence chain |
+| `pytest tests-python` | 711 tests — campaigns, governance, sandboxing, admission, activation lifecycle, evidence chain |
 | `bash scripts/rc11/lint.sh` | ruff + Flake8 at zero findings; Pylint error-category gate at zero findings |
 | `cmake --build` + `ctest` | Native runtime build and CTest on ubuntu + macOS |
 | `verify_release.py` | Signed-manifest integrity — runs in CI on every `v*` tag |
@@ -304,6 +359,8 @@ push and pull request; the release-integrity job is tag-gated.
 
 | Document | Contents |
 |---|---|
+| [`docs/research/RUNTIME_SECURITY_CLOSURE_V1642.md`](docs/research/RUNTIME_SECURITY_CLOSURE_V1642.md) | v16.4.2 authority + activation-closure design and evidence |
+| [`docs/research/UPGRADE_PLAN_V17.md`](docs/research/UPGRADE_PLAN_V17.md) | The v16.4.1 → v17.0 engineering roadmap and release gates |
 | [`docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md`](docs/research/RUNTIME_SECURITY_CLOSURE_V1641.md) | v16.4.1 security-closure design and evidence |
 | [`docs/research/TRAINING_AND_ADMISSION_V164.md`](docs/research/TRAINING_AND_ADMISSION_V164.md) | v16.4 governed training + admission protocol |
 | [`docs/research/REMAINING_DEFECTS_V1641.md`](docs/research/REMAINING_DEFECTS_V1641.md) | Living defect register |

@@ -1,3 +1,56 @@
+# v16.4.2 — Authority and Activation Closure
+
+Closes the three activation-authority weaknesses confirmed in the v17
+upgrade spec (UPGRADE_PLAN_V17 §1/§3), at the source, with a 13-row
+executable qualification table and fault-injection recovery tests.
+Details: `docs/research/RUNTIME_SECURITY_CLOSURE_V1642.md`; open items:
+`docs/research/REMAINING_DEFECTS_V1641.md`. No scientific claim
+changes.
+
+Measurement is not authorization (§3.1):
+
+- `ApprovedSnapshot` renamed `MeasuredSnapshot` — it proves content
+  only. New `minagi.security.admission_grants.AdmissionGrantV1` is the
+  signed, short-lived, single-use authorization binding the promotion
+  decision, qualification, runtime manifest, measured artifact root,
+  backend, policy/revocation epochs, and the runtime identity it is
+  issued to. Two new authority roles: `revocation`, `admission`.
+
+Transactional activation (§3.5/§3.6):
+
+- New `minagi.runtime` package: `activation_state` (legal-transition
+  protocol), `durable_journal` (fsynced transitions + atomic
+  active-version pointer), `supervisor` (REQUESTED → AUTHORIZED →
+  STAGED → PREPARED → READY → COMMITTED → ACTIVE with ABORTED/
+  QUARANTINED terminals, mandatory unload on failure, journal-based
+  crash recovery, live-handle-only rollback).
+- `PeftServingBackend` gained `health_probe()`/`unload()`; `load()`
+  still refuses anything but a staged `MeasuredSnapshot`.
+- `trusted_launcher.py` now issues the admission grant and drives the
+  supervisor transactionally; evidence-persistence failure quarantines
+  the candidate rather than leaving it serving.
+
+OS-enforced boundary (§3.2):
+
+- New `minagi.runtime.service` (AF_UNIX, peer-uid authenticated, fails
+  closed where credentials cannot be extracted) and
+  `minagi.security.trusted_authority_client`. The backend is
+  constructed inside the service; clients submit documents only.
+
+Strict backend + revocation authorization (§3.3/§3.4):
+
+- `runtime_admission.py` refuses a qualification that omits
+  `runtime_backends` — hf-peft coverage never qualifies the native
+  backends.
+- New `minagi.security.signed_revocations.RevocationSnapshotV2` +
+  `RevocationStore`: signed by the `revocation` role, monotonic epochs,
+  freshness-and-future bounded, atomically published, replay-refused.
+
+New test suites: `tests-python/security/` (snapshot + grant adversarial
+rows), `tests-python/runtime/` (supervisor lifecycle, fault injection,
+recovery dispositions, the socket service), and
+`test_v1642_activation_closure.py` — the spec's full 13-row table.
+
 # v16.4.1 — Runtime Security Closure
 
 Closes the four runtime-security defects from the v16.4.0 audit at the

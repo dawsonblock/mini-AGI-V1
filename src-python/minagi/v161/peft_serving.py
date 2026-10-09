@@ -20,7 +20,7 @@ Checks enforced here:
     tolerance (verified by the caller's generation/forward probe)
 
 Loading for serving goes through `PeftServingBackend.load()`, which
-accepts ONLY an `ApprovedSnapshot` staged by the trusted launcher — a
+accepts ONLY an `MeasuredSnapshot` staged by the trusted launcher — a
 raw directory path is not a loadable artifact. There is no public
 function here that opens a mutable adapter directory for serving.
 
@@ -38,7 +38,7 @@ from egai.common.canonical import digest, sha256_bytes
 from minagi.v161.artifact_closure import (ArtifactClosureError, TreeEntry,
                                           close_tree, expected_from_manifest,
                                           verify_entries)
-from minagi.v161.immutable_snapshot import ApprovedSnapshot
+from minagi.v161.immutable_snapshot import MeasuredSnapshot
 
 RUNTIME_MANIFEST_SCHEMA = "mini-agi-v16.5-peft-runtime-manifest-v2"
 
@@ -197,23 +197,27 @@ def runtime_manifest(*, model_id: str, model_revision: str,
 class PeftServingBackend:
     """The only supported PEFT serving entry point.
 
-    `load()` accepts an `ApprovedSnapshot` (staged, verified, frozen by
-    the trusted launcher) and refuses anything else — including a raw
-    path, a str, or a mutable directory. The model, tokenizer, and
-    adapter are opened exclusively from the snapshot root; the
+    `load()` accepts a `MeasuredSnapshot` (staged, verified, frozen by
+    the supervisor's launch path) and refuses anything else — including
+    a raw path, a str, or a mutable directory. The model, tokenizer,
+    and adapter are opened exclusively from the snapshot root; the
     tokenizer is loaded from the verified model artifact, where the
     signed plan binds it (there is no separately substitutable
-    tokenizer path in the served set)."""
+    tokenizer path in the served set).
+
+    v16.4.2: loading and probing are distinct supervised steps — a
+    loaded model is PREPARED (not serving); `health_probe` moves it to
+    READY; `unload` releases a handle on demand so a failed activation
+    cannot leave a resident model behind."""
 
     backend_id = "hf-peft"
 
-    def load(self, snapshot: ApprovedSnapshot):
-        if not isinstance(snapshot, ApprovedSnapshot):
+    def load(self, snapshot: MeasuredSnapshot):
+        if not isinstance(snapshot, MeasuredSnapshot):
             raise PermissionError(
-                "PeftServingBackend.load() requires an ApprovedSnapshot "
-                "staged by TrustedRuntimeLauncher — raw paths are not "
-                "loadable artifacts")
-        import torch
+                "PeftServingBackend.load() requires a MeasuredSnapshot "
+                "staged by the supervised launch path — raw paths are "
+                "not loadable artifacts")
         from peft import PeftModel
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -224,11 +228,34 @@ class PeftServingBackend:
         served = PeftModel.from_pretrained(
             model, str(snapshot.path("adapter")))
         served.eval()
-        with torch.inference_mode():
-            probe = tokenizer("runtime admission probe", return_tensors="pt")
-            served(**probe)
         return {"model": served, "tokenizer": tokenizer,
                 "snapshot_manifest_digest": snapshot.manifest_digest}
+
+    def health_probe(self, handle) -> None:
+        """The PREPARED -> READY gate: the loaded model must actually
+        answer an inference probe before it may be committed."""
+        import torch
+        model, tokenizer = handle["model"], handle["tokenizer"]
+        with torch.inference_mode():
+            probe = tokenizer("runtime admission probe",
+                              return_tensors="pt")
+            out = model(**probe)
+        if out.logits is None:
+            raise RuntimeError("health probe produced no logits")
+
+    def unload(self, handle) -> None:
+        """Release a loaded model. Idempotent — a supervisor may call
+        this during abort and again during recovery."""
+        import gc
+        handle["model"] = None
+        handle["tokenizer"] = None
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:  # noqa: BLE001 - cache hygiene is best effort
+            pass
 
 
 def logits_digest(model, tokenizer, prompts: Iterable[str],

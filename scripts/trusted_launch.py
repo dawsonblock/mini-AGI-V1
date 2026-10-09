@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""Trusted runtime launcher CLI (v16.4.1) — the supported model-loading
-path.
+"""Trusted runtime launcher CLI (v16.4.2) — supervised transactional
+activation.
 
-This is the enforcement point the v16.4.0 audit found missing: every
-launch verifies the full signed chain, measures the model, tokenizer,
-and adapter bytes physically, stages an immutable snapshot, loads the
-selected serving backend ONLY from that snapshot, and emits a signed
-production activation receipt (recorded in the authority ledger) after
-the load succeeds.
+Every launch verifies the full signed chain plus an authenticated
+RevocationSnapshotV2, issues a short-lived AdmissionGrant under the
+`admission` role, stages an immutable measured snapshot, and hands the
+transactional lifecycle to the ServingSupervisor: prepare → health
+probe → durable commit → active-pointer flip. Any failed transition
+unloads the prepared handle and restores traffic to the previous live
+runtime; a crash between commit and switch is reconciled from the
+durable journal before traffic is accepted.
 
     python scripts/trusted_launch.py \
         --storage-root STORAGE --campaign-id CID --seed seed-0 \
         --decision STORAGE/evidence/CID/RUNTIME_MANIFEST.json \
         --adapter-dir STORAGE/adapters/CID/L6/seed-0 \
         --model-path MODEL_DIR \
-        --revocation-list STORAGE/REVOCATIONS.json \
+        --revocation-store STORAGE/revocations \
         --receipt STORAGE/evidence/CID/ACTIVATION_RECEIPT.json
 
 The tokenizer identity is bound by the signed plan as the
@@ -24,9 +26,10 @@ is an optional cross-check root (the same tokenizer files elsewhere),
 never the served copy.
 
 The backend factory (module:callable) must return an object with a
-`backend_id` and a `load(snapshot)` method; the default `hf-peft`
-factory is `minagi.v161.peft_serving.PeftServingBackend`, which refuses
-anything but an ApprovedSnapshot.
+`backend_id` plus `load`/`health_probe`/`unload` lifecycle methods; the
+default `hf-peft` factory is
+`minagi.v161.peft_serving.PeftServingBackend`, which refuses anything
+but a MeasuredSnapshot.
 
 Exit codes: 0 launched, 2 refused (fail closed), 3 configuration error.
 """
@@ -42,8 +45,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src-python"))
 
 from egai.common.crypto import Ed25519Signer  # noqa: E402
+from minagi.runtime.supervisor import ServingSupervisor  # noqa: E402
+from minagi.security.signed_revocations import RevocationStore  # noqa: E402
 from minagi.v161.authority import AuthorityRegistry  # noqa: E402
-from minagi.v161.runtime_admission import RevocationList  # noqa: E402
 from minagi.v161.trusted_launcher import (  # noqa: E402
     LaunchRefused, LaunchRequest, TrustedRuntimeLauncher)
 
@@ -90,13 +94,17 @@ def main(argv=None) -> int:
     ap.add_argument("--backend", default="hf-peft")
     ap.add_argument("--backend-factory", default=None,
                     help="module:callable returning a serving backend")
-    ap.add_argument("--revocation-list", required=True)
+    ap.add_argument("--revocation-store", required=True,
+                    help="directory of signed revocation snapshots "
+                         "(RevocationStore); unsigned lists are refused")
     ap.add_argument("--max-revocation-age-days", type=float, default=7.0)
     ap.add_argument("--snapshot-root", default=None)
     ap.add_argument("--nonce-journal", default=None)
+    ap.add_argument("--journal-dir", default=None)
     ap.add_argument("--receipt", default=None)
     ap.add_argument("--ledger", default=None)
     ap.add_argument("--runtime-key", default=None)
+    ap.add_argument("--admission-key", default=None)
     args = ap.parse_args(argv)
 
     storage = Path(args.storage_root).resolve()
@@ -129,18 +137,34 @@ def main(argv=None) -> int:
     if not registry.is_authorized("runtime", signer.key_id):
         return _config_error("runtime key not registered in trust root")
 
-    try:
-        revocation_list = RevocationList.load(args.revocation_list)
-    except Exception as exc:  # noqa: BLE001
-        return _config_error(f"revocation list load: {exc}")
+    admission_key_path = Path(args.admission_key) if args.admission_key \
+        else storage / ".keys" / "admission.pem"
+    if not admission_key_path.is_file():
+        return _config_error(
+            f"admission key missing: {admission_key_path}")
+    admission_signer = Ed25519Signer.from_private_bytes(
+        admission_key_path.read_bytes())
+    if not registry.is_authorized("admission", admission_signer.key_id):
+        return _config_error(
+            "admission key not registered in trust root")
+
+    revocation_store = RevocationStore(args.revocation_store)
 
     try:
         backend = _resolve_factory(args.backend_factory, args.backend)
     except Exception as exc:  # noqa: BLE001
         return _config_error(f"backend factory: {exc}")
 
+    journal_dir = args.journal_dir or (storage / "runtime_journal")
+    supervisor = ServingSupervisor(
+        journal_dir, runtime_signer=signer, registry=registry)
+    supervisor.recover_from_journal()
+
     launcher = TrustedRuntimeLauncher(
-        registry, revocation_list=revocation_list, runtime_signer=signer,
+        registry, runtime_signer=signer,
+        admission_signer=admission_signer,
+        supervisor=supervisor,
+        revocation_store=revocation_store,
         snapshot_root=args.snapshot_root or (storage / "snapshots"),
         nonce_journal=args.nonce_journal
         or (storage / "activation_nonces.jsonl"),
@@ -170,6 +194,8 @@ def main(argv=None) -> int:
     print(json.dumps({
         "status": "LAUNCHED",
         "backend": result.backend_id,
+        "activation_id": result.activation_id,
+        "grant_digest": result.grant_digest,
         "receipt_digest": result.receipt_doc["digest"],
         "receipt": str(receipt_path),
         "snapshot_root": str(result.snapshot.root),

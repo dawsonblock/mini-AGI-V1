@@ -22,6 +22,8 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from egai.common.canonical import digest  # noqa: E402
 from egai.common.crypto import Ed25519Signer  # noqa: E402
+from minagi.security.signed_revocations import (  # noqa: E402
+    RevocationSnapshotV2, RevocationStore)
 from minagi.v161.artifact_closure import (close_tree,  # noqa: E402
                                           tokenizer_artifact_digest)
 from minagi.v161.authority import AUTHORITY_ROLES, write_trust_root  # noqa: E402
@@ -111,9 +113,17 @@ def _storage(tmp_path):
     revocation.write_text(json.dumps({
         "schema": "mini-agi-v16.4.1-revocation-list-v1",
         "digests": [], "generated_at": TS}))
+    # v16.4.2: the launch path consumes signed revocation snapshots
+    # from a durable store, not a bare list
+    rev_dir = storage / "revocations"
+    snap = RevocationSnapshotV2(
+        epoch=0, issued_at=TS - 60, valid_until=TS + 86400)
+    RevocationStore(rev_dir).publish(
+        snap.to_doc(signer=signers["revocation"]))
     return SimpleNamespace(storage=storage, adir=adir, model=model, tok=tok,
                            cdir=cdir, decision_path=decision_path,
-                           revocation=revocation, manifest=manifest)
+                           revocation=revocation, rev_dir=rev_dir,
+                           manifest=manifest)
 
 
 def _run(cli, *args, env=None):
@@ -198,9 +208,15 @@ class Backend:
     backend_id = "hf-peft"
 
     def load(self, snapshot):
-        assert type(snapshot).__name__ == "ApprovedSnapshot"
+        assert type(snapshot).__name__ == "MeasuredSnapshot"
         cfg = (snapshot.path("adapter") / "adapter_config.json").read_text()
         return {"config": json.loads(cfg)}
+
+    def health_probe(self, handle):
+        return None
+
+    def unload(self, handle):
+        return None
 '''
 
 
@@ -210,7 +226,7 @@ def _launch_args(chain, factory, receipt):
             "--adapter-dir", str(chain.adir),
             "--model-path", str(chain.model),
             "--tokenizer-path", str(chain.tok),
-            "--revocation-list", str(chain.revocation),
+            "--revocation-store", str(chain.rev_dir),
             "--backend-factory", f"c3a_fake_backend:{factory}",
             "--receipt", str(receipt)]
 

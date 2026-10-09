@@ -21,6 +21,8 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from egai.common.canonical import digest  # noqa: E402
 from egai.common.crypto import Ed25519Signer  # noqa: E402
+from minagi.security.signed_revocations import (  # noqa: E402
+    RevocationSnapshotV2)
 from minagi.v161.artifact_closure import (close_tree,  # noqa: E402
                                           tokenizer_artifact_digest)
 from minagi.v161.authority import (AUTHORITY_ROLES, AuthorityLedger,  # noqa: E402
@@ -46,14 +48,17 @@ def _signed(signer, value):
 
 class FakeBackend:
     """Test double for a serving backend. `mutate` runs inside load(),
-    modelling a writer racing the launcher after verification."""
+    modelling a writer racing the launcher after verification. The
+    v16.4.2 supervised protocol adds health_probe + unload."""
 
     backend_id = "hf-peft"
 
-    def __init__(self, *, fail=False, mutate=None):
+    def __init__(self, *, fail=False, mutate=None, unhealthy=False):
         self.fail = fail
         self.mutate = mutate
+        self.unhealthy = unhealthy
         self.seen = None
+        self.unloaded = []
 
     def load(self, snapshot):
         if self.fail:
@@ -62,7 +67,17 @@ class FakeBackend:
             self.mutate()
         self.seen = snapshot
         cfg = (snapshot.path("adapter") / "adapter_config.json").read_text()
-        return {"config": json.loads(cfg), "loaded_from": str(snapshot.root)}
+        handle = {"config": json.loads(cfg),
+                  "loaded_from": str(snapshot.root)}
+        self._handle = handle
+        return handle
+
+    def health_probe(self, handle):
+        if self.unhealthy:
+            raise RuntimeError("probe failed: model did not answer")
+
+    def unload(self, handle):
+        self.unloaded.append(handle)
 
 
 def _build_chain(tmp_path, *, expires_at=None, generated_at=None):
@@ -148,14 +163,27 @@ def _revocation(chain, *, generated_at=None):
         TS if generated_at is None else generated_at))
 
 
+def _revocation_snapshot(chain, *, revoked=(), epoch=0,
+                         issued_at=None, valid_until=None):
+    """A signed RevocationSnapshotV2 — the authenticated revocation
+    evidence the v16.4.2 production path requires."""
+    snap = RevocationSnapshotV2(
+        epoch=epoch, issued_at=TS - 60 if issued_at is None else issued_at,
+        valid_until=TS + 86400 if valid_until is None else valid_until,
+        revoked_decision_digests=tuple(str(d) for d in revoked))
+    return snap.to_doc(signer=chain.signers["revocation"])
+
+
 def _launcher(chain, tmp_path, *, revocation=None, signer=None, **kw):
     return TrustedRuntimeLauncher(
         chain.registry,
-        revocation_list=revocation if revocation is not None
-        else _revocation(chain),
+        revocation_snapshot=revocation if revocation is not None
+        else _revocation_snapshot(chain),
         runtime_signer=signer or chain.signers["runtime"],
+        admission_signer=chain.signers["admission"],
         snapshot_root=tmp_path / "snapshots",
         nonce_journal=tmp_path / "nonces.jsonl",
+        journal_dir=tmp_path / "journal",
         ledger_path=kw.pop("ledger_path", tmp_path / "ledger.jsonl"),
         now=NOW, **kw)
 
@@ -339,19 +367,30 @@ def test_caller_supplied_digest_never_trusted(tmp_path):
             runtime_tokenizer_path=chain.tokenizer)
 
 
-def test_stale_revocation_list_refused(tmp_path):
+def test_stale_revocation_snapshot_refused(tmp_path):
     chain = _build_chain(tmp_path)
-    launcher = _launcher(chain, tmp_path,
-                         revocation=_revocation(chain, generated_at=TS - 10**7))
-    with pytest.raises(LaunchRefused, match="stale"):
-        launcher.launch(_request(chain), FakeBackend())
+    stale = _revocation_snapshot(chain, issued_at=TS - 10**7,
+                                 valid_until=TS - 10**7 + 86400)
+    with pytest.raises(LaunchRefused, match="revocation evidence refused"):
+        TrustedRuntimeLauncher(
+            chain.registry, revocation_snapshot=stale,
+            runtime_signer=chain.signers["runtime"],
+            admission_signer=chain.signers["admission"],
+            snapshot_root=tmp_path / "snapshots",
+            nonce_journal=tmp_path / "nonces.jsonl",
+            journal_dir=tmp_path / "journal",
+            ledger_path=tmp_path / "ledger.jsonl",
+            now=NOW).launch(_request(chain), FakeBackend())
 
 
-def test_launcher_requires_revocation_list(tmp_path):
+def test_launcher_requires_revocation_evidence(tmp_path):
     chain = _build_chain(tmp_path)
-    with pytest.raises(LaunchRefused, match="revocation list is required"):
-        TrustedRuntimeLauncher(chain.registry, revocation_list=None,
+    with pytest.raises(LaunchRefused,
+                       match="authenticated revocation evidence"):
+        TrustedRuntimeLauncher(chain.registry, revocation_snapshot=None,
+                               revocation_store=None,
                                runtime_signer=chain.signers["runtime"],
+                               admission_signer=chain.signers["admission"],
                                snapshot_root=tmp_path / "s",
                                nonce_journal=tmp_path / "n.jsonl")
 
@@ -360,16 +399,46 @@ def test_launcher_requires_runtime_signer(tmp_path):
     chain = _build_chain(tmp_path)
     with pytest.raises(LaunchRefused, match="signing identity is required"):
         TrustedRuntimeLauncher(chain.registry,
-                               revocation_list=_revocation(chain),
+                               revocation_snapshot=_revocation_snapshot(chain),
                                runtime_signer=None,
+                               admission_signer=chain.signers["admission"],
                                snapshot_root=tmp_path / "s",
                                nonce_journal=tmp_path / "n.jsonl")
 
 
+def test_launcher_requires_admission_signer(tmp_path):
+    chain = _build_chain(tmp_path)
+    with pytest.raises(LaunchRefused,
+                       match="admission signing identity"):
+        TrustedRuntimeLauncher(chain.registry,
+                               revocation_snapshot=_revocation_snapshot(chain),
+                               runtime_signer=chain.signers["runtime"],
+                               admission_signer=None,
+                               snapshot_root=tmp_path / "s",
+                               nonce_journal=tmp_path / "n.jsonl")
+
+
+def test_unsigned_revocation_list_refused(tmp_path):
+    """A bare RevocationList document is not authenticated revocation
+    evidence — the v16.4.2 production path refuses it."""
+    chain = _build_chain(tmp_path)
+    unsigned = {"schema": "mini-agi-v16.4.1-revocation-list-v1",
+                "digests": [], "generated_at": TS}
+    with pytest.raises(LaunchRefused,
+                       match="signed envelope required"):
+        TrustedRuntimeLauncher(
+            chain.registry, revocation_snapshot=unsigned,
+            runtime_signer=chain.signers["runtime"],
+            admission_signer=chain.signers["admission"],
+            snapshot_root=tmp_path / "s", nonce_journal=tmp_path / "n.jsonl",
+            journal_dir=tmp_path / "j", now=NOW).launch(
+                _request(chain), FakeBackend())
+
+
 def test_revoked_decision_refused(tmp_path):
     chain = _build_chain(tmp_path)
-    revoked = RevocationList(
-        digests=(chain.decision_doc["digest"],), generated_at=TS)
+    revoked = _revocation_snapshot(
+        chain, revoked=(chain.decision_doc["digest"],))
     launcher = _launcher(chain, tmp_path, revocation=revoked)
     with pytest.raises(LaunchRefused, match="revoked"):
         launcher.launch(_request(chain), FakeBackend())
@@ -479,9 +548,9 @@ def test_production_receipt_schema_required(tmp_path):
 
 def test_peft_backend_refuses_raw_paths(tmp_path):
     chain = _build_chain(tmp_path)
-    with pytest.raises(PermissionError, match="ApprovedSnapshot"):
+    with pytest.raises(PermissionError, match="MeasuredSnapshot"):
         PeftServingBackend().load(chain.adir)
-    with pytest.raises(PermissionError, match="ApprovedSnapshot"):
+    with pytest.raises(PermissionError, match="MeasuredSnapshot"):
         PeftServingBackend().load(str(chain.adir))
 
 
@@ -491,7 +560,7 @@ def test_cuda_loader_refuses_serving_a_raw_adapter_path(tmp_path):
     refused, and the research plane must opt in explicitly."""
     from minagi.platforms.cuda.hf_runtime import HFLoadSpec, load_causal_lm
     spec = HFLoadSpec(model_id="tiny", revision="r1")
-    with pytest.raises(PermissionError, match="ApprovedSnapshot"):
+    with pytest.raises(PermissionError, match="MeasuredSnapshot"):
         load_causal_lm(spec, adapter_path=str(tmp_path / "adapter"))
     with pytest.raises(ValueError, match="purpose"):
         load_causal_lm(spec, purpose="whatever")

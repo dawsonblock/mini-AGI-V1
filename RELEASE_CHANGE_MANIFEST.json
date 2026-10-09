@@ -1,89 +1,79 @@
 {
-  "schema": "mini-agi-v16.4.1-change-manifest-v1",
-  "release": "mini-AGI-v16.4.1-Runtime-Security-Closure",
-  "version": "16.4.1",
-  "base_version": "16.4.0",
-  "summary": "Runtime security closure: mandatory admission, canonical artifact closure (symlinks/special files/unlisted files refused), immutable snapshots, signed production activation receipts with load-measured artifact digests, strict versioned schemas, revocation freshness, replay nonces.",
+  "schema": "mini-agi-v16.4.2-change-manifest-v1",
+  "release": "mini-AGI-v16.4.2-Authority-and-Activation-Closure",
+  "version": "16.4.2",
+  "base_version": "16.4.1",
+  "summary": "Authority and activation closure: MeasuredSnapshot/AdmissionGrant/ActiveRuntime separation, transactional activation with durable journal and rollback, explicit backend coverage, signed monotonic revocation snapshots, supervised AF_UNIX launch service with peer-credential authentication.",
   "audit_mapping": {
     "admission_not_mandatory": "SEC-001",
     "artifact_hashing_overlooks_symlinks": "SEC-002",
     "unsigned_activation_receipts_pass": "SEC-003",
     "schema_and_protocol_requirements_optional": "SEC-004",
-    "controller_accepts_unsupported_prerequisite_evidence": "SEC-005 (v16.4.2, open)",
-    "controller_can_recommend_negative_utility": "SEC-006 (v16.4.2, open)",
-    "real_model_learning_and_serving_qualification_incomplete": "SEC-007 (v16.5.0, open)"
+    "controller_accepts_unsupported_prerequisite_evidence": "SEC-005 (v16.4.3, open)",
+    "controller_can_recommend_negative_utility": "SEC-006 (v16.4.3, open)",
+    "real_model_learning_and_serving_qualification_incomplete": "SEC-007 (v16.5.0, open)",
+    "measured_artifact_implied_authorization": "ACT-002 (v16.4.2, closed)",
+    "backend_load_before_durable_evidence": "ACT-001 (v16.4.2, closed)",
+    "missing_backend_coverage_defaulted": "AUTH-001 (v16.4.2, closed)",
+    "unsigned_revocation_list": "REV-001 (v16.4.2, closed)"
   },
   "repairs": [
     {
-      "id": "SEC-001",
-      "title": "Make runtime admission mandatory in every supported model-loading path",
+      "id": "ACT-001",
+      "title": "Transactional activation: durable intent before routing, atomic pointer, signed completion, rollback",
       "files": [
+        "src-python/minagi/runtime/activation_state.py",
+        "src-python/minagi/runtime/durable_journal.py",
+        "src-python/minagi/runtime/supervisor.py",
         "src-python/minagi/v161/trusted_launcher.py",
         "src-python/minagi/v161/peft_serving.py",
-        "src-python/minagi/platforms/cuda/hf_runtime.py",
-        "scripts/trusted_launch.py",
-        "scripts/run_campaign1.py",
-        "scripts/run_colab_campaign.py",
-        "scripts/validation/adapter_effect_check.py"
+        "scripts/trusted_launch.py"
       ],
       "tests": [
-        "tests-python/v161/test_v1641_trusted_launcher.py",
-        "tests-python/v161/test_v1641_cli.py"
+        "tests-python/runtime/test_activation_supervisor.py",
+        "tests-python/v161/test_v1642_activation_closure.py"
       ],
-      "behavior": "TrustedRuntimeLauncher verifies the full signed chain, measures artifacts physically, stages an immutable snapshot, loads the backend from the snapshot only, and emits a signed production receipt after a successful load. PeftServingBackend refuses anything but an ApprovedSnapshot; the CUDA loader refuses adapter_path in serving mode."
+      "behavior": "The supervisor journals every transition before it takes effect; the active-version pointer is atomically swapped; the signed completion lands after; any failure aborts and unloads the candidate; recovery reconciles journal against pointer deterministically; rollback restores only a live handle."
     },
     {
-      "id": "SEC-002",
-      "title": "Canonical artifact closure: refuse symlinks/special files, bind the complete authorized listing",
+      "id": "AUTH-001",
+      "title": "Explicit backend coverage: a qualification that omits runtime_backends covers nothing",
       "files": [
-        "src-python/minagi/v161/artifact_closure.py",
-        "src-python/minagi/v161/runtime_closure3.py",
-        "src-python/minagi/v161/peft_serving.py"
+        "src-python/minagi/v161/runtime_admission.py"
       ],
       "tests": [
-        "tests-python/v161/test_v1641_artifact_closure.py"
+        "tests-python/v161/test_v1642_activation_closure.py"
       ],
-      "behavior": "close_tree() refuses symbolic links and unsupported special files (never skips them), rejects path traversal, and returns (path, size, sha256) entries. verify_entries() fails on missing, unexpected, resized, or modified files. Digest compatibility with v16.4.0 semantics is preserved for clean trees; trees that previously hashed incompletely are refused."
+      "behavior": "The QUALIFIED_BACKENDS default is removed; a signed qualification must declare a nonempty runtime_backends list; hf-peft coverage never transitively qualifies native backends."
     },
     {
-      "id": "SEC-003",
-      "title": "Signed production activation receipts with load-measured artifacts",
+      "id": "ACT-002",
+      "title": "Measurement != authorization: MeasuredSnapshot + AdmissionGrantV1 + supervised service",
       "files": [
-        "src-python/minagi/v161/runtime_admission.py",
-        "scripts/admit_runtime.py"
+        "src-python/minagi/v161/immutable_snapshot.py",
+        "src-python/minagi/security/admission_grants.py",
+        "src-python/minagi/runtime/service.py",
+        "src-python/minagi/security/trusted_authority_client.py",
+        "src-python/minagi/v161/authority.py",
+        "src-python/minagi/v161/strict_schema.py"
       ],
       "tests": [
-        "tests-python/v161/test_v1641_trusted_launcher.py",
-        "tests-python/v161/test_v1641_cli.py"
+        "tests-python/security/test_admission_grants.py",
+        "tests-python/runtime/test_supervised_service.py",
+        "tests-python/runtime/test_activation_supervisor.py"
       ],
-      "behavior": "Receipt schema v2 binds candidate_digest, qualification/promotion/manifest digests, loaded_artifact_digests measured at load, backend_id, activation_nonce, activated_at, signer_key_id and signature. check_activation_receipt requires a signature by default and require_production=True refuses admission-only receipts. write_activation_receipt refuses unsigned receipts; the admission CLI has no unsigned mode."
+      "behavior": "A staged artifact carries no deployment authority; the `admission` role issues short-lived single-use grants binding decision/qualification/manifest/artifact-root/backend/epochs/audience; the service process owns signing keys behind an authenticated Unix socket."
     },
     {
-      "id": "SEC-004",
-      "title": "Strict versioned schemas, mandatory protocol identity, revocation freshness",
+      "id": "REV-001",
+      "title": "Authenticated monotonic revocation snapshots",
       "files": [
-        "src-python/minagi/v161/strict_schema.py",
-        "src-python/minagi/v161/runtime_admission.py",
-        "scripts/promote.py",
-        "scripts/admit_runtime.py"
+        "src-python/minagi/security/signed_revocations.py"
       ],
       "tests": [
-        "tests-python/v161/test_v1641_strict_schema.py",
-        "tests-python/v161/test_v164_runtime_admission.py"
+        "tests-python/security/test_signed_revocations.py"
       ],
-      "behavior": "One validator per authority-bearing artifact; unknown versions, absent/malformed digests, unsupported backends, and unsafe listing paths are refused. Admission requires the plan's experiment_protocol_digest to equal the manifest's protocol_digest and the qualification's evaluation_bundle_digest to equal the decision's. promote.py refuses to sign decisions whose evaluation or protocol binding is missing."
-    },
-    {
-      "id": "TOCTOU",
-      "title": "Immutable snapshots close the time-of-check/time-of-use window",
-      "files": [
-        "src-python/minagi/v161/immutable_snapshot.py"
-      ],
-      "tests": [
-        "tests-python/v161/test_v1641_artifact_closure.py",
-        "tests-python/v161/test_v1641_trusted_launcher.py"
-      ],
-      "behavior": "Single-pass copy-and-verify stages exactly the bytes that were hashed; the staged digest must equal the authorized digest; the tree is frozen read-only and re-measured immediately before load. ApprovedSnapshot is constructible only by stage_snapshot."
+      "behavior": "RevocationSnapshotV2 is signed by the dedicated `revocation` role, epoch-monotonic, freshness-and-future bounded; the durable store publishes atomically and refuses epoch regression/replay; missing evidence fails closed."
     }
   ],
   "features": [
@@ -143,12 +133,16 @@
     "python_suite": "python -m pytest tests-python -q",
     "release_integrity": "python scripts/verify_release.py",
     "adversarial_acceptance": [
-      "adding a symlink to an approved adapter prevents activation",
-      "changing one byte of an approved adapter prevents activation",
-      "an unsigned or admission-only receipt cannot authorize serving",
-      "an unknown schema version, absent digest, or unsupported backend is refused",
-      "a stale revocation list refuses; a revoked decision replay refuses",
-      "no receipt is written when admission, staging, or the backend load fails"
+      "a forged or caller-constructed snapshot is refused at supervisor stage()",
+      "an object with a path() method is refused",
+      "a qualification omitting runtime_backends is refused; hf-peft does not qualify qwen-native-cuda",
+      "one substituted adapter byte or an added symlink prevents activation",
+      "unsigned, forged, future-dated, stale, or epoch-regressing revocation evidence is refused",
+      "unsigned, wrong-role, wrong-audience, wrong-backend, digest-mismatched, expired, or stale-epoch grants are refused",
+      "receipt persistence failure after commit leaves no externally active candidate",
+      "a crash between commit and traffic switch is reconciled deterministically from the journal",
+      "revoking the active version quarantines it and restores the previous live runtime",
+      "a failed health probe leaves the previous healthy version serving"
     ]
   },
   "review_repairs": [

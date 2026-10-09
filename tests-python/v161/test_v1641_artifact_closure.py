@@ -30,7 +30,7 @@ from minagi.v161.artifact_closure import (  # noqa: E402
     expected_from_manifest, freeze_tree, tokenizer_artifact_digest,
     verify_entries)
 from minagi.v161.immutable_snapshot import (  # noqa: E402
-    ApprovedSnapshot, SnapshotError, stage_snapshot, verify_snapshot)
+    MeasuredSnapshot, SnapshotError, stage_snapshot, verify_snapshot)
 from minagi.v161.runtime_closure3 import sha256_path  # noqa: E402
 
 
@@ -271,7 +271,7 @@ def test_tampering_with_staged_snapshot_is_detected(tmp_path):
 
 def test_approved_snapshot_cannot_be_forged(tmp_path):
     with pytest.raises(SnapshotError, match="stage_snapshot"):
-        ApprovedSnapshot(root=tmp_path, digests={"adapter": "sha256:" + "1" * 64},
+        MeasuredSnapshot(root=tmp_path, digests={"adapter": "sha256:" + "1" * 64},
                          manifest_digest="sha256:" + "7" * 64, closures={})
 
 

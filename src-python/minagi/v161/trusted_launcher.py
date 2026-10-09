@@ -1,36 +1,36 @@
-"""v16.4.1 TrustedRuntimeLauncher — mandatory runtime admission.
+"""v16.4.2 TrustedRuntimeLauncher — supervised transactional launch.
 
-v16.4.0 shipped an admission *controller* but no enforcement point: a
-serving process could load a model, tokenizer, and adapter directly
-from mutable paths, and the audit could not establish that any
-model-loading path passed through admission at all. The launcher is
-that enforcement point. It:
+v16.4.1 made admission mandatory but kept a non-transactional load:
+`backend.load()` ran before activation evidence was durable, and a
+persistence failure after load raised an error while leaving the
+model resident. v16.4.2 (UPGRADE_PLAN §3) makes the launch a
+supervised transaction:
 
-  1. resolves the exact signed campaign plan, qualification record, and
-     promotion decision (plus the runtime manifest the decision
-     authorizes for this seed);
+  1. resolves the exact signed campaign plan, qualification record,
+     promotion decision, and the runtime manifest the decision
+     authorizes for this seed;
   2. verifies every signature, role, validity window, expiry, and the
-     revocation list (with freshness);
+     revocation *snapshot* (signed, monotonic, freshness-and-future
+     bounded — unsigned revocation evidence is refused);
   3. physically measures the model, tokenizer, and adapter bytes —
-     caller-supplied hashes are never trusted, and a supplied hash that
-     disagrees with the measured bytes is refused. The tokenizer
-     identity is the plan's convention (the tokenizer-named files
-     inside the model snapshot root), re-measured from the staged
-     model — the tokenizer the backend opens is part of the verified
-     model artifact, not a separately substitutable path;
-  4. stages the approved artifacts into an immutable snapshot
-     (single-pass copy-and-verify, then read-only), re-verifies it, and
-     hands the backend ONLY that snapshot;
-  5. starts the selected serving backend and, only after it loads
-     successfully, emits a signed production activation receipt binding
-     the decision, qualification, manifest, candidate, the artifact
-     digests actually measured at load, the executing backend, and a
-     replay nonce; the receipt is recorded in the authority ledger.
+     caller-supplied hashes are never trusted;
+  4. the `admission` authority issues a short-lived `AdmissionGrantV1`
+     binding the measured artifact set, the backend, and the operative
+     revocation epoch;
+  5. the `ServingSupervisor` drives REQUESTED → AUTHORIZED → STAGED →
+     PREPARED → READY → COMMITTED → ACTIVE: intent is journaled durably
+     before the traffic pointer moves, the pointer swap is atomic, and
+     the signed completion record lands after;
+  6. the production activation receipt binds the decision,
+     qualification, manifest, candidate, the digests measured at load,
+     the backend, and a replay nonce — ledgered before any traffic.
 
-Any failure refuses the launch and no receipt exists. The only
-supported serving entry point is a `ServingBackend` whose `load()`
-accepts an `ApprovedSnapshot` — see `PeftServingBackend`, which
-refuses raw paths.
+Any failure after PREPARED aborts the activation and unloads the
+backend — a failed launch cannot leave a loaded, unevidenced model
+behind. The only supported serving entry point is a `ServingBackend`
+whose `load()` accepts a `MeasuredSnapshot`, and a `MeasuredSnapshot`
+carries no deployment authority by itself: the supervisor re-verifies
+the grant before anything is staged.
 """
 from __future__ import annotations
 
@@ -46,10 +46,20 @@ from typing import Protocol
 from egai.common.canonical import validate_digest
 from egai.common.crypto import Ed25519Signer
 
+from minagi.runtime.supervisor import (ActivationError,
+                                       ActivationRefused,
+                                       ServingSupervisor)
+from minagi.security.admission_grants import issue_grant
+from minagi.security.signed_revocations import (RevocationRefused,
+                                              RevocationSnapshotV2,
+                                              RevocationStore)
+from minagi.security.signed_revocations import (
+    verify_snapshot as verify_revocation_snapshot)
+
 from .artifact_closure import (ArtifactClosureError, expected_from_manifest,
                                tokenizer_artifact_digest, verify_entries)
 from .authority import AuthorityLedger, as_utc
-from .immutable_snapshot import (ApprovedSnapshot, SnapshotError,
+from .immutable_snapshot import (MeasuredSnapshot, SnapshotError,
                                  stage_snapshot, verify_snapshot)
 from .runtime_admission import (AdmissionRefused, ActivationReceipt,
                                 RevocationList, RuntimeAdmissionController,
@@ -63,7 +73,13 @@ class LaunchRefused(PermissionError):
 class ServingBackend(Protocol):
     backend_id: str
 
-    def load(self, snapshot: ApprovedSnapshot):  # pragma: no cover - protocol
+    def load(self, snapshot: MeasuredSnapshot):  # pragma: no cover
+        ...
+
+    def health_probe(self, handle) -> None:  # pragma: no cover
+        ...
+
+    def unload(self, handle) -> None:  # pragma: no cover
         ...
 
 
@@ -95,50 +111,92 @@ class LaunchRequest:
 
 @dataclass(frozen=True)
 class LaunchResult:
-    snapshot: ApprovedSnapshot
+    snapshot: MeasuredSnapshot
     receipt: ActivationReceipt
     receipt_doc: dict
     backend_id: str
     loaded: object
+    activation_id: str = ""
+    grant_digest: str = ""
 
 
 class TrustedRuntimeLauncher:
-    """The only supported model-loading path: admission is mandatory,
-    the backend sees only an approved immutable snapshot, and the
-    activation receipt is emitted only after a successful load."""
+    """The supervised model-loading path: admission is mandatory and
+    issuance of a short-lived grant precedes any staging; the
+    supervisor owns the transactional lifecycle, and the activation
+    receipt is emitted only after the commit is durable."""
 
-    def __init__(self, registry, *, revocation_list: RevocationList,
-                 runtime_signer: Ed25519Signer,
+    def __init__(self, registry, *, runtime_signer: Ed25519Signer,
+                 admission_signer: Ed25519Signer,
                  snapshot_root, nonce_journal,
+                 revocation_store: RevocationStore | None = None,
+                 revocation_snapshot=None,
+                 supervisor: ServingSupervisor | None = None,
+                 journal_dir=None,
+                 runtime_identity: str = "local-supervisor",
                  max_revocation_age_seconds: int = 7 * 86400,
+                 max_clock_skew_seconds: int = 300,
                  ledger_path=None, now: datetime | None = None):
-        if not isinstance(revocation_list, RevocationList):
+        if revocation_store is None and revocation_snapshot is None:
             raise LaunchRefused(
-                "a revocation list is required — the launcher refuses to "
-                "admit without revocation evidence")
+                "authenticated revocation evidence is required — the "
+                "launcher refuses to admit without a signed revocation "
+                "snapshot (v16.4.2)")
         if runtime_signer is None:
             raise LaunchRefused(
-                "a protected runtime signing identity is required — only a "
-                "signed receipt may authorize serving")
+                "a protected runtime signing identity is required — only "
+                "a signed receipt may authorize serving")
+        if admission_signer is None:
+            raise LaunchRefused(
+                "a protected admission signing identity is required — "
+                "activation requires an AdmissionGrantV1")
         self.registry = registry
-        self.revocation_list = revocation_list
+        self.revocation_store = revocation_store
+        self.revocation_snapshot = revocation_snapshot
         self.max_revocation_age_seconds = int(max_revocation_age_seconds)
+        self.max_clock_skew_seconds = int(max_clock_skew_seconds)
         self.runtime_signer = runtime_signer
+        self.admission_signer = admission_signer
         self.snapshot_root = Path(snapshot_root)
         self.nonce_journal = Path(nonce_journal)
         self.ledger_path = Path(ledger_path) if ledger_path else None
         self._now = now
+        self.supervisor = supervisor if supervisor is not None else \
+            ServingSupervisor(
+                journal_dir or (self.snapshot_root.parent
+                                / "runtime_journal"),
+                runtime_signer=runtime_signer, registry=registry,
+                runtime_identity=runtime_identity, now=now)
 
     def _at(self) -> datetime:
         return as_utc(self._now)
+
+    def _operative_revocations(self) -> RevocationSnapshotV2:
+        """The newest valid authorized revocation snapshot — verified
+        at admission time, never cached across launches."""
+        try:
+            if self.revocation_snapshot is not None:
+                return verify_revocation_snapshot(
+                    self.revocation_snapshot, self.registry,
+                    now=self._now,
+                    max_age_seconds=self.max_revocation_age_seconds,
+                    max_clock_skew_seconds=self.max_clock_skew_seconds)
+            return self.revocation_store.latest_valid(
+                self.registry, now=self._now,
+                max_age_seconds=self.max_revocation_age_seconds,
+                max_clock_skew_seconds=self.max_clock_skew_seconds)
+        except RevocationRefused as exc:
+            raise LaunchRefused(
+                f"revocation evidence refused: {exc}") from exc
 
     def launch(self, request: LaunchRequest, backend: ServingBackend,
                *, receipt_path=None) -> LaunchResult:
         at = self._at()
         if getattr(backend, "backend_id", None) != request.expected_backend:
             raise LaunchRefused(
-                f"backend {getattr(backend, 'backend_id', None)!r} does not "
-                f"match the requested backend {request.expected_backend!r}")
+                f"backend {getattr(backend, 'backend_id', None)!r} does "
+                f"not match the requested backend "
+                f"{request.expected_backend!r}")
 
         from . import strict_schema
         try:
@@ -149,8 +207,10 @@ class TrustedRuntimeLauncher:
             raise LaunchRefused(
                 f"runtime manifest refused for serving: {exc}") from exc
 
+        snapshot = self._operative_revocations()
         controller = RuntimeAdmissionController(
-            self.registry, revocation_list=self.revocation_list,
+            self.registry,
+            revocation_snapshot=snapshot,
             max_revocation_age_seconds=self.max_revocation_age_seconds,
             now=self._now)
         try:
@@ -168,50 +228,77 @@ class TrustedRuntimeLauncher:
             raise LaunchRefused(f"admission refused: {exc}") from exc
 
         manifest = request.runtime_manifest
-        dest = self.snapshot_root / (
-            f"{request.campaign_id}-{request.seed}-{uuid.uuid4().hex[:12]}")
+        activation_id = (f"{request.campaign_id}-{request.seed}-"
+                         f"{uuid.uuid4().hex[:12]}")
+        self.supervisor.request(activation_id)
+        dest = self.snapshot_root / activation_id
+        staged: MeasuredSnapshot | None = None
         try:
-            snapshot = stage_snapshot(
-                dest,
-                {"model": request.model_path,
-                 "adapter": request.adapter_dir},
-                expected_digests={
-                    "model": str(manifest["model_digest"]),
-                    "adapter": str(manifest["adapter_digest"])},
-                resolve_symlinks={"model": True, "adapter": False},
-                manifest_digest=str(manifest["digest"]))
-            verify_snapshot(snapshot)
-            # The plan binds the tokenizer as the tokenizer-named files
-            # inside the model snapshot; re-measure that convention from
-            # the staged model bytes. The tokenizer the backend serves
-            # is part of the verified model artifact — there is no
-            # separate tokenizer path in the served set.
-            tokenizer_digest = tokenizer_artifact_digest(
-                snapshot.path("model"), resolve_symlinks=False)
-            if tokenizer_digest != str(manifest["tokenizer_digest"]):
-                raise ArtifactClosureError(
-                    "staged model's tokenizer artifact digest "
-                    f"{tokenizer_digest} != authorized "
-                    f"{manifest['tokenizer_digest']}")
-            listed = manifest.get("adapter_files")
-            if listed is not None:
-                verify_entries(snapshot.closure("adapter").entries,
-                               expected_from_manifest(listed),
-                               what="staged adapter")
-        except SnapshotError as exc:
-            _discard(dest)
-            raise LaunchRefused(f"snapshot refused: {exc}") from exc
-        except Exception as exc:  # noqa: BLE001 - fail closed, never serve
-            _discard(dest)
-            raise LaunchRefused(f"snapshot refused: {exc}") from exc
+            # AUTHORIZED — the grant binds exactly what will be staged:
+            # the measured model+adapter set on exactly this backend.
+            artifact_root = self._artifact_set_digest(manifest)
+            grant_doc = issue_grant(
+                self.admission_signer,
+                decision_digest=admission.decision_digest,
+                qualification_digest=admission.qualification_record_digest,
+                runtime_manifest_digest=str(manifest["digest"]),
+                artifact_root_digest=artifact_root,
+                backend_id=request.expected_backend,
+                audience_runtime_identity=self.supervisor.runtime_identity,
+                now=self._now,
+                revocation_epoch=snapshot.epoch)
+            self.supervisor.authorize(activation_id, grant_doc)
 
-        try:
-            loaded = backend.load(snapshot)
-        except Exception as exc:  # noqa: BLE001 - no receipt on failure
+            # STAGED — physical copy-and-verify under the destination
+            try:
+                staged = stage_snapshot(
+                    dest,
+                    {"model": request.model_path,
+                     "adapter": request.adapter_dir},
+                    expected_digests={
+                        "model": str(manifest["model_digest"]),
+                        "adapter": str(manifest["adapter_digest"])},
+                    resolve_symlinks={"model": True, "adapter": False},
+                    manifest_digest=str(manifest["digest"]))
+                verify_snapshot(staged)
+                # The plan binds the tokenizer as the tokenizer-named
+                # files inside the model snapshot; re-measure from the
+                # staged model bytes.
+                tokenizer_digest = tokenizer_artifact_digest(
+                    staged.path("model"), resolve_symlinks=False)
+                if tokenizer_digest != str(manifest["tokenizer_digest"]):
+                    raise ArtifactClosureError(
+                        "staged model's tokenizer artifact digest "
+                        f"{tokenizer_digest} != authorized "
+                        f"{manifest['tokenizer_digest']}")
+                listed = manifest.get("adapter_files")
+                if listed is not None:
+                    verify_entries(staged.closure("adapter").entries,
+                                   expected_from_manifest(listed),
+                                   what="staged adapter")
+            except SnapshotError as exc:
+                _discard(dest)
+                raise LaunchRefused(f"snapshot refused: {exc}") from exc
+            except Exception as exc:  # noqa: BLE001 - fail closed
+                _discard(dest)
+                raise LaunchRefused(f"snapshot refused: {exc}") from exc
+            self.supervisor.stage(activation_id, staged)
+
+            # PREPARED -> READY -> COMMITTED -> ACTIVE
+            self.supervisor.prepare(activation_id, backend)
+            self.supervisor.health_check(activation_id)
+            self.supervisor.commit_activation(activation_id)
+        except (LaunchRefused, ActivationRefused, ActivationError) as exc:
+            # the supervisor has already aborted + unloaded anything
+            # post-request; surface the refusal
+            if isinstance(exc, LaunchRefused):
+                raise
+            raise LaunchRefused(str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 - fail closed
+            self.supervisor.abort(activation_id,
+                                  reason=f"launch error: {exc}")
             _discard(dest)
-            raise LaunchRefused(
-                f"serving backend {request.expected_backend!r} failed to "
-                f"load the approved snapshot: {exc}") from exc
+            raise LaunchRefused(f"launch failed: {exc}") from exc
 
         nonce = self._reserve_nonce()
         receipt = ActivationReceipt(
@@ -225,13 +312,13 @@ class TrustedRuntimeLauncher:
                               or admission.candidate_digest),
             # model + adapter bytes from the staged snapshot, plus the
             # tokenizer digest re-measured from the staged model at load
-            loaded_artifact_digests=tuple(snapshot.artifact_digests)
+            loaded_artifact_digests=tuple(staged.artifact_digests)
             + (("tokenizer", tokenizer_digest),),
             activation_nonce=nonce,
             rollback_of=admission.rollback_of)
-        # Evidence is recorded fail-closed: the ledger entry lands first,
-        # then the receipt file — if either cannot be written, no receipt
-        # authorizes the load.
+        # The completion evidence is fail-closed: ledger first, then the
+        # receipt file. If persistence fails after the commit, the
+        # candidate is quarantined — nothing unevidenced stays active.
         try:
             if self.ledger_path is not None:
                 AuthorityLedger(self.ledger_path).append(
@@ -241,13 +328,31 @@ class TrustedRuntimeLauncher:
             if receipt_path is not None:
                 write_activation_receipt(receipt, receipt_path,
                                          signer=self.runtime_signer)
-        except Exception as exc:  # noqa: BLE001 - no evidence, no activation
+        except Exception as exc:  # noqa: BLE001 - no evidence, no serving
+            self.supervisor.quarantine_active(
+                reason=f"activation evidence could not be recorded: {exc}")
             raise LaunchRefused(
-                f"activation evidence could not be recorded: {exc}") from exc
-        return LaunchResult(snapshot=snapshot, receipt=receipt,
+                f"activation evidence could not be recorded — the "
+                f"candidate was quarantined rather than left serving: "
+                f"{exc}") from exc
+        return LaunchResult(snapshot=staged, receipt=receipt,
                             receipt_doc=doc,
                             backend_id=request.expected_backend,
-                            loaded=loaded)
+                            loaded=self.supervisor._live_handles.get(
+                                activation_id, (None, None))[1],
+                            activation_id=activation_id,
+                            grant_digest=grant_doc["digest"])
+
+    # --- helpers ----------------------------------------------------
+    @staticmethod
+    def _artifact_set_digest(manifest: dict) -> str:
+        """The digest a grant's artifact_root_digest binds: the
+        authorized digests of exactly the artifact set the supervisor
+        will stage (model + adapter; the tokenizer is measured inside
+        the staged model)."""
+        from egai.common.canonical import digest
+        return digest({"adapter": str(manifest["adapter_digest"]),
+                       "model": str(manifest["model_digest"])})
 
     # --- replay protection ------------------------------------------
     def _reserve_nonce(self) -> str:
@@ -255,7 +360,8 @@ class TrustedRuntimeLauncher:
         for _ in range(8):
             nonce = secrets.token_hex(16)
             if nonce not in used:
-                self.nonce_journal.parent.mkdir(parents=True, exist_ok=True)
+                self.nonce_journal.parent.mkdir(parents=True,
+                                                exist_ok=True)
                 entry = {"nonce": nonce, "at": self._at().isoformat(),
                          "receipt_schema": "mini-agi-v16.4.1-activation-"
                                            "receipt-v2"}
@@ -279,7 +385,9 @@ class TrustedRuntimeLauncher:
 
 def load_revocation_list(path, *, max_age_seconds: int | None = None,
                          now: datetime | None = None) -> RevocationList:
-    """Load a revocation list, optionally enforcing freshness here."""
+    """Load a legacy unsigned revocation list (research-side checks
+    only — production activation requires a signed
+    RevocationSnapshotV2)."""
     rl = RevocationList.load(path)
     if max_age_seconds is not None:
         at = as_utc(now)

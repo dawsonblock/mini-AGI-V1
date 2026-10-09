@@ -2,7 +2,7 @@
 
 v16.4.1: `load_causal_lm` refuses to open an adapter directory for
 SERVING. Serving must go through `TrustedRuntimeLauncher` and load from
-an `ApprovedSnapshot` (`load_causal_lm(spec, snapshot=snap)`), which
+an `MeasuredSnapshot` (`load_causal_lm(spec, snapshot=snap)`), which
 binds the exact authorized bytes. The research plane — evaluating a
 candidate artifact, which is the experiment itself, not the runtime —
 must opt in explicitly with `purpose="research"`; that flag is the
@@ -52,7 +52,7 @@ def load_causal_lm(spec: HFLoadSpec, *, adapter_path: str | None = None,
                    purpose: str = "serving", snapshot=None):
     """Load a causal LM.
 
-    Serving (default): pass `snapshot=<ApprovedSnapshot>` to load the
+    Serving (default): pass `snapshot=<MeasuredSnapshot>` to load the
     model/tokenizer/adapter from the launcher-staged immutable copy.
     A serving load WITHOUT a snapshot is refused (a bare model load is
     not an admitted artifact), as is `adapter_path` in serving mode — a
@@ -67,13 +67,13 @@ def load_causal_lm(spec: HFLoadSpec, *, adapter_path: str | None = None,
     if purpose == "serving":
         if adapter_path is not None:
             raise PermissionError(
-                "serving must load adapters from an ApprovedSnapshot staged "
+                "serving must load adapters from an MeasuredSnapshot staged "
                 "by TrustedRuntimeLauncher — a raw adapter path is not an "
                 "authorized artifact (research-plane evaluation must pass "
                 "purpose='research' explicitly)")
         if snapshot is None:
             raise PermissionError(
-                "serving requires snapshot=<ApprovedSnapshot> staged by "
+                "serving requires snapshot=<MeasuredSnapshot> staged by "
                 "TrustedRuntimeLauncher — a bare model load is not an "
                 "admitted artifact (research-plane evaluation must pass "
                 "purpose='research' explicitly)")
