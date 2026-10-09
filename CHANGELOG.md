@@ -174,6 +174,24 @@ uncovered: `tests-python/research/test_sequential_governed.py` drives
 the success path, the verified-repair path, the health summary, and
 the evidence chain. Tests: 639 → 641 passing (1 skipped).
 
+Pylint — which some editors run alongside ruff/Flake8 — now reads the
+same contract from `[tool.pylint]`: the convention and refactor
+families and the warning family are disabled (the pyflakes-equivalents
+are enforced by ruff's F family, which is clean; Pylint's variants
+additionally flag unused loop variables, which the compact style uses
+deliberately), the optional extras and platform modules are declared
+as ignored modules, and the error category stays enabled. Pylint's
+defaults reported 17,896 findings on the release surface; the
+configured run reports two — both real, and deliberately not
+suppressed: they point at the drifted donor `minagi/rc14/system.py`
+(its `GovernedRC14System` passes two keyword arguments the base class
+does not accept and reads attributes the base never defines; nothing
+imports it). That is recorded as RC14-001 in the remaining-defects
+register rather than hidden by the config. Three further Pylint errors
+were verified as false positives before being disabled (guarded
+subscripts, a variable assigned under the mirrored condition, and
+dynamic attributes inferred as `object`).
+
 # v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
 
 Phases 2, 3, and (early) 5 of the v17 plan. Scientific claims unchanged

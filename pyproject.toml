@@ -56,3 +56,84 @@ ignore = ["E402", "E501", "E701", "E702", "E703"]
 [tool.ruff.lint.per-file-ignores]
 # Re-export barrels: an unused import here is the module's public API.
 "__init__.py" = ["F401"]
+
+[tool.pylint]
+# Pylint view of the same contract (some editors run Pylint instead of,
+# or in addition to, ruff/Flake8). Pylint enforces its error category —
+# real defects such as undefined names, bad call signatures and
+# unresolvable imports — and stays quiet on everything the contract
+# already declares as not enforced. The pyflakes-equivalents
+# (unused imports/variables, redefinition) are enforced by ruff's F
+# family, which is clean; Pylint's variants additionally flag unused
+# loop variables, which the compact style uses deliberately.
+[tool.pylint.main]
+py-version = "3.11"
+jobs = 4
+ignore = [
+    "build",
+    "references",
+    "third_party",
+    ".pytest_cache",
+    ".ruff_cache",
+]
+# Optional extras and platform modules are not installed in every
+# environment (they are declared as extras in pyproject.toml).
+ignored-modules = [
+    "torch",
+    "torch.*",
+    "transformers",
+    "transformers.*",
+    "peft",
+    "trl",
+    "safetensors",
+    "safetensors.*",
+    "faiss",
+    "mlx",
+    "mlx.*",
+    "accelerate",
+    "bitsandbytes",
+    "huggingface_hub",
+    "tokenizers",
+    "requests",
+    "pyarrow",
+    "pyarrow.*",
+    "cutlass",
+    "cutlass.*",
+    "cuda",
+    "cuda.*",
+    "flashinfer",
+    "flashinfer.*",
+    "tiktoken",
+    "nltk",
+    "PIL",
+    "utils",
+    "utils.*",
+    "scripts.common",
+    "scripts.common.*",
+]
+
+[tool.pylint."messages control"]
+disable = [
+    # Convention (C) and refactor (R) families: naming, docstrings,
+    # line length, design metrics — the compact research style is
+    # deliberate (see .flake8 for the same declaration).
+    "C",
+    "R",
+    # Warnings: either duplicates of the ruff/flake8 F family (which is
+    # enforced and clean) or conventions this codebase does not follow
+    # (one-line statements, ~100-column lines, missing docstrings,
+    # broad excepts, unprotected _private access in research code).
+    "W",
+    # astroid's inference is unreliable on this codebase's dynamically
+    # typed dicts, attribute-heavy objects and platform-specific
+    # syscalls (os.O_DIRECT / posix_fallocate / fadvise are Linux-only);
+    # each of these was verified as a false positive (guarded
+    # subscripts, variables assigned under the mirrored condition,
+    # attributes inferred as 'object'). The real defects these checks
+    # surfaced in this pass were fixed (governed harness) or are
+    # reported (rc14 drift, still flagged below via
+    # unexpected-keyword-arg).
+    "no-member",
+    "unsubscriptable-object",
+    "possibly-used-before-assignment",
+]
