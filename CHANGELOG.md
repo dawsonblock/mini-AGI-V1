@@ -147,6 +147,18 @@ skipped), so `ImmutableCAS` is now imported from its defining module
 instead. `ruff check .` and `flake8 .` both report zero findings;
 tests unchanged at 639 passed (1 skipped).
 
+The pass also surfaced a latent defect in the legacy governed-repair
+harness: `egai/bench/sequential_governed.py` constructed
+`VerifiedEpisode` with 14 positional arguments against a 12-field
+dataclass (every other call site — including its sibling
+`egai/bench/sequential.py` — passes 12), so the verified-repair branch
+raised `TypeError` before it could run. Fixed to the 12-argument form
+and exercised with a probe harness; the branch now executes. A further
+pre-existing issue remains in the same path — `SandboxSkillMemory` has
+no `health()`, which the harness calls at the end of a run — reported,
+not fixed: the intended degraded/retired semantics do not exist in the
+memory model, so implementing it would be inventing behavior.
+
 # v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
 
 Phases 2, 3, and (early) 5 of the v17 plan. Scientific claims unchanged

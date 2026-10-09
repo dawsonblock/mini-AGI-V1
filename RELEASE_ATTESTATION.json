@@ -20,7 +20,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "0e3f5dea9caa70a8c4aa396428a1a59348d4d61e64c6ff6f3e5023eecda50a58",
+ "manifest_sha256": "21502601d2fa7a337164e4ecb0812c96c56d57e0f7e8e83a5f1f8cbbf9039eb9",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "639/639 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -117,9 +117,14 @@
    "manifest_sha256": "0e3f5dea9caa70a8c4aa396428a1a59348d4d61e64c6ff6f3e5023eecda50a58",
    "reason": "v16.4.1 lint contract (dedicated hygiene pass): pyproject.toml [tool.ruff] + .flake8 declare one deliberate contract for both tools (E4/E7/E9/F enforced; compact one-line statements, post-bootstrap imports, ~100-column style, and pycodestyle formatting families documented as intentionally not enforced; __init__.py re-export barrels exempt from F401; references/ and third_party/ excluded). Enforced rules satisfied repo-wide \u2014 ruff check . / flake8 . report zero findings \u2014 via behavior-preserving fixes across 180 files (unused imports and locals, multi-import lines, lambda assignments, ambiguous names, f-strings, one redundant re-import, one unnecessary nonlocal); the F811 re-import was resolved by importing ImmutableCAS from its defining module (the naive removal would have broken the v164 qualification path). Tests unchanged: 639 passed, 1 skipped",
    "utc": "2026-10-09T01:36:36.326396+00:00"
+  },
+  {
+   "manifest_sha256": "21502601d2fa7a337164e4ecb0812c96c56d57e0f7e8e83a5f1f8cbbf9039eb9",
+   "reason": "lint contract follow-up: fixed a latent arity defect surfaced by the same pass \u2014 egai/bench/sequential_governed.py called VerifiedEpisode with 14 positional args against a 12-field dataclass (every other call site passes 12), so the verified-repair branch raised TypeError; now 12 and exercised with a probe. Also dropped an unused unpacked variable in the same file. Remaining pre-existing issue in that untested path (reported, not fixed \u2014 would require inventing semantics): SandboxSkillMemory has no health(), called at the end of a run. Tests unchanged: 639 passed, 1 skipped",
+   "utc": "2026-10-09T01:39:16.192567+00:00"
   }
  ],
- "reissued_utc": "2026-10-09T01:36:36.326396+00:00",
+ "reissued_utc": "2026-10-09T01:39:16.192567+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",

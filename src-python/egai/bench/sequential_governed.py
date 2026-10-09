@@ -60,11 +60,11 @@ class GovernedSequentialExperiment:
                 for sid in resp.used_skills:learner.skills.mark_failure(sid);failures+=1
             repair=self.repair_provider.repair(c,attempt);receipt=self.feedback.verify_repair(c,attempt,repair.output_text);self.validator.validate(receipt,c,attempt,repair.output_text)
             rscore=float(self.scorer(repair.output_text,c.expected));ev=session.record(c,attempt,ascore,repair,receipt,rscore);repairs+=1
-            ep=VerifiedEpisode(c.case_id,c.task_kind,str(c.input),repair.output_text,'',rscore,True,'',tuple(c.tags),attempt,ascore,receipt.verifier_id,receipt.digest,ev.root)
+            ep=VerifiedEpisode(c.case_id,c.task_kind,str(c.input),repair.output_text,'',rscore,True,'',tuple(c.tags),attempt,ascore,receipt.verifier_id)
             learner.observe(ep);traces.append(GovernedTrace(c.case_id,c.task_kind,str(c.input),attempt,repair.output_text,ascore,rscore,tuple(getattr(resp,'used_skills',())),tuple(getattr(resp,'cognitive_actions',())),ev.root,receipt.digest))
             if verification_callback:verification_callback(receipt)
             guard.assert_unchanged(model)
             if i in cp:checkpoint(i)
         beliefs=BeliefCompiler().compile(self.evidence_ledger.eligible('belief'));from egai.common.canonical import digest
-        seq,head=self.evidence_ledger._head();health=learner.skills.health()
+        _,head=self.evidence_ledger._head();health=learner.skills.health()
         return GovernedReport(tuple(points),True,all(x.model_digest==guard.expected for x in points),len(learner.skills.all()),repairs,failures,tuple(traces),max((x.negative_transfer_rate for x in points),default=0.),head,digest([b.derivation_receipt for b in beliefs]),health.get('degraded',0),health.get('retired',0))
