@@ -1397,7 +1397,7 @@
     "tests-python/runtime/test_serving_router.py": "8524178a1b3fcd74ec8f1e5535cacc6ce9bce80b99b06128a9f37eb89350aa92",
     "tests-python/runtime/test_supervised_service.py": "4bae3b7b151546a5e728d2c9251a35806a745e76ff2fe4548a2b126f5732efc1",
     "tests-python/runtime/test_v1644_real_model_e2e.py": "7cc6e81c1d730594d2f71c0a945f493338c2cdad82ac8bdffaf4714f550a947a",
-    "tests-python/runtime/test_v1644_runtime_closure.py": "fb2cdd48b61426b297427a2d7709e4314c0aa357244a49668b2b4ab09faaeaad",
+    "tests-python/runtime/test_v1644_runtime_closure.py": "10627aec64ea2856bf396cf0d8c07c655bd6088078e4a7578cfd23c712ce4a7d",
     "tests-python/security/test_admission_grants.py": "20c4476c5acc53ca45e526f0281060cf45ed35ae99e2e220f39b3c665b9aa0a7",
     "tests-python/security/test_backend_identity.py": "08275a3f9b2fbb9f4d458b5cbeec1192597125ebe71e0a8a5b81389be2f0812c",
     "tests-python/security/test_grant_ledger.py": "8faca43274d89b3bf261bb49aa910ed3decb660b738f237b585b8cbc7b35cc48",
