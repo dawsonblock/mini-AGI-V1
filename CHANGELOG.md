@@ -206,6 +206,22 @@ suites without adding them to the workflow's install line — the
 includes `torch transformers peft safetensors` (the ML dependencies the
 suites import; `faiss`/`trl` are imported nowhere and stay out).
 
+With the suite running again, the only remaining CI failures were the
+documented sandbox-portability ones (TEST-001). Closed here, pulled
+forward from v16.4.2: `execution_sandbox.sandbox_usable()` probes
+whether the selected backend can actually start the interpreter
+(memoized per process), and `run_check` classifies a backend that
+cannot start as unavailable — raising `SandboxUnavailable` rather than
+returning a result that is indistinguishable from a failed check. The
+sandbox-dependent tests now skip under that classification instead of
+failing, so a runner without a usable sandbox is reported honestly
+instead of showing red. The fail-closed property is unchanged: no path
+runs a checker unsandboxed, and a *misconfigured* sandbox still refuses
+to evaluate. Reproduced with the real probe against a `(deny default)`
+profile (`test_real_probe_detects_a_profile_that_cannot_start_the_interpreter`)
+and with a simulated probe failure; tests: 641 → 643 passing
+(1 skipped).
+
 # v16.4.0 — Training Semantics, Runtime Admission, Mechanism Control
 
 Phases 2, 3, and (early) 5 of the v17 plan. Scientific claims unchanged

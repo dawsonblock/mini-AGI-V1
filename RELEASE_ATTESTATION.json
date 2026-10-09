@@ -20,7 +20,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "3bff1ed6cc177e34301243396517e24833c90bb85bb28adb3743b7f6b041fa7a",
+ "manifest_sha256": "3843211204f4e735693bc1aa94697f3a480d2a08bf8414df20ee1f967f88c4c9",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "641/641 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -152,9 +152,14 @@
    "manifest_sha256": "3bff1ed6cc177e34301243396517e24833c90bb85bb28adb3743b7f6b041fa7a",
    "reason": "TEST-001 register precision: the entry now names the exact CI failures and evidence \u2014 ubuntu-latest fails 4 tests with SandboxUnavailable (test_v1622_evaluator_sandbox.py::test_memory_limit_denies_large_allocation and three in test_v166_scientific_gates.py), while macos-latest fails a larger set because sandbox-exec exists but cannot start the runner's interpreter. The CI dependency repair in this push moved the validate job from a total collection failure to 4 failed / 625 passed / 13 skipped",
    "utc": "2026-10-09T02:28:04.296468+00:00"
+  },
+  {
+   "manifest_sha256": "3843211204f4e735693bc1aa94697f3a480d2a08bf8414df20ee1f967f88c4c9",
+   "reason": "TEST-001 closed (pulled forward from v16.4.2): execution_sandbox gains sandbox_usable() \u2014 a memoized probe of whether the selected backend can start the interpreter \u2014 and run_check classifies an unstartable backend as unavailable (SandboxUnavailable) instead of returning a result indistinguishable from a failed check; the sandbox-dependent tests skip under that classification. Fail-closed unchanged: no path runs unsandboxed. Proven with the real probe against a (deny default) profile and a simulated probe failure. Tests: 643 passed, 1 skipped",
+   "utc": "2026-10-09T02:54:17.630956+00:00"
   }
  ],
- "reissued_utc": "2026-10-09T02:28:04.296468+00:00",
+ "reissued_utc": "2026-10-09T02:54:17.630956+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",

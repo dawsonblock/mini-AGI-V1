@@ -26,6 +26,7 @@ from minagi.v161.dataset_manifest import (DatasetMember,  # noqa: E402
                                           DatasetMembershipManifest,
                                           DatasetPartitionSet,
                                           DatasetPartitionSetV2)
+from minagi.v161 import execution_sandbox  # noqa: E402
 from minagi.v161.evaluators import (exact_match, executor_score,  # noqa: E402
                                     score_row)
 from minagi.v161.evidence_receipt_v3 import (  # noqa: E402
@@ -222,6 +223,9 @@ def test_no_baseline_correct_rows_yield_zero_rate():
 
 # ---------- executor-verified scoring ---------------------------------
 
+@pytest.mark.skipif(not execution_sandbox.sandbox_usable(),
+                    reason="no usable OS sandbox backend on this host "
+                           "(TEST-001 classification)")
 def test_score_row_dispatches_verify_spec():
     row = {"id": "x", "expected": "42",
            "verify": {"type": "python_assert",
@@ -241,6 +245,9 @@ def test_executor_score_rejects_unknown_verify_type():
         executor_score("x", "y", {"type": "shell", "check": "true"})
 
 
+@pytest.mark.skipif(not execution_sandbox.sandbox_usable(),
+                    reason="no usable OS sandbox backend on this host "
+                           "(TEST-001 classification)")
 def test_executor_score_check_is_authoritative_over_expected():
     """The verify check, not the expected string, decides correctness —
     a swapped check that demands a different output flips the score."""
@@ -250,6 +257,9 @@ def test_executor_score_check_is_authoritative_over_expected():
     assert executor_score("abc", "abd", v) == 0.0
 
 
+@pytest.mark.skipif(not execution_sandbox.sandbox_usable(),
+                    reason="no usable OS sandbox backend on this host "
+                           "(TEST-001 classification)")
 def test_executor_score_timeout_returns_zero():
     v = {"type": "python_assert",
          "check": "import time; time.sleep(60)"}

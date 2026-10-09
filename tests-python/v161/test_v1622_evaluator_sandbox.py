@@ -30,7 +30,10 @@ from minagi.v161.execution_sandbox import (SandboxUnavailable,  # noqa: E402
 
 BACKENDS = execution_sandbox.available_backends()
 requires_sandbox = pytest.mark.skipif(
-    not BACKENDS, reason="no OS sandbox backend on this host")
+    not execution_sandbox.sandbox_usable(),
+    reason="no usable OS sandbox backend on this host (TEST-001 "
+           "classification: intentionally unavailable — backend missing, "
+           "or present but unable to start the interpreter)")
 
 
 def _assert_exit(check: str, *, timeout_s: float = 10.0) -> int:
@@ -296,6 +299,7 @@ def test_ephemeral_workspace_is_removed(monkeypatch):
     assert created and not Path(created["path"]).exists()
 
 
+@requires_sandbox
 @pytest.mark.skipif(not sys.platform.startswith("linux"),
                     reason="RLIMIT_AS is not enforceable on macOS")
 def test_memory_limit_denies_large_allocation():
@@ -313,6 +317,40 @@ def test_fail_closed_when_no_backend(monkeypatch):
     with pytest.raises(SandboxUnavailable):
         executor_score("x", "", {"type": "python_assert",
                                  "check": "pass"})
+    assert execution_sandbox.sandbox_usable() is False
+
+
+def test_backend_that_cannot_start_is_classified_unavailable(monkeypatch):
+    """TEST-001: a backend that exists but cannot start the interpreter
+    (e.g. a CI runner whose sandbox profile denies the interpreter's own
+    path resolution) is classified as unavailable — fail closed — not as
+    a checker failure."""
+    monkeypatch.setattr(
+        execution_sandbox, "_probe_backend",
+        lambda backend, python: (False, "simulated startup failure"))
+    assert execution_sandbox.sandbox_usable("macos-sandbox-exec") is False
+    with pytest.raises(SandboxUnavailable,
+                       match="cannot start the interpreter"):
+        run_check("pass", backend="macos-sandbox-exec")
+    with pytest.raises(SandboxUnavailable):
+        executor_score("x", "", {"type": "python_assert", "check": "pass"})
+
+
+@pytest.mark.skipif(sys.platform != "darwin",
+                    reason="sandbox-exec profile behaviour")
+def test_real_probe_detects_a_profile_that_cannot_start_the_interpreter(
+        monkeypatch):
+    """The CI-macOS failure mode reproduced with the real probe: sandbox-exec
+    exists but the profile cannot start the interpreter. The backend must be
+    classified unusable, so callers skip instead of failing."""
+    monkeypatch.setattr(execution_sandbox, "_PROBE_CACHE", {})
+    monkeypatch.setattr(
+        execution_sandbox, "_macos_profile",
+        lambda python, ws, reads, extras: "(version 1)\n(deny default)\n")
+    assert execution_sandbox.sandbox_usable("macos-sandbox-exec") is False
+    with pytest.raises(SandboxUnavailable,
+                       match="cannot start the interpreter"):
+        run_check("pass", backend="macos-sandbox-exec")
 
 
 def test_backend_override_none_forces_fail_closed(monkeypatch):

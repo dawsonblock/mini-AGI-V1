@@ -31,6 +31,14 @@ Both backends additionally apply:
   * a minimal environment (os.environ is never inherited),
   * an ephemeral workspace removed after the run,
   * process-group termination on timeout (no orphaned children).
+
+Classification (TEST-001): a backend is *usable* when it exists and can
+actually start the interpreter (`sandbox_usable()`, a memoized probe).
+A backend that exists but cannot run here — e.g. a CI runner whose
+sandbox profile denies the interpreter's own path resolution — is
+treated as unavailable: `run_check` raises `SandboxUnavailable` rather
+than returning a misleading result, and callers skip instead of
+failing. Executable evaluation never runs unsandboxed on any path.
 """
 from __future__ import annotations
 
@@ -216,6 +224,76 @@ def _bwrap_argv(python: str, workspace: str, read_paths: list[str],
     return argv
 
 
+def _build_argv(backend: str, python: str, workspace: str,
+                reads: list[str], env: Mapping[str, str],
+                check: str) -> tuple[list[str], bool]:
+    """(argv, platform_ready) for one sandbox invocation. `platform_ready`
+    is False when the macOS dylib closure could not be resolved (otool
+    unavailable): the interpreter may still start, but the sandbox
+    cannot be verified to — the probe reports that in its detail."""
+    if backend == "macos-sandbox-exec":
+        extras, closure_complete = _extra_read_paths(python)
+        profile = _macos_profile(python, workspace, reads, extras)
+        return [MACOS_SANDBOX_EXEC, "-p", profile, python, "-I", "-S",
+                "-c", check], closure_complete
+    if backend == "linux-bwrap":
+        return _bwrap_argv(python, workspace, reads, env, check), True
+    raise SandboxUnavailable(f"unknown sandbox backend {backend!r}")
+
+
+_PROBE_CACHE: dict[tuple[str, str], tuple[bool, str]] = {}
+
+
+def _probe_backend(backend: str, python: str) -> tuple[bool, str]:
+    """Can this backend actually start the interpreter on this host?
+
+    A backend that exists but cannot run — e.g. a sandbox profile that
+    denies the interpreter's own path resolution on a CI runner — is
+    classified as *unavailable* (fail closed), so callers skip instead
+    of misreading the startup failure as a failed check. Memoized per
+    process: the environment does not change mid-run."""
+    key = (backend, python)
+    if key not in _PROBE_CACHE:
+        probe_ws = tempfile.mkdtemp(prefix="minagi-sandbox-probe-")
+        try:
+            env = {"PATH": "/usr/bin:/bin", "HOME": probe_ws,
+                   "TMPDIR": probe_ws, "PYTHONHASHSEED": "0"}
+            argv, platform_ready = _build_argv(backend, python, probe_ws,
+                                               [], env, "pass")
+            try:
+                proc = subprocess.run(argv, env=env, cwd=probe_ws,
+                                      stdin=subprocess.DEVNULL,
+                                      capture_output=True, timeout=30)
+                ok = proc.returncode == 0
+                detail = (proc.stderr or b"").decode(
+                    "utf-8", "replace").strip()[:200]
+                if not ok and not platform_ready:
+                    detail += (" (interpreter dylib closure could not be "
+                               "resolved — otool unavailable?)")
+            except (OSError, subprocess.SubprocessError) as exc:
+                ok, detail = False, f"{type(exc).__name__}: {exc}"
+        finally:
+            shutil.rmtree(probe_ws, ignore_errors=True)
+        _PROBE_CACHE[key] = (ok, detail)
+    return _PROBE_CACHE[key]
+
+
+def sandbox_usable(backend: str | None = None) -> bool:
+    """True iff a sandbox backend is available on this host AND it can
+    actually start the interpreter (probe).
+
+    This is the TEST-001 classification: 'intentionally unavailable'
+    (no backend, or a backend that cannot run here) is distinct from
+    'the checker failed' (run_check returns a SandboxResult). Callers
+    that need executable evaluation should skip when this is False —
+    run_check raises SandboxUnavailable, it never runs unsandboxed."""
+    try:
+        backend = backend or select_backend()
+    except SandboxUnavailable:
+        return False
+    return _probe_backend(backend, os.path.realpath(sys.executable))[0]
+
+
 def _apply_limits(cpu_limit_s: int, memory_limit_bytes: int,
                   nproc_limit: int, fsize_limit_bytes: int):
     """preexec_fn: applied to the sandbox process, inherited by the
@@ -250,11 +328,18 @@ def run_check(check: str, *, env: Mapping[str, str] | None = None,
     inside the workspace, PYTHONHASHSEED); os.environ is never
     inherited. `read_paths` are mounted/allowlisted read-only. Returns
     a SandboxResult; raises SandboxUnavailable when no sandbox backend
-    can be used (fail closed)."""
+    can be used, or when the selected backend cannot start the
+    interpreter on this host (fail closed — never unsandboxed)."""
     if not isinstance(check, str) or not check.strip():
         raise ValueError("check must be a non-empty python source string")
     backend = backend or select_backend()
     python = os.path.realpath(sys.executable)
+    usable, detail = _probe_backend(backend, python)
+    if not usable:
+        raise SandboxUnavailable(
+            f"sandbox backend {backend!r} cannot start the interpreter on "
+            "this host — executable evaluation fails closed rather than "
+            f"running checkers unsandboxed: {detail}")
 
     owns_workspace = workspace is None
     ws = Path(os.path.realpath(workspace)) if workspace else \
@@ -278,16 +363,7 @@ def run_check(check: str, *, env: Mapping[str, str] | None = None,
         "memory_limit_enforced": sys.platform.startswith("linux"),
     }
 
-    if backend == "macos-sandbox-exec":
-        extras, closure_complete = _extra_read_paths(python)
-        profile = _macos_profile(python, str(ws), reads, extras)
-        argv = [MACOS_SANDBOX_EXEC, "-p", profile, python, "-I", "-S",
-                "-c", check]
-    elif backend == "linux-bwrap":
-        closure_complete = True
-        argv = _bwrap_argv(python, str(ws), reads, child_env, check)
-    else:
-        raise SandboxUnavailable(f"unknown sandbox backend {backend!r}")
+    argv, _ = _build_argv(backend, python, str(ws), reads, child_env, check)
 
     out_path = ws / ".sandbox-stdout"
     err_path = ws / ".sandbox-stderr"
@@ -321,13 +397,6 @@ def run_check(check: str, *, env: Mapping[str, str] | None = None,
     finally:
         if owns_workspace:
             shutil.rmtree(ws, ignore_errors=True)
-
-    if (not timed_out and proc.returncode != 0
-            and "Library not loaded" in stderr and not closure_complete):
-        raise SandboxUnavailable(
-            "interpreter dylib closure could not be resolved (otool "
-            f"unavailable?) — sandbox cannot start the interpreter: "
-            f"{stderr.strip()[:200]}")
 
     return SandboxResult(
         returncode=proc.returncode if proc.returncode is not None else -1,
