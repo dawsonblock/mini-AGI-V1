@@ -1,0 +1,171 @@
+{
+  "arm_hidden_exact_match": {
+    "L1": 0.0,
+    "L2": 0.0,
+    "L3": 0.0,
+    "L4": 0.0,
+    "L5": 0.0,
+    "L6": 0.0024305555555555556,
+    "NC": 0.0
+  },
+  "arm_retention": {
+    "L1": 0.5625,
+    "L2": 0.75,
+    "L3": 0.875,
+    "L4": 0.75,
+    "L5": 0.5625,
+    "L6": 0.7222222222222222,
+    "NC": 0.7430555555555556
+  },
+  "arm_security_pass_rate": {
+    "L1": 0.7083333333333333,
+    "L2": 0.45833333333333337,
+    "L3": 0.7916666666666666,
+    "L4": 0.41666666666666663,
+    "L5": 0.7083333333333333,
+    "L6": 0.662037037037037,
+    "NC": 0.6990740740740741
+  },
+  "arms": [
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "NC"
+  ],
+  "bootstrap_ci_delta_ft_neural": {
+    "alpha": 0.05,
+    "lower": 0.0010416666666666669,
+    "mean": 0.0024305555555555556,
+    "n": 9,
+    "resamples": 20000,
+    "rng_seed": 20241006,
+    "upper": 0.0038194444444444448
+  },
+  "campaign_plan_digest": "sha256:e9ecd87e2b731f255effc75e4ee3885bd635c010a59f2e8406a8a3b4b91a0167",
+  "completed_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "decision": "INCOMPLETE",
+  "delta_ft_neural_L6_minus_L5": 0.0024305555555555556,
+  "delta_ft_per_10k_trainable_params": 1.1e-05,
+  "delta_ft_per_train_hour": 0.5004,
+  "digest": "sha256:f1c994c2ca24d717692b48b0b7d93f5c867f30cb27e1610910dfed3244ebfb5e",
+  "efficiency": {
+    "L1": {
+      "arm_state_bytes_mean": 0.0,
+      "train_seconds_mean": 0.0,
+      "trainable_params": 0,
+      "wall_seconds_mean": 346.913
+    },
+    "L2": {
+      "arm_state_bytes_mean": 1986.0,
+      "train_seconds_mean": 0.0,
+      "trainable_params": 0,
+      "wall_seconds_mean": 355.479
+    },
+    "L3": {
+      "arm_state_bytes_mean": 1495.0,
+      "train_seconds_mean": 0.0,
+      "trainable_params": 0,
+      "wall_seconds_mean": 344.243
+    },
+    "L4": {
+      "arm_state_bytes_mean": 9037.0,
+      "train_seconds_mean": 0.0,
+      "trainable_params": 0,
+      "wall_seconds_mean": 367.489
+    },
+    "L5": {
+      "arm_state_bytes_mean": 75.0,
+      "train_seconds_mean": 0.0,
+      "trainable_params": 0,
+      "wall_seconds_mean": 357.129
+    },
+    "L6": {
+      "arm_state_bytes_mean": 8688689.2,
+      "train_seconds_mean": 17.485,
+      "trainable_params": 2162688,
+      "wall_seconds_mean": 554.902
+    },
+    "NC": {
+      "arm_state_bytes_mean": 8688597.7,
+      "train_seconds_mean": 16.76,
+      "trainable_params": 2162688,
+      "wall_seconds_mean": 585.896
+    }
+  },
+  "environment_digest": "sha256:e2da8e9984b27573521bb56c9f47a06e9f67e9643f8a35f6736cedfa8c126eb0",
+  "environment_digests": [
+    "sha256:467f445908defd37a4becbcbf231273d1a0caebf7010c023b65b950e1f0c5445",
+    "sha256:53cd53df3c1851123f90c4ac92cc3a2607eeab48e5b572dbb0c1455417377575",
+    "sha256:5f461d2b04d63138fcfbd3f7bfd23deb2ccb4fd587736fe9840fbe18ceedbd1d",
+    "sha256:9f60fd552ebbade0258daae9c7f5a8b5b264ef484aec27053039482a1096f3d3",
+    "sha256:a2e427a55526b462744acd079b5c723fda4f8ab7a89a565fb79ba2f715526eb4",
+    "sha256:b48112de5a881a6efc7bdcd51e0f997a5f1f9b4887cbd600ae0798003ef4cd39",
+    "sha256:e2da8e9984b27573521bb56c9f47a06e9f67e9643f8a35f6736cedfa8c126eb0",
+    "sha256:f9376cebca845f0cb4ab05ad243150a12c108f4f25700f994555dda140cee693",
+    "sha256:fc245212de7490dfce7e35465455835d3393684d6c632f22dadf3d62a1a59f4c"
+  ],
+  "execute_subset": [
+    8
+  ],
+  "experiment_protocol_digest": "sha256:653a6a5ac9c911f26b8b643e23fca056e7f03873fbbb141886091c2448987caf",
+  "forward_transfer_vs_L1": {
+    "L2": 0.0,
+    "L3": 0.0,
+    "L4": 0.0,
+    "L5": 0.0,
+    "L6": 0.0024305555555555556,
+    "NC": 0.0
+  },
+  "n_seeds_positive_ft": 6,
+  "negative_control_ft": 0.0,
+  "negative_control_violation": false,
+  "note": "a runner decision is a provisional evidence summary only; QUALIFIED/PASS is experimental qualification, never production promotion authority.",
+  "per_seed_delta_ft_neural": [
+    0.0,
+    0.003125,
+    0.00625,
+    0.003125,
+    0.003125,
+    0.0,
+    0.003125,
+    0.0,
+    0.003125
+  ],
+  "promotion_ready": false,
+  "reasons": [
+    "incomplete evidence matrix: seeds [0, 1, 2, 3, 4, 5, 6, 7, 8]",
+    "mean delta_ft_neural 0.0024 < 0.02",
+    "only 6/9 seeds with positive delta_ft_neural < 7"
+  ],
+  "retention_delayed": {
+    "L1": 0.8125,
+    "L6": 0.8055555555555556
+  },
+  "schema": "mini-agi-v16.2-campaign1-result-v1",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "witness_key_id": "sha256:325e8917a648aa5ac"
+}
