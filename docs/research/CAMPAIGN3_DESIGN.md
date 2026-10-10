@@ -2,10 +2,11 @@
 
 Naming: campaign id suffix follows the plan schema version in use. This
 draft was originally written for the v164 schema ("no new plan class");
-it now targets **v165** — the experiment content is identical (same
-gates, lever, corpus class); v165 only strengthens the signing surface
+it now targets **v166** — the experiment content is identical (same
+gates, lever, corpus class); v165/v166 strengthen the signing surface
 by binding an `ExperimentProtocolV1` (every learning/memory/generation
-hyperparameter) and physical model/tokenizer artifact digests. Because
+hyperparameter), physical model/tokenizer artifact digests, and the
+evaluator-sealed `final_holdout_digest` (v166, bound by digest only). Because
 the trained `q/k/v/o` adapter is deliberately unservable by
 NativeAdapter1, the config sets `require_native_servable_adapter: false`
 — the opt-out itself is part of the signed protocol.
@@ -55,7 +56,7 @@ while preserving the statistically detectable increment.
 | gates | — | **identical values** |
 | seeds | 0-9 | identical |
 | arms | L1-L6 + NC | identical |
-| plan semantics | v164 | v165 (protocol-bound signing surface; same experiment) |
+| plan semantics | v164 | v166 (protocol- + holdout-bound signing surface; same experiment) |
 
 Why lr over the other levers:
 
