@@ -1,11 +1,11 @@
 {
  "audit_mapping": {
   "cold_restoration_reactivates_revoked_promotion": "SEC-402 (closed)",
-  "controller_accepts_unsupported_prerequisite_evidence": "SEC-005 (open, carried)",
-  "controller_can_recommend_negative_utility": "SEC-006 (open, carried)",
+  "controller_accepts_unsupported_prerequisite_evidence": "SEC-005 (closed)",
+  "controller_can_recommend_negative_utility": "SEC-006 (closed)",
   "governed_file_manifest_mismatches_and_unmanifested_evidence": "SEC-403 (closed)",
   "multiprocessing_test_not_importable_under_spawn": "SEC-404 (closed)",
-  "real_model_learning_and_serving_qualification_incomplete": "SEC-007 (open, v16.4.6 target)",
+  "real_model_learning_and_serving_qualification_incomplete": "SEC-007 (open, v16.4.6 platform qualification target)",
   "supervisor_deserializes_worker_pickle": "SEC-401 (closed)"
  },
  "base_version": "16.4.4",
@@ -147,7 +147,7 @@
    "file": "src-python/minagi/v161/experiment_budget.py",
    "new_sha256": "905382cb1c0627e5f574ee1823b713fca234b3809c010964afaeb97a763dc366",
    "old_sha256": null,
-   "repair_id": "SEC-403"
+   "repair_id": "SEC-006"
   },
   {
    "change": "modified",
@@ -287,7 +287,7 @@
    "file": "tests-python/v161/test_v1645_controller_gate.py",
    "new_sha256": "9cfde7bb7d50aa32db17ae0f065efa9c66201f773e5d124b8dcc9c59c21364a5",
    "old_sha256": null,
-   "repair_id": "SEC-403"
+   "repair_id": "SEC-005"
   },
   {
    "change": "modified",
@@ -299,8 +299,6 @@
  ],
  "release": "mini-AGI-V1-v16.4.5-Security-and-Evidence-Closure",
  "remaining_defects": [
-  "SEC-005",
-  "SEC-006",
   "SEC-007"
  ],
  "repairs": [
@@ -377,6 +375,30 @@
     "tests-python/security/test_grant_ledger.py"
    ],
    "title": "Grant-ledger multiprocessing test made importable and diagnostic"
+  },
+  {
+   "behavior": "Closed in the post-v16.4.4 change set and manifested for the first time under this release. SignedAttemptReceipt carries the WP10 field set under an evaluator Ed25519 signature; select_mechanism requires one verified receipt per cheaper rung, bound to the same evidence_digest, with outcome != INVALID, verified under a trusted evaluator verifier. Raw digests, unsigned receipts, untrusted signers, foreign-evidence receipts, and wrong-rung receipts are rejected (19 gate tests).",
+   "files": [
+    "src-python/minagi/v161/plasticity.py",
+    "src-python/minagi/v161/experiment_budget.py"
+   ],
+   "id": "SEC-005",
+   "tests": [
+    "tests-python/v161/test_v1645_controller_gate.py"
+   ],
+   "title": "Mechanism controller requires verified signed attempt receipts"
+  },
+  {
+   "behavior": "Closed in the post-v16.4.4 change set and manifested for the first time under this release. NO_CHANGE is selected whenever the best admissible utility fails to strictly exceed the frozen ObjectiveWeights.utility_threshold (tau=0 default); abstention is distinct from the DIAGNOSTIC_EXPERIMENT path, which remains for the nothing-clears-the-floor case; exhausted-budget refusal, atomic charge accounting and signed exhaustion records are exercised by the gate tests.",
+   "files": [
+    "src-python/minagi/v161/plasticity.py",
+    "src-python/minagi/v161/experiment_budget.py"
+   ],
+   "id": "SEC-006",
+   "tests": [
+    "tests-python/v161/test_v1645_controller_gate.py"
+   ],
+   "title": "Selector abstains below the utility floor instead of picking least-bad"
   }
  ],
  "schema": "mini-agi-v16.4.5-change-manifest-v1",

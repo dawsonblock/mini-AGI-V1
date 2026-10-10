@@ -96,6 +96,15 @@ double-consumption, and runs under spawn plus supported native start
 methods (fork excluded on macOS — sqlite children cannot run after
 fork; documented, not masked).
 
+## SEC-005 / SEC-006 — Controller gate (closed)
+
+Carried open in the v16.4.4 audit mapping; implemented in the
+post-v16.4.4 change set (`plasticity.py`, `experiment_budget.py`) and
+first manifested + re-qualified under this release. Verified signed
+attempt receipts per cheaper rung (SEC-005); `NO_CHANGE` abstention
+at/below the frozen utility threshold with exhausted-budget refusal and
+signed exhaustion records (SEC-006). 19 gate tests.
+
 ## Validation
 
 `909 passed, 1 skipped` (Linux-only RLIMIT_AS test on the macOS host).
