@@ -103,3 +103,5 @@ SCORER_CALIBRATION.json
 # v16.4.5: campaign evidence ships as a separately verified artifact
 # (mini-AGI-Campaign3A-Evidence.zip), not inside the governed source tree.
 colab-evidence/
+
+dist-v1645/
