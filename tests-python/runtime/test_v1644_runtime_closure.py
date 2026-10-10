@@ -2,6 +2,7 @@
 (WP-D), inference budgets (WP-E), and cold-start recovery (WP-F),
 plus the supervisor-level in-flight quarantine invariant (WP-B/G3).
 """
+import json
 import sys
 import threading
 import time
@@ -255,6 +256,51 @@ def test_emergency_quarantine_survives_audit_outage(tmp_path):
     del store.append_admin_audit
     resp = svc._handle_request({"op": "recover"}, op)
     assert resp["ok"] and svc._audit_broken is False
+
+
+def test_audit_outage_flag_survives_restart(tmp_path):
+    """RUN-403: the audit-broken state is DURABLE — a restart during the
+    outage must not silently re-arm launch with a gap in the audit
+    trail. The flag lives in a file next to the authority database."""
+    store = AuthorityStore(tmp_path / "j" / "authority.sqlite")
+    svc, sup, signers = _svc(tmp_path, audit_store=store)
+    sup.store = store
+    backend = FakeBackend()
+    _drive_into(sup, signers, tmp_path, backend, tag="a")
+    from minagi.runtime.access_policy import PrincipalContext
+    op = PrincipalContext(uid=0, role="operator",
+                          principal_id="uid:0")
+
+    def boom(**kw):
+        raise AuthorityStoreError("audit disk full")
+    store.append_admin_audit = boom
+    resp = svc._handle_request(
+        {"op": "quarantine", "reason": "incident"}, op)
+    assert resp["ok"] and svc._audit_broken is True
+    flag = Path(store.db_path).parent / "audit_broken.json"
+    assert flag.is_file()
+    recorded = json.loads(flag.read_text())
+    assert recorded["op"] == "quarantine"
+    assert recorded["principal_id"] == "uid:0"
+    assert recorded["set_at"] > 0
+
+    # "restart": a new service object over the same store rehydrates
+    # the durable flag — launch stays refused even though the new
+    # process never saw the outage in memory.
+    svc2, sup2, _ = _svc(tmp_path, audit_store=store)
+    assert svc2._audit_broken is True
+    del store.append_admin_audit
+    with pytest.raises(ServiceRefused, match="audit"):
+        svc2._handle_request({"op": "launch", "request": {}}, op)
+
+    # reconciliation on the restarted service clears flag + file, and
+    # the reconciling audit carries the recorded outage as evidence
+    resp = svc2._handle_request({"op": "recover"}, op)
+    assert resp["ok"] and svc2._audit_broken is False
+    assert not flag.exists()
+    last = store.admin_events()[-1]
+    assert last["decision"] == "completed"
+    assert last["detail"]["reconciles_outage"]["op"] == "quarantine"
 
 
 def test_admin_chain_detects_tamper(tmp_path):

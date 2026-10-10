@@ -129,9 +129,18 @@ class SupervisorService:
         self._audit_sink = audit_sink   # callable(audit_doc) or None
         self._audit_store = audit_store  # AuthorityStore or None
         self._policy_manifest_digest = str(policy_manifest_digest)
-        self._audit_broken = False       # set when a mandatory audit
-                                         # write failed — activation is
-                                         # blocked until reconciled
+        # RUN-403: the audit-broken state must be DURABLE. The flag is
+        # a file next to the authority database — the last thing that
+        # can fail — so a restart during an audit outage cannot silently
+        # re-arm launch: the flag rehydrates and activation stays
+        # blocked until a reconciling audit record lands.
+        store_db = getattr(self._audit_store, "db_path", None)
+        self._audit_broken_path = (
+            Path(store_db).parent / "audit_broken.json"
+            if store_db else None)
+        self._audit_broken = (self._audit_broken_path.is_file()
+                              if self._audit_broken_path is not None
+                              else False)
         self._sock: socket.socket | None = None
         self._stop = threading.Event()
         self._pool = ThreadPoolExecutor(max_workers=int(max_workers))
@@ -184,6 +193,53 @@ class SupervisorService:
         if op in _PRIVILEGED_OPS:
             return self._dispatch_privileged(req, principal, op)
         raise ServiceRefused(f"unknown op {op!r}")
+
+    # --- durable audit-outage flag (RUN-403) -------------------------
+    def _set_audit_broken(self, *, op: str, principal_id: str,
+                          detail: dict | None = None) -> None:
+        """Record that an op proceeded (or ended) without its durable
+        audit record. The flag file sits next to the authority database
+        — independent of the store that just failed — so the outage
+        survives a restart. Best effort: the in-memory flag is always
+        set even if the filesystem is as broken as the store."""
+        self._audit_broken = True
+        if self._audit_broken_path is None:
+            return
+        doc = {"schema": "mini-agi-v16.4.4-audit-outage-v1",
+               "set_at": int(time.time()), "op": str(op),
+               "principal_id": str(principal_id),
+               "detail": dict(detail or {})}
+        try:
+            tmp = self._audit_broken_path.with_name(
+                self._audit_broken_path.name + ".tmp")
+            tmp.write_text(json.dumps(doc, sort_keys=True))
+            os.replace(tmp, self._audit_broken_path)
+        except OSError:  # noqa: BLE001 - memory flag still holds
+            pass
+
+    def _read_audit_broken(self) -> dict | None:
+        if self._audit_broken_path is None \
+                or not self._audit_broken_path.is_file():
+            return None
+        try:
+            doc = json.loads(self._audit_broken_path.read_text())
+        except Exception:  # noqa: BLE001 - corrupt flag stays broken
+            return {"error": "unreadable audit-outage flag"}
+        return doc if isinstance(doc, dict) else None
+
+    def _clear_audit_broken(self) -> dict | None:
+        """Clear the flag after the reconciling audit landed; returns
+        the recorded outage detail for the reconciling record's
+        evidence. If the file cannot be removed the flag stays —
+        blocking is the conservative failure."""
+        prior = self._read_audit_broken()
+        if self._audit_broken_path is not None:
+            try:
+                self._audit_broken_path.unlink(missing_ok=True)
+            except OSError:  # noqa: BLE001 - still durable: stays set
+                return prior
+        self._audit_broken = False
+        return prior
 
     # --- mandatory administrative audit (WP-D) -----------------------
     def _state_snapshot(self) -> dict:
@@ -248,9 +304,11 @@ class SupervisorService:
         except AuthorityStoreError as exc:
             if op in _EMERGENCY_OPS:
                 # Emergency shutdown proceeds WITHOUT durable evidence —
-                # the incident is flagged and activation blocks until
-                # the audit record can be written again.
-                self._audit_broken = True
+                # the incident is flagged DURABLY and activation blocks
+                # until the audit record can be written again.
+                self._set_audit_broken(
+                    op=op, principal_id=principal.principal_id,
+                    detail={"reason": str(exc)[:200]})
             else:
                 raise ServiceRefused(
                     f"the administrative audit record could not be "
@@ -265,18 +323,27 @@ class SupervisorService:
                                   target=str(exc)[:200],
                                   detail={"request": "outcome"})
             except AuthorityStoreError:
-                self._audit_broken = True
+                self._set_audit_broken(
+                    op=op, principal_id=principal.principal_id,
+                    detail={"reason": str(exc)[:200]})
             raise
+        outage = (self._read_audit_broken() if self._audit_broken
+                  else None)
         try:
+            detail = {"request": "outcome"}
+            if outage is not None:
+                detail["reconciles_outage"] = outage
             self._admin_audit(
                 principal, op, decision="completed", before=before,
                 after=self._state_snapshot(),
                 target=str(resp.get("activation_id") or
                            resp.get("active") or ""),
-                detail={"request": "outcome"})
-            self._audit_broken = False
+                detail=detail)
+            self._clear_audit_broken()
         except AuthorityStoreError as exc:
-            self._audit_broken = True
+            self._set_audit_broken(
+                op=op, principal_id=principal.principal_id,
+                detail={"reason": str(exc)[:200]})
             if op not in _EMERGENCY_OPS:
                 raise ServiceRefused(
                     f"the completed {op!r} could not be durably "
