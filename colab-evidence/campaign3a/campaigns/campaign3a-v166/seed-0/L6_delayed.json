@@ -1,0 +1,37 @@
+{
+  "bundle": {
+    "arm": "L6",
+    "aux": {
+      "probe_kind": "delayed"
+    },
+    "campaign_digest": "sha256:e9ecd87e2b731f255effc75e4ee3885bd635c010a59f2e8406a8a3b4b91a0167",
+    "cell": "L6_delayed",
+    "input_manifest_digest": "sha256:f1468628a3621249795fd19c48aa45c66eff1437b86f151313ac87cb965717ae",
+    "metrics_reported": {
+      "retention_delayed": 0.875
+    },
+    "predictions_digest": "sha256:43a76587c2b4eea0631f8fde96fb25e894e3e72110ce087bbafc946d5d1d683d",
+    "protocol_digest": "sha256:653a6a5ac9c911f26b8b643e23fca056e7f03873fbbb141886091c2448987caf",
+    "schema": "mini-agi-v16.5-evaluation-bundle-v1",
+    "seed": 0
+  },
+  "receipt": {
+    "adapter_digest": "sha256:d5527943415feb589db8329f0717a5532a4f27c8d53deff6ac51b8ff37f52332",
+    "arm": "L6",
+    "campaign_digest": "sha256:e9ecd87e2b731f255effc75e4ee3885bd635c010a59f2e8406a8a3b4b91a0167",
+    "environment_digest": "sha256:a2e427a55526b462744acd079b5c723fda4f8ab7a89a565fb79ba2f715526eb4",
+    "evaluation_bundle_digest": "sha256:9b7c8981211b9b68b02a77c466480b75383286221fea3c27ec3f674c7bdff340",
+    "evaluation_dataset_digest": "sha256:eb9ebbc466deb9ee9c07cb7f1601ef67879617191fefec50311612e25b367b06",
+    "evaluator_digest": "sha256:fb218771931064df6c19cd60c3d218dae625b9554c007a523546e93200f6c17c",
+    "input_manifest_digest": "sha256:f1468628a3621249795fd19c48aa45c66eff1437b86f151313ac87cb965717ae",
+    "model_digest": "sha256:2a704ac027733e40c1f4e33f7fab466515f56a486513ff3e5d79e32c1e5e8b40",
+    "predictions_digest": "sha256:43a76587c2b4eea0631f8fde96fb25e894e3e72110ce087bbafc946d5d1d683d",
+    "protocol_digest": "sha256:653a6a5ac9c911f26b8b643e23fca056e7f03873fbbb141886091c2448987caf",
+    "schema": "mini-agi-v16.5-evidence-receipt-v3",
+    "seed": 0,
+    "signature_b64": "VQufIjfbxYICvl7lQ5uyP77ulyIqC6TDFovFvuQhgVHKzowc2OfpkTODnMfo9lJD1eo9ICxTTcei4KwtDbquDQ==",
+    "signer_key_id": "sha256:325e8917a648aa5ac",
+    "state_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "tokenizer_digest": "sha256:a5c86e1255ad405bf0c9322c1f96b8cd5934dc9dca381bca6e1ed95f5b1e9f55"
+  }
+}

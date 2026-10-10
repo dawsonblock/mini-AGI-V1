@@ -76,6 +76,15 @@ release-ed25519*.pem
 
 adaptive_mtp.md
 
+# Colab execution evidence: keep JSON artifacts; drop archives, keys, binaries.
+colab-evidence/*.tgz
+colab-evidence/.keys/
+colab-evidence/PACKED
+colab-evidence/*.log
+colab-evidence/authority-state.tgz
+colab-evidence/**/adapters/
+colab-evidence/**/.keys/
+
 # Vendored external benchmark harness (its own git repo, ~1.1 GB)
 third_party/openhands-benchmarks/
 

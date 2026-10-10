@@ -1,204 +1,141 @@
 {
-  "schema": "mini-agi-v16.4.2-change-manifest-v1",
-  "release": "mini-AGI-v16.4.2-Authority-and-Activation-Closure",
-  "version": "16.4.2",
-  "base_version": "16.4.1",
-  "summary": "Authority and activation closure: MeasuredSnapshot/AdmissionGrant/ActiveRuntime separation, transactional activation with durable journal and rollback, explicit backend coverage, signed monotonic revocation snapshots, supervised AF_UNIX launch service with peer-credential authentication.",
+  "schema": "mini-agi-v16.4.4-change-manifest-v1",
+  "release": "mini-AGI-V1-v16.4.4-Verified-Runtime-Closure",
+  "version": "16.4.4",
+  "base_version": "16.4.3",
+  "summary": "Verified runtime closure: durable commit intent before any routing publication, generation-checked deployment transitions with predecessor restoration, per-activation request leases with drain/cancel/safe-unload ordering, mandatory durable administrative audit with an explicit emergency-stop exception, enforceable inference budgets, production backend-identity admission, and automatic cold-start restoration that never confuses durable intent with live state.",
   "audit_mapping": {
-    "admission_not_mandatory": "SEC-001",
-    "artifact_hashing_overlooks_symlinks": "SEC-002",
-    "unsigned_activation_receipts_pass": "SEC-003",
-    "schema_and_protocol_requirements_optional": "SEC-004",
-    "controller_accepts_unsupported_prerequisite_evidence": "SEC-005 (v16.4.3, open)",
-    "controller_can_recommend_negative_utility": "SEC-006 (v16.4.3, open)",
-    "real_model_learning_and_serving_qualification_incomplete": "SEC-007 (v16.5.0, open)",
-    "measured_artifact_implied_authorization": "ACT-002 (v16.4.2, closed)",
-    "backend_load_before_durable_evidence": "ACT-001 (v16.4.2, closed)",
-    "missing_backend_coverage_defaulted": "AUTH-001 (v16.4.2, closed)",
-    "unsigned_revocation_list": "REV-001 (v16.4.2, closed)"
+    "traffic_before_durable_commit": "SEC-301 (closed)",
+    "cleared_pointer_on_activation_failure": "SEC-302 (closed)",
+    "global_inflight_and_premature_unload": "SEC-303 (closed)",
+    "production_backend_identity_unenforced": "SEC-304 (closed)",
+    "silent_administrative_audit": "SEC-305 (closed)",
+    "unbounded_inference_parameters": "SEC-306 (closed)",
+    "incomplete_cold_start_restoration": "SEC-307 (closed)",
+    "controller_accepts_unsupported_prerequisite_evidence": "SEC-005 (v16.4.5, open)",
+    "controller_can_recommend_negative_utility": "SEC-006 (v16.4.5, open)",
+    "real_model_learning_and_serving_qualification_incomplete": "SEC-007 (v16.5.0, open)"
   },
   "repairs": [
     {
-      "id": "ACT-001",
-      "title": "Transactional activation: durable intent before routing, atomic pointer, signed completion, rollback",
+      "id": "SEC-301",
+      "title": "Activation commit: durable routing authorization before any traffic",
       "files": [
-        "src-python/minagi/runtime/activation_state.py",
-        "src-python/minagi/runtime/durable_journal.py",
         "src-python/minagi/runtime/supervisor.py",
-        "src-python/minagi/v161/trusted_launcher.py",
-        "src-python/minagi/v161/peft_serving.py",
-        "scripts/trusted_launch.py"
+        "src-python/minagi/runtime/authority_store.py",
+        "src-python/minagi/runtime/journal_v2.py"
       ],
       "tests": [
         "tests-python/runtime/test_activation_supervisor.py",
-        "tests-python/v161/test_v1642_activation_closure.py"
+        "tests-python/runtime/test_v1644_runtime_closure.py"
       ],
-      "behavior": "The supervisor journals every transition before it takes effect; the active-version pointer is atomically swapped; the signed completion lands after; any failure aborts and unloads the candidate; recovery reconciles journal against pointer deterministically; rollback restores only a live handle."
+      "behavior": "commit_activation() now runs a two-stage protocol: commit_activation_intent() atomically CASes the deployment record (generation, desired, previous, transition_id, phase, policy epoch) BEFORE the router publishes; the signed routing_observed event is recorded afterwards and is never described as pre-traffic evidence. A candidate receives zero requests before its durable commit intent exists."
     },
     {
-      "id": "AUTH-001",
-      "title": "Explicit backend coverage: a qualification that omits runtime_backends covers nothing",
+      "id": "SEC-302",
+      "title": "Activation failure restores the predecessor — never an empty pointer",
       "files": [
-        "src-python/minagi/v161/runtime_admission.py"
+        "src-python/minagi/runtime/supervisor.py",
+        "src-python/minagi/runtime/authority_store.py"
       ],
       "tests": [
-        "tests-python/v161/test_v1642_activation_closure.py"
+        "tests-python/runtime/test_activation_supervisor.py",
+        "tests-python/runtime/test_v1644_runtime_closure.py"
       ],
-      "behavior": "The QUALIFIED_BACKENDS default is removed; a signed qualification must declare a nonempty runtime_backends list; hf-peft coverage never transitively qualifies native backends."
+      "behavior": "Unconditional clear_pointer() on activation failure is replaced by reconcile_deployment(): a generation-checked CAS that either restores the last committed live predecessor (RESTORED, with its own correct artifact digests) or durably records UNAVAILABLE at a new generation. Live router and durable intent are converged, never divergent."
     },
     {
-      "id": "ACT-002",
-      "title": "Measurement != authorization: MeasuredSnapshot + AdmissionGrantV1 + supervised service",
+      "id": "SEC-303",
+      "title": "Per-activation request leases; unload only at zero in-flight",
       "files": [
-        "src-python/minagi/v161/immutable_snapshot.py",
-        "src-python/minagi/security/admission_grants.py",
+        "src-python/minagi/runtime/serving_router.py",
+        "src-python/minagi/runtime/supervisor.py"
+      ],
+      "tests": [
+        "tests-python/runtime/test_serving_router.py",
+        "tests-python/runtime/test_v1644_runtime_closure.py"
+      ],
+      "behavior": "The single global _inflight counter is replaced by per-activation RouteLeaseState (accepting/draining/inflight). abort() and quarantine_active() stop routing, drain the activation's own leases, and unload only at zero in-flight. A drain timeout triggers cooperative cancellation and retains resources — it is never unload permission. safe_unload() refuses while leases remain."
+    },
+    {
+      "id": "SEC-304",
+      "title": "Production admission enforces backend identity and policy epoch",
+      "files": [
         "src-python/minagi/runtime/service.py",
-        "src-python/minagi/security/trusted_authority_client.py",
-        "src-python/minagi/v161/authority.py",
-        "src-python/minagi/v161/strict_schema.py"
+        "src-python/minagi/runtime/supervisor.py"
       ],
       "tests": [
-        "tests-python/security/test_admission_grants.py",
-        "tests-python/runtime/test_supervised_service.py",
-        "tests-python/runtime/test_activation_supervisor.py"
+        "tests-python/runtime/test_supervised_service.py"
       ],
-      "behavior": "A staged artifact carries no deployment authority; the `admission` role issues short-lived single-use grants binding decision/qualification/manifest/artifact-root/backend/epochs/audience; the service process owns signing keys behind an authenticated Unix socket."
+      "behavior": "--production requires ProductionRuntimeConfig: signed backend manifest verified against the trust root, installed backend/dependency closure measured, operative policy epoch enforced, revocation evidence fresh and authentic at boot, runtime/admission signing keys role-checked, protected filesystem ownership verified, policy manifest and artifact stores must exist. Any failure refuses startup."
     },
     {
-      "id": "REV-001",
-      "title": "Authenticated monotonic revocation snapshots",
+      "id": "SEC-305",
+      "title": "Mandatory durable administrative audit with emergency-stop exception",
       "files": [
-        "src-python/minagi/security/signed_revocations.py"
+        "src-python/minagi/runtime/authority_store.py",
+        "src-python/minagi/runtime/service.py"
       ],
       "tests": [
-        "tests-python/security/test_signed_revocations.py"
+        "tests-python/runtime/test_v1644_runtime_closure.py"
       ],
-      "behavior": "RevocationSnapshotV2 is signed by the dedicated `revocation` role, epoch-monotonic, freshness-and-future bounded; the durable store publishes atomically and refuses epoch regression/replay; missing evidence fails closed."
-    }
-  ],
-  "features": [
-    {
-      "id": "FEAT-001",
-      "title": "v2 runtime manifest with explicit authorized file listing",
-      "files": [
-        "src-python/minagi/v161/peft_serving.py"
-      ],
-      "tests": [
-        "tests-python/v161/test_peft_trainer_v1621.py",
-        "tests-python/v161/test_v1641_strict_schema.py"
-      ],
-      "note": "mini-agi-v16.5-peft-runtime-manifest-v2 binds adapter_files; serving requires v2 (the launcher refuses aggregate-digest-only manifests)."
+      "behavior": "Privileged operations (launch/rollback/quarantine/recover) write signed, hash-chained admin_audit records (principal, operation, target, policy digest, decision, before/after state) before the side effect runs. Audit failure refuses ordinary administrative changes; emergency traffic shutdown still proceeds but blocks further activation until the audit trail reconciles (audit_broken flag cleared by the next successful privileged-op audit)."
     },
     {
-      "id": "FEAT-002",
-      "title": "RevocationList with generation time and freshness enforcement",
+      "id": "SEC-306",
+      "title": "Enforceable inference budgets",
       "files": [
-        "src-python/minagi/v161/runtime_admission.py",
-        "src-python/minagi/v161/trusted_launcher.py",
-        "scripts/admit_runtime.py"
-      ],
-      "tests": [
-        "tests-python/v161/test_v1641_strict_schema.py",
-        "tests-python/v161/test_v1641_trusted_launcher.py",
-        "tests-python/v161/test_v1641_cli.py"
-      ],
-      "note": "The launcher requires a revocation list (default max age 7 days); a stale list refuses instead of being treated as empty."
-    },
-    {
-      "id": "FEAT-003",
-      "title": "Replay nonces recorded in an append-only journal",
-      "files": [
-        "src-python/minagi/v161/trusted_launcher.py"
-      ],
-      "tests": [
-        "tests-python/v161/test_v1641_trusted_launcher.py"
-      ],
-      "note": "Each production receipt carries a fresh 128-bit nonce; the journal makes reuse detectable."
-    },
-    {
-      "id": "FEAT-004",
-      "title": "Trusted launch CLI and launcher rollback lineage",
-      "files": [
-        "scripts/trusted_launch.py",
-        "src-python/minagi/v161/trusted_launcher.py"
-      ],
-      "tests": [
-        "tests-python/v161/test_v1641_cli.py",
-        "tests-python/v161/test_v1641_trusted_launcher.py"
-      ],
-      "note": "scripts/trusted_launch.py --backend-factory module:callable; rollback re-admits a previously receipted release and records rollback_of in the receipt."
-    }
-  ],
-  "verification": {
-    "python_suite": "python -m pytest tests-python -q",
-    "release_integrity": "python scripts/verify_release.py",
-    "adversarial_acceptance": [
-      "a forged or caller-constructed snapshot is refused at supervisor stage()",
-      "an object with a path() method is refused",
-      "a qualification omitting runtime_backends is refused; hf-peft does not qualify qwen-native-cuda",
-      "one substituted adapter byte or an added symlink prevents activation",
-      "unsigned, forged, future-dated, stale, or epoch-regressing revocation evidence is refused",
-      "unsigned, wrong-role, wrong-audience, wrong-backend, digest-mismatched, expired, or stale-epoch grants are refused",
-      "receipt persistence failure after commit leaves no externally active candidate",
-      "a crash between commit and traffic switch is reconciled deterministically from the journal",
-      "revoking the active version quarantines it and restores the previous live runtime",
-      "a failed health probe leaves the previous healthy version serving"
-    ]
-  },
-  "review_repairs": [
-    {
-      "id": "REVIEW-1",
-      "title": "Tokenizer identity uses one shared plan convention",
-      "files": [
-        "src-python/minagi/v161/artifact_closure.py",
-        "src-python/minagi/v161/runtime_admission.py",
-        "src-python/minagi/v161/trusted_launcher.py",
+        "src-python/minagi/runtime/inference_policy.py",
+        "src-python/minagi/runtime/serving_router.py",
         "src-python/minagi/v161/peft_serving.py",
-        "scripts/run_campaign1.py",
-        "scripts/trusted_launch.py",
-        "scripts/admit_runtime.py"
+        "src-python/minagi/runtime/service.py"
       ],
       "tests": [
-        "tests-python/v161/test_v1641_artifact_closure.py",
-        "tests-python/v161/test_v1641_trusted_launcher.py",
-        "tests-python/v161/test_v164_runtime_admission.py"
+        "tests-python/runtime/test_v1644_runtime_closure.py"
       ],
-      "note": "artifact_closure.tokenizer_artifact_digest is the single implementation of the plan's convention (tokenizer-named files inside the model snapshot); the runner delegates (plan digests unchanged, Campaign 3A resume preserved), the launcher re-measures it from the staged model, the backend serves the tokenizer from the verified model artifact, and an explicit tokenizer root is an optional cross-check."
+      "behavior": "InferenceBudgetPolicyV1 bounds prompt tokens (actual tokenizer count, not characters), generated tokens (clamped), concurrency (router lease acquisition refuses over-limit), per-principal queue depth, and execution deadline. PeftServingBackend.infer() enforces the bound inside generate() and reports applied-vs-requested metrics."
     },
     {
-      "id": "REVIEW-2",
-      "title": "Serving loads require an ApprovedSnapshot",
+      "id": "SEC-307",
+      "title": "Automatic cold-start restoration",
       "files": [
-        "src-python/minagi/platforms/cuda/hf_runtime.py",
-        "scripts/run_campaign1.py",
-        "scripts/run_colab_campaign.py"
+        "src-python/minagi/runtime/recovery_manager.py",
+        "src-python/minagi/runtime/supervisor.py",
+        "src-python/minagi/runtime/service.py"
       ],
       "tests": [
-        "tests-python/v161/test_v1641_trusted_launcher.py"
+        "tests-python/runtime/test_v1644_runtime_closure.py"
       ],
-      "note": "load_causal_lm() with the default purpose='serving' previously fell through to a bare from_pretrained(spec.model_id) when no snapshot was passed; it now refuses, and the research-plane base-model call sites pass purpose='research'."
-    },
-    {
-      "id": "REVIEW-3",
-      "title": "Release verifier refuses symlinks",
-      "files": [
-        "scripts/verify_release.py"
-      ],
-      "tests": [
-        "tests-python/v161/test_v1622_verify_release_script.py"
-      ],
-      "note": "An added symlink previously passed verification silently; links are now refused (symlinks_in_tree, exit 2), consistent with the artifact-closure policy and build_zip.py."
-    },
-    {
-      "id": "REVIEW-4",
-      "title": "Snapshot staging validates names and always cleans up",
-      "files": [
-        "src-python/minagi/v161/immutable_snapshot.py"
-      ],
-      "tests": [
-        "tests-python/v161/test_v1641_artifact_closure.py"
-      ],
-      "note": "An unauthorized artifact name raised a raw KeyError and left a partially staged, unfrozen tree behind; names are validated up front (SnapshotError, nothing staged) and any staging failure discards the destination."
+      "behavior": "RecoveryManager.restore() validates the durable record, re-authorizes under CURRENT policy with a FRESH admission grant (a consumed grant is never reused), re-measures staged artifact bytes, loads without accepting inference, health-checks, then commits and publishes through the normal verified path. The service never declares ready merely because a pointer exists; permanent failure is durably UNAVAILABLE; restoration is idempotent and a serving supervisor is never re-restored."
     }
+  ],
+  "journal_schema": {
+    "deployment_record": "deployments: deployment_generation (monotonic), desired_activation_id, previous_activation_id, transition_id, transition_phase (COMMITTING/COMMITTED/ROUTED/RESTORED/UNAVAILABLE), policy_epoch, last_committed_event_digest",
+    "new_event_kinds": [
+      "commit_intent (COMMITTED, unsigned intent record)",
+      "routing_observed (signed, post-traffic observation)",
+      "deployment_restored (signed, predecessor republished)",
+      "deployment_unavailable (signed, fail-closed durable state)",
+      "restoration_completed (signed, recovery evidence)",
+      "unload_deferred (same-state marker: leases retain backend)"
+    ],
+    "pseudo_activation_ids": ["__deployment__", "__migration__"],
+    "admin_audit_table": "sequence-chained signed records; verify_admin_chain() detects tamper"
+  },
+  "migration": {
+    "v1643_to_v1644": "AuthorityStore.__init__ migrates an existing v16.4.3 database: creates the deployments row seeded from the serving pointer (generation=1, phase=COMMITTED), creates admin_audit, leaves event history untouched. Covered by test_v1643_store_migrates_deployment_row."
+  },
+  "evidence": {
+    "python_tests": "793 passed, 1 skipped (pytest tests-python, Python 3.12.0, macOS arm64)",
+    "runtime_tests": "tests-python/runtime: 220+ covering activation protocol, leases, drain, reconcile, audit, budgets, restoration, migration",
+    "native_tests": "not rebuilt in this change set — see remaining_defects",
+    "gpu_tests": "none — CPU-only qualification; no GPU claims"
+  },
+  "remaining_defects": [
+    "SEC-005/SEC-006 controller correctness deferred to v16.4.5 by plan",
+    "SEC-007 real-model learning qualification deferred to v16.5.0",
+    "Real-model (HF/PEFT weights) end-to-end activation/rollback/recovery exercised with deterministic fake backends in tests; a real small-model run is recorded as pending qualification, not claimed",
+    "Inference worker-process isolation is policy-described but backends run in-process in this build — a stalled model cannot be SIGKILLed without stopping the service",
+    "Native ctest suite not re-executed in this worktree"
   ]
 }

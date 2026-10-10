@@ -99,6 +99,25 @@ class MeasuredSnapshot:
     def closure(self, name: str) -> TreeClosure:
         return self._closures[name]
 
+    def __getstate__(self):
+        """Serialize an already-measured snapshot for transport to a
+        supervised worker process (v16.4.5 RUN-401). The sentinel still
+        gates CONSTRUCTION — restoring the pickle does not call
+        __init__; it re-materializes measurement evidence produced by
+        stage_snapshot, it cannot create it."""
+        return {"root": self._root, "digests": dict(self._digests),
+                "manifest_digest": self._manifest_digest,
+                "closures": dict(self._closures)}
+
+    def __setstate__(self, state):
+        for _n, d in dict(state.get("digests") or {}).items():
+            validate_digest(d)
+        validate_digest(state["manifest_digest"])
+        self._root = Path(state["root"])
+        self._digests = dict(state["digests"])
+        self._manifest_digest = str(state["manifest_digest"])
+        self._closures = dict(state["closures"])
+
     def __repr__(self) -> str:  # pragma: no cover - diagnostics only
         return (f"MeasuredSnapshot(root={str(self._root)!r}, "
                 f"artifacts={sorted(self._digests)}, "

@@ -48,7 +48,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "d16978825b2cd74c7de71b1d8a84312c5620412cdb98ace2a707a4ce954cf634",
+ "manifest_sha256": "fc5d861b28a84d0cc238cbd61ef10846d3568f3622cf91fdea7040edf282d1e2",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -210,9 +210,26 @@
    "manifest_sha256": "d16978825b2cd74c7de71b1d8a84312c5620412cdb98ace2a707a4ce954cf634",
    "reason": "v16.4.3 hardened runtime: authority store, op authorization, path authority, verified journal + migration, crash-safe recovery, backend manifest, bounded service I/O, serving router (SEC-201..207, OPS-001..003 closed). (manifest regenerated after VERSION/SBOM bump + router callable() fix)",
    "utc": "2026-10-09T09:05:44.277747Z"
+  },
+  {
+   "commit": "85f6461",
+   "manifest_sha256": "94dc9a436d1ea430bf6b1373cfe5299091b912b0f33e254623f0e5af8d443233",
+   "reason": "v16.4.4 verified runtime closure: durable commit intent before routing, generation-checked reconcile/rollback, per-activation leases with drain/cancel/safe-unload, mandatory durable admin audit with emergency-stop exception, inference budgets, production backend-identity admission, automatic cold-start restoration (SEC-301..307 closed).",
+   "utc": "2026-10-09T22:01:27.480977Z"
+  },
+  {
+   "commit": "HEAD",
+   "manifest_sha256": "5d5863d4635d3d2ae7f0b25541f6e9ea425200ba15438f8ad53417c582b2e07c",
+   "reason": "v16.4.4 closure: added real-model e2e evidence, RUNTIME_CLOSURE_V1644.md + REMAINING_DEFECTS_V1644.md docs, __init__/SBOM version reconciliation; manifest regenerated over the committed tree.",
+   "utc": "2026-10-09T22:06:28.583589Z"
+  },
+  {
+   "manifest_sha256": "fc5d861b28a84d0cc238cbd61ef10846d3568f3622cf91fdea7040edf282d1e2",
+   "reason": "v16.4.4 post-release lint cleanup: unused import/variable removed in test_v1644_runtime_closure.py; code behavior unchanged.",
+   "utc": "2026-10-09T22:08:24.074039Z"
   }
  ],
- "reissued_utc": "2026-10-09T09:05:44.277747Z",
+ "reissued_utc": "2026-10-09T22:08:24.074039Z",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -232,7 +249,20 @@
    "release": "mini-AGI-v16.4.2-Authority-and-Activation-Closure"
   }
  ],
- "release": "mini-AGI-v16.4.3-Hardened-Runtime",
+ "release": "mini-AGI-V1-v16.4.4-Verified-Runtime-Closure",
+ "runtime_closure_v1644": {
+  "change_manifest": "RELEASE_CHANGE_MANIFEST.json",
+  "defects_closed": [
+   "SEC-301 model published before signed pre-routing authorization",
+   "SEC-302 activation failure cleared the durable pointer instead of restoring the predecessor",
+   "SEC-303 global in-flight counter; unload before routing stop; drain timeout treated as unload permission",
+   "SEC-304 production startup did not enforce backend manifest/policy epoch/revocation freshness",
+   "SEC-305 administrative audit could silently fail",
+   "SEC-306 unbounded inference parameters and missing concurrency/deadline limits",
+   "SEC-307 cold-start recovery stopped at pointer reconciliation without reloading the model"
+  ],
+  "tests": "tests-python/runtime/test_v1644_runtime_closure.py (15 rows), tests-python/runtime/test_serving_router.py, tests-python/runtime/test_activation_supervisor.py, tests-python/runtime/test_supervised_service.py"
+ },
  "runtime_security_closure": {
   "audit_defects_closed": [
    "SEC-001 admission mandatory",
@@ -248,5 +278,5 @@
  },
  "schema": "mini-agi-v16.1-release-attestation-v1",
  "signature_algorithm": "Ed25519",
- "status": "PASS_HARDENED_RUNTIME_GPU_SMOKE_PENDING"
+ "status": "PASS_VERIFIED_RUNTIME_CLOSURE_REAL_MODEL_PENDING"
 }

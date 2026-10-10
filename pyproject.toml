@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mini-agi-converged"
-version = "16.4.3"
+version = "16.4.4"
 description = "Converged governed continual-learning research runtime with Colab/CUDA campaigns and externally executed evidence closure"
 requires-python = ">=3.11"
 dependencies = ["numpy>=2.0", "cryptography>=43", "fastapi>=0.115", "uvicorn>=0.30", "pydantic>=2.8", "httpx>=0.27", "PyYAML>=6.0"]
@@ -69,6 +69,38 @@ ignore = ["E402", "E501", "E701", "E702", "E703"]
 [tool.pylint.main]
 py-version = "3.11"
 jobs = 4
+# minagi/egai/kvcontinual live under src-python/ and are not pip-installed
+# in the dev environment — without this, IDE/editor Pylint runs resolve
+# imports nowhere and report spurious no-name-in-module/unexpected-kwarg
+# errors on real code. The hook walks up from the lint cwd AND from each
+# analyzed file's directory so it works no matter where the IDE launches
+# pylint from.
+init-hook = """
+def _minagi_src_python():
+    # imports must live inside the def: pylint exec()s this hook, and a
+    # def resolves names from exec-globals, not this block's imports
+    import sys, os
+    roots = [os.getcwd()]
+    roots += [os.path.dirname(os.path.abspath(a)) for a in sys.argv[1:]
+              if isinstance(a, str) and a.endswith('.py')]
+    for root in roots:
+        d = root
+        while True:
+            p = os.path.join(d, 'src-python')
+            if os.path.isfile(os.path.join(p, 'minagi', '__init__.py')):
+                return p
+            up = os.path.dirname(d)
+            if up == d:
+                break
+            d = up
+    return None
+
+_p = _minagi_src_python()
+if _p:
+    import sys
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+"""
 ignore = [
     "build",
     "references",
