@@ -106,6 +106,27 @@ def test_drain_waits_for_inflight():
     assert done
 
 
+def test_duplicate_lease_release_is_idempotent():
+    from minagi.runtime.inference_policy import InferenceBudgetPolicyV1
+
+    router = ServingRouter(
+        budget=InferenceBudgetPolicyV1(
+            max_concurrent_requests=10, max_queued_per_principal=2))
+    router.activate("aa" * 16, Backend(), {"id": 1})
+    first = router.acquire_lease(principal="uid:1")
+    second = router.acquire_lease(principal="uid:1")
+
+    router.release_lease(first)
+    router.release_lease(first)
+
+    assert router.inflight("aa" * 16) == 1
+    third = router.acquire_lease(principal="uid:1")
+    with pytest.raises(RoutingRefused, match="per-principal"):
+        router.acquire_lease(principal="uid:1")
+    router.release_lease(second)
+    router.release_lease(third)
+
+
 def test_drain_timeout_is_not_unload_permission():
     """SEC-303: a drain timeout leaves the backend retained — it is
     not permission to unload while leases remain."""

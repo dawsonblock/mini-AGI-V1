@@ -72,6 +72,7 @@ class _Lease:
     epoch: int
     principal: str
     acquired_at: float
+    released: bool = False
 
 
 @dataclass
@@ -366,6 +367,9 @@ class ServingRouter:
 
     def release_lease(self, lease: _Lease) -> None:
         with self._drained:
+            if lease.released:
+                return
+            lease.released = True
             entry = self._routes.get(lease.activation_id)
             if entry is not None and entry.epoch == lease.epoch and \
                     entry.inflight > 0:

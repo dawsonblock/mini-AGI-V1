@@ -168,7 +168,7 @@ class _WorkerHandle:
         self.proc = proc
         self.reader: threading.Thread | None = None
         self.pending: dict[str, _Pending] = {}
-        self.send_lock = threading.Lock()
+        self.send_lock = threading.RLock()
         self.seq = 0
         self.dead: WorkerDied | None = None
         self.stalled = False

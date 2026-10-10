@@ -146,6 +146,15 @@ def test_remote_exception_type_survives_the_wire(tmp_path):
     assert not wb._handles
 
 
+def test_broken_command_pipe_fails_without_deadlocking(tmp_path):
+    wb = _worker()
+    handle = wb.load(_snapshot(tmp_path))
+    handle.proc.stdin.close()
+    with pytest.raises(WorkerDied, match="command channel broken"):
+        wb._rpc(handle, {"op": "probe"}, timeout=1, what="probe")
+    wb.terminate(handle)
+
+
 # ---------- preemptive termination (the RUN-401 remedy) -------------------
 
 def test_sigkill_mid_inference_fails_lease_and_router_survives(tmp_path):

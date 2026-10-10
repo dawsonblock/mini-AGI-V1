@@ -54,7 +54,8 @@ _SAME_STATE_KINDS = frozenset({
     "rollback_intent", "rollback_pointer", "rollback_completion",
     "activation_completion", "migrated", "routing_observed",
     "deployment_restored", "deployment_unavailable",
-    "restoration_completed", "unload_deferred"})
+    "restoration_completed", "unload_deferred",
+    "backend_terminated"})
 
 #: Activation ids that are not per-activation journal chains at all —
 #: migration/deployment-level pseudo records.
