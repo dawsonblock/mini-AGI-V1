@@ -69,6 +69,11 @@ ignore = ["E402", "E501", "E701", "E702", "E703"]
 [tool.pylint.main]
 py-version = "3.11"
 jobs = 4
+# minagi/egai/kvcontinual live under src-python/ and are not pip-installed
+# in the dev environment — without this, IDE/editor Pylint runs resolve
+# imports nowhere and report spurious no-name-in-module/unexpected-kwarg
+# errors on real code.
+init-hook = "import sys, os; sys.path.insert(0, os.path.join(os.getcwd(), 'src-python'))"
 ignore = [
     "build",
     "references",
