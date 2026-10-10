@@ -558,6 +558,14 @@ def main(argv=None) -> int:
                          "measured closure")
     ap.add_argument("--inference-budget", default=None,
                     help="optional InferenceBudgetPolicyV1 JSON")
+    ap.add_argument("--backend-isolation", default=None,
+                    choices=("inprocess", "process"),
+                    help="backend execution boundary (RUN-401): "
+                         "'process' runs each loaded model in its own "
+                         "worker process so a wedged model can be "
+                         "terminated without stopping the supervisor. "
+                         "Default: process under --production, "
+                         "inprocess otherwise")
     args = ap.parse_args(argv)
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -685,7 +693,26 @@ def main(argv=None) -> int:
     uid_roles.setdefault(os.getuid(), "operator")
 
     mode = int(args.socket_mode, 8)
-    factories = {"hf-peft": (lambda: PeftServingBackend(budget=budget))}
+    # RUN-401: production defaults to worker-process isolation — a
+    # stalled or wedged model is terminable without stopping the
+    # supervisor. Development keeps the in-process backend unless
+    # --backend-isolation is given explicitly.
+    isolation = args.backend_isolation or (
+        "process" if args.production else "inprocess")
+    if isolation == "process":
+        from minagi.runtime.worker_backend import (
+            BackendSpec, WorkerBackend)
+        peft_spec = BackendSpec(
+            module="minagi.v161.peft_serving",
+            qualname="PeftServingBackend",
+            kwargs={"budget": budget})
+        factories = {"hf-peft": (lambda: WorkerBackend(
+            peft_spec,
+            request_watchdog=(budget.execution_deadline_seconds * 2.0
+                              + 15.0)))}
+    else:
+        factories = {"hf-peft": (lambda: PeftServingBackend(
+            budget=budget))}
 
     # WP-F: complete cold-start restoration before opening traffic —
     # a durable pointer is intent, never liveness.
@@ -708,6 +735,7 @@ def main(argv=None) -> int:
         audit_store=store)
     print(f"[supervised-launch] operator endpoint on {args.socket} "
           f"(roles: {sorted(set(uid_roles.values()))}) "
+          f"backend_isolation={isolation} "
           f"state={report.get('serving_state')}", flush=True)
     try:
         if args.research_socket:

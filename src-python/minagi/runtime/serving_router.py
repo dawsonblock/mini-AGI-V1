@@ -28,6 +28,7 @@ replaces that with per-activation lease accounting:
 The required unload ordering is:
 
     stop_accepting -> drain_until_idle -> cancel_requests (if needed)
+                   -> terminate (worker backends, after cancel grace)
                    -> confirm inflight == 0 -> safe_unload
 
 The router never accepts a raw model path or a client-supplied backend
@@ -96,7 +97,7 @@ class ServingRouter:
     request leases and bounded-concurrency admission."""
 
     def __init__(self, *, drain_timeout: float = 5.0, budget=None,
-                 cancel_grace: float = 2.0):
+                 cancel_grace: float = 2.0, terminate_grace: float = 5.0):
         self._lock = threading.RLock()
         self._routes: dict[str, _RouteEntry] = {}
         self._current: str | None = None
@@ -106,6 +107,7 @@ class ServingRouter:
         self._drained = threading.Condition(self._lock)
         self._drain_timeout = float(drain_timeout)
         self._cancel_grace = float(cancel_grace)
+        self._terminate_grace = float(terminate_grace)
         self._budget = budget
         self._principal_inflight: dict[str, int] = {}
 
@@ -248,20 +250,55 @@ class ServingRouter:
     def retire(self, activation_id: str, *,
                timeout: float | None = None) -> dict:
         """The full withdrawal sequence for one activation:
-        stop_accepting -> drain -> cancel on timeout -> re-drain ->
-        safe_unload when actually idle. Resources are RETAINED while
-        leases remain — the caller may retry retire() later."""
+        stop_accepting -> drain -> cancel on timeout -> terminate a
+        terminable backend whose requests ignore cancellation ->
+        re-drain -> safe_unload when actually idle.
+
+        A backend exposing ``terminate(handle)`` (a worker-process
+        backend) is killed once drain timeout + cancel grace have both
+        elapsed — its in-flight requests fail fast and the OS reclaims
+        the model's resources (RUN-401). A backend without ``terminate``
+        keeps the v16.4.4 semantics: resources are RETAINED while
+        leases remain and retire() may be retried later."""
         self.stop_accepting(activation_id)
         drained = self.drain_until_idle(activation_id, timeout=timeout)
         cancelled = 0
+        terminated = False
         if not drained:
             cancelled = self.cancel_requests(activation_id)
             drained = self.drain_until_idle(
                 activation_id, timeout=self._cancel_grace)
+        if not drained:
+            terminated = self._terminate_route(activation_id)
+            if terminated:
+                drained = self.drain_until_idle(
+                    activation_id, timeout=self._terminate_grace)
         unloaded = self.safe_unload(activation_id) if drained else False
         return {"activation_id": activation_id, "drained": drained,
-                "cancelled": cancelled, "unloaded": unloaded,
+                "cancelled": cancelled, "terminated": terminated,
+                "unloaded": unloaded,
                 "inflight": self.inflight(activation_id)}
+
+    def _terminate_route(self, activation_id: str) -> bool:
+        """Preemptive resource release for backends that support it —
+        the remedy for requests that ignored cooperative cancellation.
+        Invoked only after the drain timeout and the cancel grace have
+        both elapsed; never as a first resort."""
+        with self._lock:
+            entry = self._routes.get(activation_id)
+            if entry is None or entry.inflight <= 0:
+                # Nothing holds the backend anymore — the drain landed
+                # between checks; do not kill a now-idle worker.
+                return False
+            backend, handle = entry.backend, entry.handle
+        terminate = getattr(backend, "terminate", None)
+        if not callable(terminate):
+            return False
+        try:
+            terminate(handle)
+        except Exception:  # noqa: BLE001 - the kill path is best effort
+            return False
+        return True
 
     # --- compat control plane ----------------------------------------
     def activate(self, activation_id: str, backend, handle,

@@ -18,8 +18,8 @@ learning qualification (SEC-007) is the v16.5.0 gate.
 | SEC-005 | high | Mechanism controller accepts unsupported prerequisite evidence (`prior_attempts` unverified digests) | **OPEN — v16.4.5 gate** | `tests-python/v161/test_v166_mechanism_controller.py` documents current acceptance |
 | SEC-006 | high | Selector may pick highest-ranked intervention with negative expected utility; no `NO_CHANGE`/τ | **OPEN — v16.4.5 gate** | `test_v166_mechanism_controller.py` (utility arithmetic) |
 | SEC-007 | medium | Real-model LEARNING qualification incomplete (Campaign 3A executing, 3B unsealed, 3C not run) | **OPEN — v16.5.0 gate** — note: real-model *serving* lifecycle is now exercised by `test_v1644_real_model_e2e.py` (tiny real GPT-2, real backend); the open item is qualified-learning evidence, not serving mechanics | Campaign 3 execution |
-| RUN-401 | medium | Backends execute in the supervisor process: a SIGKILL-worthy stalled model cannot be terminated without stopping the service. Cancellation is cooperative (`stopping_criteria`/`max_time`), not preemptive | **OPEN — accepted interim risk**; worker-process isolation is the production shape, scheduled post-v16.4.5 | documented in `serving_router.retire`/`cancel_requests`; no test — requires a worker-process backend |
-| RUN-402 | low | In-flight lease drain relies on cooperative cancellation on timeout; a request that ignores cancellation retains the backend indefinitely (by design — resources are never freed under a live lease) | **ACCEPTED RISK** — mitigated by budget deadlines; RUN-401 worker isolation is the real fix | `test_serving_router.py` drain-timeout tests |
+| RUN-401 | medium | Backends execute in the supervisor process: a SIGKILL-worthy stalled model cannot be terminated without stopping the service. Cancellation is cooperative (`stopping_criteria`/`max_time`), not preemptive | **CLOSED (post-v16.4.4 change set)** — `runtime/worker_backend.py` runs each loaded model in its own interpreter process (`BackendSpec` + private pickle-frame channel); `terminate()` SIGKILLs the worker, pending requests fail fast with `WorkerDied`, and `ServingRouter.retire` escalates drain-timeout+cancel-grace to termination for backends exposing `terminate`. Production (`--production`) defaults to `process` isolation; `--backend-isolation` overrides. Watchdog expiry marks a worker stalled and fails subsequent requests fast | `test_worker_backend.py` — real spawned workers: SIGKILL mid-inference, wedge-terminate, cooperative cancel over the wire, supervisor quarantine reconcile |
+| RUN-402 | low | In-flight lease drain relies on cooperative cancellation on timeout; a request that ignores cancellation retains the backend indefinitely (by design — resources are never freed under a live lease) | **CLOSED for process-isolated backends** — termination reclaims the process and the OS frees the model; the lease accounting still refuses to pretend an unreleased lease is gone (`test_terminate_frees_process_even_when_lease_lingers`). For `--backend-isolation inprocess` the interim accepted risk stands unchanged | `test_worker_backend.py`, `test_serving_router.py` drain-timeout tests |
 | RUN-403 | low | `admin_audit` emergency exception writes no record while the store is broken (impossible by construction); the `audit_broken` block persists in memory only — a restart during outage could serve before reconcile | **PARTIAL** — mitigated: restart runs `recover()` which revalidates the store; a fully durable "audit-broken" flag is future work | `test_emergency_quarantine_survives_audit_outage` |
 | OPS-004 | medium | Role separation not enforced by code: all role keys co-located under one storage root in the dev scaffold | **PARTIAL** — production path checks key roles; dev scaffold unchanged | `test_supervised_service.py` |
 | OPS-005 | low | Snapshot immutability is process-level; a same-identity adversary can chmod and rewrite (detected, not prevented) | **ACCEPTED RISK** — stage-time re-verification | `test_v1641_artifact_closure.py` |
@@ -32,11 +32,20 @@ learning qualification (SEC-007) is the v16.5.0 gate.
 * **Implemented AND tested here**: every SEC-301..307 repair, with
   deterministic fake backends plus a real tiny HF model through the
   real `PeftServingBackend` for the activate→query→rollback→restore
-  loop.
+  loop. Post-release, worker-process backend isolation (RUN-401) is
+  implemented and exercised with real spawned workers —
+  `test_worker_backend.py` covers SIGKILL mid-inference, wedge
+  termination on drain timeout, lingering-lease accounting, watchdog
+  stall marking, cooperative cancel across the wire, and a full
+  supervisor quarantine→terminate→reconcile cycle, and the same
+  real tiny HF/PEFT GPT-2 serving through the worker boundary
+  (load→infer→SIGKILL→quarantine) on CPU.
 * **Implemented, not independently qualified**: `--production` startup
   path is code-complete and startup-refusals are unit-tested, but no
-  production deployment was executed. Worker-process backend isolation
-  (RUN-401) is designed but not implemented. GPU inference is
-  unverified (no CUDA host).
+  production deployment was executed. Process isolation is the
+  production default and is exercised on CPU with both the simulated
+  backend and the real `PeftServingBackend`; it has NOT been exercised
+  under a production deployment or on GPU hardware — those remain
+  qualification steps, not claims.
 * **Not implemented (by plan)**: SEC-005/006 controller correctness
   (v16.4.5), SEC-007 learning qualification (v16.5.0).

@@ -36,6 +36,9 @@ Ordering guarantees (v16.4.4 — two-stage activation, WP-A/SEC-301..303):
   * model resources are released only after routing is withdrawn and
     the activation's own request leases have drained — a drain
     timeout retains the backend, it is not unload permission;
+  * when the backend runs in a worker process, a drain timeout +
+    cancel grace escalates to terminate() — a wedged model is killed
+    without stopping the supervisor (RUN-401);
   * a pointer never names a model that is not resident.
 """
 from __future__ import annotations
@@ -642,7 +645,25 @@ class ServingSupervisor:
                     pair[0].unload(pair[1])
                 except Exception:  # noqa: BLE001 - best-effort cleanup
                     pass
-            return {"unloaded": True, "inflight": 0}
+            return {"unloaded": True, "inflight": 0, "terminated": False}
+        if outcome.get("terminated"):
+            # A wedged model was force-killed — that is a significant
+            # operational fact and belongs in the durable journal, not
+            # only in the retire outcome dict.
+            try:
+                durable = self._durable_state(
+                    activation_id, act.state.value)
+                self.store.append_event(
+                    activation_id=activation_id,
+                    event_type="backend_terminated",
+                    from_state=durable, to_state=durable,
+                    at=self._at(),
+                    detail={"reason": "request leases outlived the "
+                                      "cancel grace — backend worker "
+                                      "terminated (RUN-401)",
+                            "unloaded": bool(outcome.get("unloaded"))})
+            except AuthorityStoreError:
+                pass
         if not outcome["unloaded"]:
             self._deferred_unloads.add(activation_id)
             try:
