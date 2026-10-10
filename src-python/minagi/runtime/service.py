@@ -110,7 +110,8 @@ class SupervisorService:
                  max_connections: int = MAX_CONNECTIONS,
                  per_uid_connections: int = PER_UID_CONNECTIONS,
                  socket_mode: int = 0o600, socket_group: int | None = None,
-                 audit_sink=None, audit_store=None):
+                 audit_sink=None, audit_store=None,
+                 policy_manifest_digest: str = ""):
         self.socket_path = Path(socket_path)
         self.launcher = launcher
         self.supervisor = supervisor
@@ -127,6 +128,7 @@ class SupervisorService:
         self.socket_group = socket_group
         self._audit_sink = audit_sink   # callable(audit_doc) or None
         self._audit_store = audit_store  # AuthorityStore or None
+        self._policy_manifest_digest = str(policy_manifest_digest)
         self._audit_broken = False       # set when a mandatory audit
                                          # write failed — activation is
                                          # blocked until reconciled
@@ -200,6 +202,7 @@ class SupervisorService:
         return digest({
             "min_policy_epoch": int(self.supervisor.min_policy_epoch),
             "backend_manifest_digest": str(manifest.get("digest") or ""),
+            "policy_manifest_digest": self._policy_manifest_digest,
             "runtime_identity": self.supervisor.runtime_identity})
 
     def _admin_audit(self, principal: PrincipalContext, op: str, *,
@@ -597,6 +600,7 @@ def main(argv=None) -> int:
         (storage / ".keys" / "admission.pem").read_bytes())
 
     backend_manifest_doc = None
+    policy_manifest_doc = None
     backend_modules: tuple = ()
     backend_deps: tuple = ()
     min_policy_epoch = 0
@@ -617,6 +621,15 @@ def main(argv=None) -> int:
                     f"production startup refused — the {role} signing "
                     f"key {key.key_id!r} is not authorized for that "
                     "role in the trust root")
+        try:
+            policy_manifest_doc = json.loads(
+                Path(config.policy_manifest_path).read_text())
+            signed_policy_epoch = verify_policy_manifest(
+                policy_manifest_doc, registry)
+        except (OSError, ValueError, PolicyManifestRefused) as exc:
+            raise SystemExit(
+                f"production startup refused — policy manifest: {exc}")
+        min_policy_epoch = max(min_policy_epoch, signed_policy_epoch)
         # Signed backend manifest + installed-closure measurement.
         try:
             backend_manifest_doc = json.loads(
@@ -732,7 +745,9 @@ def main(argv=None) -> int:
         uid_roles=uid_roles, router=router, audit_signer=runtime_key,
         socket_mode=mode, socket_group=args.socket_group,
         allow_insecure_dev=args.allow_insecure_dev,
-        audit_store=store)
+        audit_store=store,
+        policy_manifest_digest=str(
+            (policy_manifest_doc or {}).get("digest") or ""))
     print(f"[supervised-launch] operator endpoint on {args.socket} "
           f"(roles: {sorted(set(uid_roles.values()))}) "
           f"backend_isolation={isolation} "
@@ -747,7 +762,9 @@ def main(argv=None) -> int:
                 audit_signer=runtime_key, socket_mode=0o660,
                 socket_group=args.socket_group,
                 allow_insecure_dev=args.allow_insecure_dev,
-                audit_store=store)
+                audit_store=store,
+                policy_manifest_digest=str(
+                    (policy_manifest_doc or {}).get("digest") or ""))
             threading.Thread(
                 target=research.serve_forever,
                 kwargs={"allowed_ops": RESEARCH_OPS}, daemon=True).start()
@@ -807,6 +824,45 @@ class ProductionRuntimeConfig:
                     f"{name} ({'directory' if want_dir else 'file'} "
                     f"{value!r} does not exist)")
         return missing
+
+
+POLICY_MANIFEST_SCHEMA = "mini-agi-v16.4.4-policy-manifest-v1"
+
+
+class PolicyManifestRefused(PermissionError):
+    """The operative policy manifest is unsigned, stale, or invalid."""
+
+
+def verify_policy_manifest(doc, registry, *, now=None) -> int:
+    """Verify the signed operative policy envelope and return its epoch."""
+    from egai.common.canonical import digest
+    from egai.common.crypto import SignedEnvelope
+
+    if not isinstance(doc, dict) or not isinstance(doc.get("value"), dict):
+        raise PolicyManifestRefused(
+            "signed policy manifest envelope required")
+    value = doc["value"]
+    if doc.get("digest") != digest(value):
+        raise PolicyManifestRefused(
+            "policy manifest envelope digest mismatch")
+    if value.get("schema") != POLICY_MANIFEST_SCHEMA:
+        raise PolicyManifestRefused(
+            f"policy manifest schema {value.get('schema')!r} unknown")
+    epoch = value.get("policy_epoch")
+    if type(epoch) is not int or epoch < 1:
+        raise PolicyManifestRefused(
+            "policy manifest policy_epoch must be a positive integer")
+    key_id = str(doc.get("signer_key_id") or "")
+    if not registry.is_authorized("admission", key_id, now=now):
+        raise PolicyManifestRefused(
+            f"policy manifest signer {key_id!r} is not an authorized "
+            "admission authority")
+    if not registry.verifier(now=now).verify(
+            value, SignedEnvelope(
+                key_id, str(doc.get("signature_b64") or ""))):
+        raise PolicyManifestRefused(
+            "policy manifest signature invalid")
+    return epoch
 
 
 if __name__ == "__main__":

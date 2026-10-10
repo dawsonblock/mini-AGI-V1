@@ -353,7 +353,8 @@ def test_publish_failure_restores_predecessor_durably(tmp_path):
     aid2 = sup.request().activation_id
     sup.authorize(aid2, grant)
     sup.stage(aid2, _stage(tmp_path, "b", digests, paths))
-    sup.prepare(aid2, FakeBackend())
+    failed_backend = FakeBackend()
+    sup.prepare(aid2, failed_backend)
     sup.health_check(aid2)
 
     orig_publish = sup.router.publish_route
@@ -373,6 +374,8 @@ def test_publish_failure_restores_predecessor_durably(tmp_path):
     assert sup.router.inflight(aid2) == 0
     st = sup.router.route_entry(aid2)
     assert st is None or st.accepting is False
+    assert aid2 not in sup._live_handles
+    assert failed_backend.unloaded
 
 
 def test_zero_traffic_before_durable_intent(tmp_path):
@@ -479,6 +482,65 @@ def test_rollback_restores_retained_live_runtime(tmp_path):
     completion = [e for e in hist
                   if e["event_type"] == "rollback_completion"][0]
     assert completion["signer_key_id"]
+
+
+def test_rollback_publish_failure_reconciles_without_compat_fallback(
+        tmp_path):
+    registry, signers = _chain(tmp_path)
+    from minagi.runtime.serving_router import ServingRouter
+    router = ServingRouter()
+    sup = _supervisor(tmp_path, registry, signers)
+    sup.router = router
+    aid1 = _drive(sup, signers, tmp_path, FakeBackend(), tag="a")
+    aid2 = _drive(sup, signers, tmp_path, FakeBackend(), tag="b")
+    publish = router.publish_route
+    activate_calls = []
+
+    def fail_target(activation_id, **kwargs):
+        if activation_id == aid1:
+            raise RuntimeError("stale route generation")
+        return publish(activation_id, **kwargs)
+
+    def compatibility_activate(*args, **kwargs):
+        activate_calls.append(args)
+        raise AssertionError("generation-free activation must not be used")
+
+    router.publish_route = fail_target
+    router.activate = compatibility_activate
+    with pytest.raises(ActivationError, match="rollback routing"):
+        sup.rollback()
+
+    assert not activate_calls
+    assert sup.active_pointer()["activation_id"] == aid2
+    assert sup.store.deployment()["desired_activation_id"] == aid2
+    assert router.route_entry(aid2).accepting
+    assert not router.route_entry(aid1).accepting
+
+
+def test_rollback_completion_failure_reconciles_route_and_pointer(
+        tmp_path):
+    registry, signers = _chain(tmp_path)
+    from minagi.runtime.serving_router import ServingRouter
+    router = ServingRouter()
+    sup = _supervisor(tmp_path, registry, signers)
+    sup.router = router
+    aid1 = _drive(sup, signers, tmp_path, FakeBackend(), tag="a")
+    aid2 = _drive(sup, signers, tmp_path, FakeBackend(), tag="b")
+    record = sup.store.record_routing_observation
+
+    def fail_rollback(**kwargs):
+        if kwargs.get("event_type") == "rollback_completion":
+            raise AuthorityStoreError("simulated completion failure")
+        return record(**kwargs)
+
+    sup.store.record_routing_observation = fail_rollback
+    with pytest.raises(ActivationError, match="rollback completion"):
+        sup.rollback()
+
+    assert sup.active_pointer()["activation_id"] == aid2
+    assert sup.store.deployment()["desired_activation_id"] == aid2
+    assert router.route_entry(aid2).accepting
+    assert not router.route_entry(aid1).accepting
 
 
 def test_rollback_refuses_dead_runtime(tmp_path):

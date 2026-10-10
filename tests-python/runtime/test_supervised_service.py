@@ -22,15 +22,46 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from minagi.runtime.authority_store import AuthorityStore  # noqa: E402
 from minagi.runtime.service import (  # noqa: E402
-    SupervisorService, peer_uid)
+    POLICY_MANIFEST_SCHEMA, PolicyManifestRefused, SupervisorService,
+    peer_uid, verify_policy_manifest)
 from minagi.runtime.supervisor import ServingSupervisor  # noqa: E402
 from minagi.security.trusted_authority_client import (  # noqa: E402
     RequestRefused, ServiceUnavailable, SupervisorClient)
 from egai.common.crypto import Ed25519Signer  # noqa: E402
+from egai.common.canonical import digest  # noqa: E402
 from minagi.v161.authority import (AuthorityRegistry,  # noqa: E402
                                    write_trust_root)
 
 NOW = datetime(2026, 10, 8, 12, 0, tzinfo=timezone.utc)
+
+
+def _policy_manifest(signer, *, epoch=2):
+    value = {"schema": POLICY_MANIFEST_SCHEMA, "policy_epoch": epoch}
+    envelope = signer.sign(value)
+    return {"value": value, "digest": digest(value),
+            "signer_key_id": envelope.key_id,
+            "signature_b64": envelope.signature_b64}
+
+
+def test_policy_manifest_requires_valid_admission_signature(tmp_path):
+    storage = tmp_path / "policy"
+    write_trust_root(storage / ".keys", storage / "trust_root.json")
+    registry = AuthorityRegistry.load(storage / "trust_root.json")
+    admission = Ed25519Signer.from_private_bytes(
+        (storage / ".keys" / "admission.pem").read_bytes())
+    runtime = Ed25519Signer.from_private_bytes(
+        (storage / ".keys" / "runtime.pem").read_bytes())
+
+    assert verify_policy_manifest(
+        _policy_manifest(admission), registry, now=NOW) == 2
+    with pytest.raises(PolicyManifestRefused, match="authorized admission"):
+        verify_policy_manifest(
+            _policy_manifest(runtime), registry, now=NOW)
+    with pytest.raises(PolicyManifestRefused, match="positive integer"):
+        verify_policy_manifest(
+            _policy_manifest(admission, epoch=0), registry, now=NOW)
+    with pytest.raises(PolicyManifestRefused, match="envelope required"):
+        verify_policy_manifest({"placeholder": True}, registry, now=NOW)
 
 
 def _service(tmp_path, *, uid_roles=None, insecure=False):

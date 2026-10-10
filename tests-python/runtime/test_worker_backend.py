@@ -326,6 +326,8 @@ def test_quarantine_terminates_wedged_worker_and_reconciles(tmp_path):
     kinds = [e["event_type"] for e in store.events(aid)]
     assert "backend_terminated" in kinds
     assert sup._deferred_unloads == set()   # nothing left unreleased
+    from minagi.runtime.journal_v2 import verify_event_log
+    assert verify_event_log(store, registry, now=NOW)
 
 
 def test_abort_before_publish_terminates_worker(tmp_path):

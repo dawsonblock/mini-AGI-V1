@@ -492,6 +492,9 @@ class ServingSupervisor:
                     act=act, previous=previous, generation=generation,
                     because=f"route publish failed: {exc}",
                     context="publish")
+                self.abort(
+                    activation_id,
+                    reason=f"routing publication failed: {exc}")
                 raise ActivationError(
                     f"routing publication of generation {generation} "
                     f"failed — the deployment was reconciled: {exc}") \
@@ -587,23 +590,15 @@ class ServingSupervisor:
                 self._active_id = previous
                 self._serving_state = ServingState.SERVING
                 if self.router is not None:
-                    pb, ph = self._live_handles[previous]
                     try:
                         self.router.publish_route(
                             previous,
                             generation=int(rec["generation"]),
                             at=self._at())
                     except Exception:  # noqa: BLE001
-                        try:
-                            self.router.activate(previous, pb, ph,
-                                                 at=self._at())
-                        except Exception:  # noqa: BLE001
-                            # durable intent says A but routing could
-                            # not be restored — serve nothing; restart
-                            # recovery reconciles
-                            self._active_id = None
-                            self._serving_state = \
-                                ServingState.UNAVAILABLE
+                        self.router.stop_accepting(previous)
+                        self._active_id = None
+                        self._serving_state = ServingState.UNAVAILABLE
             else:
                 cand_state = self._durable_state(
                     act.activation_id, "COMMITTED")
@@ -862,15 +857,30 @@ class ServingSupervisor:
                 try:
                     self.router.publish_route(
                         target, generation=generation, at=self._at())
-                except Exception:  # noqa: BLE001
-                    self.router.activate(target, b, h, at=self._at())
-            self.store.record_routing_observation(
-                activation_id=target, generation=generation,
-                transition_id=str(commit["transition_id"]),
-                at=self._at(), event_type="rollback_completion",
-                from_state="ACTIVE", to_state="ACTIVE",
-                detail={"kind": "rollback_completion",
-                        "from": old or ""}, signer=self.signer)
+                except Exception as exc:  # noqa: BLE001 - fail closed
+                    self._reconcile_deployment(
+                        act=tgt_act, previous=old, generation=generation,
+                        because=f"rollback route publish failed: {exc}",
+                        context="rollback-publish")
+                    raise ActivationError(
+                        f"rollback routing publication failed: {exc}") \
+                        from exc
+            try:
+                self.store.record_routing_observation(
+                    activation_id=target, generation=generation,
+                    transition_id=str(commit["transition_id"]),
+                    at=self._at(), event_type="rollback_completion",
+                    from_state="ACTIVE", to_state="ACTIVE",
+                    detail={"kind": "rollback_completion",
+                            "from": old or ""}, signer=self.signer)
+            except Exception as exc:  # noqa: BLE001 - fail closed
+                self._reconcile_deployment(
+                    act=tgt_act, previous=old, generation=generation,
+                    because=f"rollback completion failed: {exc}",
+                    context="rollback-observation")
+                raise ActivationError(
+                    f"rollback completion could not be persisted: {exc}") \
+                    from exc
             return target
 
     def _last_completed_excluding(self, exclude: str | None,
@@ -975,6 +985,7 @@ class ServingSupervisor:
                       "cleared_pointer": False, "serving_state": None,
                       "requires_restoration": None}
             from .journal_v2 import verify_event_log
+            self.store.verify_admin_chain(self.registry, now=self._now)
             events = verify_event_log(self.store, self.registry,
                                       now=self._now)
             pointer = self.store.read_pointer()

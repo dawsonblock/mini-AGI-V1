@@ -817,9 +817,11 @@ class AuthorityStore:
                  "event_digest": r[12], "signer_key_id": r[13],
                  "signature_b64": r[14]} for r in rows]
 
-    def verify_admin_chain(self) -> list[dict]:
-        """Verify the admin-audit hash chain — tampering or truncation
-        fails closed with StoreCorrupt."""
+    def verify_admin_chain(self, registry, *, now=None) -> list[dict]:
+        """Verify admin-audit hashes and runtime-role signatures —
+        tampering or truncation fails closed with StoreCorrupt."""
+        from egai.common.crypto import SignedEnvelope
+
         events = self.admin_events()
         prev = ""
         for e in events:
@@ -828,6 +830,22 @@ class AuthorityStore:
                     f"admin audit chain broken at sequence "
                     f"{e['sequence']} — the durable decision log was "
                     "altered or truncated")
+            payload = {"event_id": e["event_id"],
+                       "principal_id": e["principal_id"],
+                       "operation": e["operation"],
+                       "target_activation": e["target_activation"],
+                       "policy_digest": e["policy_digest"],
+                       "decision": e["decision"],
+                       "before_state": e["before_state"],
+                       "after_state": e["after_state"], "at": e["at"],
+                       "detail": e["detail"]}
+            pdigest = digest(payload)
+            if e["signer_key_id"] == "" or \
+                    not registry.is_authorized(
+                        "runtime", e["signer_key_id"], now=now):
+                raise StoreCorrupt(
+                    f"admin audit signer at sequence {e['sequence']} "
+                    "is not an authorized runtime authority")
             body = {"event_id": e["event_id"],
                     "principal_id": e["principal_id"],
                     "operation": e["operation"],
@@ -836,16 +854,7 @@ class AuthorityStore:
                     "decision": e["decision"],
                     "before_state": e["before_state"],
                     "after_state": e["after_state"], "at": e["at"],
-                    "payload_digest": digest({
-                        "event_id": e["event_id"],
-                        "principal_id": e["principal_id"],
-                        "operation": e["operation"],
-                        "target_activation": e["target_activation"],
-                        "policy_digest": e["policy_digest"],
-                        "decision": e["decision"],
-                        "before_state": e["before_state"],
-                        "after_state": e["after_state"], "at": e["at"],
-                        "detail": e["detail"]}),
+                    "payload_digest": pdigest,
                     "previous_event_digest": e["previous_event_digest"]}
             expect = digest(dict(body, signer_key_id=e["signer_key_id"],
                                  signature_b64=e["signature_b64"]))
@@ -853,6 +862,12 @@ class AuthorityStore:
                 raise StoreCorrupt(
                     f"admin audit digest mismatch at sequence "
                     f"{e['sequence']} — record was modified")
+            if not registry.verifier(now=now).verify(
+                    body, SignedEnvelope(
+                        e["signer_key_id"], e["signature_b64"])):
+                raise StoreCorrupt(
+                    f"admin audit signature invalid at sequence "
+                    f"{e['sequence']}")
             prev = e["event_digest"]
         return events
 

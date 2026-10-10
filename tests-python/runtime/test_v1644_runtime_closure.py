@@ -112,7 +112,8 @@ def _drive_into(sup, signers, tmp_path, backend, *, tag="a",
     """Drive a full activation, staging the snapshot under
     snapshot_root/<aid> so the recovery manager can find it."""
     digests, paths = _artifacts(tmp_path, tag)
-    grant = _grant(signers, digest(digests))
+    grant = _grant(signers, digest(digests),
+                   backend=getattr(backend, "backend_id", "hf-peft"))
     act = sup.request()
     aid = act.activation_id
     sup.authorize(aid, grant)
@@ -206,7 +207,7 @@ def test_privileged_op_writes_durable_audit(tmp_path):
     for e in events:
         assert e["principal_id"] == "uid:0"
         assert e["signature_b64"]
-    assert store.verify_admin_chain()
+    assert store.verify_admin_chain(sup.registry, now=NOW)
 
 
 def test_audit_failure_refuses_ordinary_admin_change(tmp_path):
@@ -258,7 +259,7 @@ def test_emergency_quarantine_survives_audit_outage(tmp_path):
 
 def test_admin_chain_detects_tamper(tmp_path):
     store = AuthorityStore(tmp_path / "j" / "authority.sqlite")
-    _, signers = _chain(tmp_path)
+    registry, signers = _chain(tmp_path)
     store.append_admin_audit(
         principal_id="uid:0", operation="quarantine",
         target_activation="aa" * 16, policy_digest=digest({"p": 1}),
@@ -268,7 +269,65 @@ def test_admin_chain_detects_tamper(tmp_path):
         "UPDATE admin_audit SET decision = 'denied' WHERE sequence = 1")
     store._db.commit()
     with pytest.raises(StoreCorrupt):
-        store.verify_admin_chain()
+        store.verify_admin_chain(registry, now=NOW)
+
+
+def test_admin_chain_verifies_signature_after_digest_rewrite(tmp_path):
+    store = AuthorityStore(tmp_path / "j" / "authority.sqlite")
+    registry, signers = _chain(tmp_path)
+    store.append_admin_audit(
+        principal_id="uid:0", operation="quarantine",
+        target_activation="aa" * 16, policy_digest=digest({"p": 1}),
+        decision="allowed", before_state={"s": 1}, after_state={"s": 2},
+        at=TS, signer=signers["runtime"])
+    event = store.admin_events()[0]
+    payload = {
+        "event_id": event["event_id"],
+        "principal_id": event["principal_id"],
+        "operation": event["operation"],
+        "target_activation": event["target_activation"],
+        "policy_digest": event["policy_digest"],
+        "decision": event["decision"],
+        "before_state": event["before_state"],
+        "after_state": event["after_state"],
+        "at": event["at"],
+        "detail": event["detail"]}
+    body = {
+        "event_id": event["event_id"],
+        "principal_id": event["principal_id"],
+        "operation": event["operation"],
+        "target_activation": event["target_activation"],
+        "policy_digest": event["policy_digest"],
+        "decision": event["decision"],
+        "before_state": event["before_state"],
+        "after_state": event["after_state"],
+        "at": event["at"],
+        "payload_digest": digest(payload),
+        "previous_event_digest": event["previous_event_digest"]}
+    signature = "Zm9yZ2Vk"
+    event_digest = digest(dict(
+        body, signer_key_id=event["signer_key_id"],
+        signature_b64=signature))
+    store._db.execute(
+        "UPDATE admin_audit SET signature_b64 = ?, event_digest = ? "
+        "WHERE sequence = 1", (signature, event_digest))
+    store._db.commit()
+
+    with pytest.raises(StoreCorrupt, match="signature invalid"):
+        store.verify_admin_chain(registry, now=NOW)
+
+
+def test_admin_chain_refuses_non_runtime_signer(tmp_path):
+    store = AuthorityStore(tmp_path / "j" / "authority.sqlite")
+    registry, signers = _chain(tmp_path)
+    store.append_admin_audit(
+        principal_id="uid:0", operation="quarantine",
+        target_activation="aa" * 16, policy_digest=digest({"p": 1}),
+        decision="allowed", before_state={"s": 1}, after_state={"s": 2},
+        at=TS, signer=signers["admission"])
+
+    with pytest.raises(StoreCorrupt, match="authorized runtime"):
+        store.verify_admin_chain(registry, now=NOW)
 
 
 # ---------- WP-E: inference budgets -------------------------------------
@@ -420,10 +479,11 @@ def test_cold_restart_restores_live_model(tmp_path):
     assert dep["desired_activation_id"] == new_id
     assert dep["transition_phase"] == "ROUTED"
     # the restored grant is a DIFFERENT grant (never reused)
-    assert new_id not in [e["activation_id"] for e in
-                          sup2.store.events() if
-                          e["event_type"] == "authorized" and
-                          e["activation_id"] == aid]
+    grants = {e["activation_id"]: e["detail"].get("grant_id")
+              for e in sup2.store.events()
+              if e["event_type"] == "authorized"}
+    assert grants[new_id]
+    assert grants[new_id] != grants[aid]
 
 
 def test_restoration_refuses_missing_artifacts(tmp_path):
@@ -490,6 +550,67 @@ def test_restoration_refuses_tampered_artifacts(tmp_path):
         backend_factories={"hf-peft": FakeBackend}, now=NOW)
     report = mgr.restore()
     assert report["restoration"]["status"] == "unavailable"
+
+
+def test_fallback_restores_with_its_own_backend(tmp_path):
+    class AlternateBackend(FakeBackend):
+        backend_id = "alternate"
+
+    registry, signers = _chain(tmp_path)
+    snaproot = tmp_path / "snaps"
+    sup = _supervisor(tmp_path, registry, signers)
+    first_id = _drive_into(
+        sup, signers, tmp_path, AlternateBackend(), tag="a",
+        snapshot_root=snaproot)
+    desired_id = _drive_into(
+        sup, signers, tmp_path, FakeBackend(), tag="b",
+        snapshot_root=snaproot)
+
+    staged = snaproot / desired_id / "adapter" / \
+        "adapter_model.safetensors"
+    staged.chmod(0o600)
+    staged.write_bytes(b"tampered desired weights")
+
+    sup2 = _supervisor(tmp_path, registry, signers)
+    mgr = RecoveryManager(
+        sup2, admission_signer=signers["admission"],
+        registry=registry, snapshot_root=snaproot,
+        backend_factories={"hf-peft": FakeBackend,
+                           "alternate": AlternateBackend}, now=NOW)
+    report = mgr.restore()
+
+    assert report["restoration"]["status"] == "restored"
+    assert report["restoration"]["restored_from"] == first_id
+    assert sup2.store.read_pointer()["backend_id"] == "alternate"
+
+
+def test_fallback_restoration_refuses_changed_artifacts(tmp_path):
+    registry, signers = _chain(tmp_path)
+    snaproot = tmp_path / "snaps"
+    sup = _supervisor(tmp_path, registry, signers)
+    first_id = _drive_into(
+        sup, signers, tmp_path, FakeBackend(), tag="a",
+        snapshot_root=snaproot)
+    desired_id = _drive_into(
+        sup, signers, tmp_path, FakeBackend(), tag="b",
+        snapshot_root=snaproot)
+
+    for aid in (first_id, desired_id):
+        staged = snaproot / aid / "adapter" / "adapter_model.safetensors"
+        staged.chmod(0o600)
+        staged.write_bytes(b"tampered weights")
+
+    sup2 = _supervisor(tmp_path, registry, signers)
+    mgr = RecoveryManager(
+        sup2, admission_signer=signers["admission"],
+        registry=registry, snapshot_root=snaproot,
+        backend_factories={"hf-peft": FakeBackend}, now=NOW)
+    report = mgr.restore()
+
+    assert report["restoration"]["status"] == "unavailable"
+    fallback = next(a for a in report["restoration"]["attempts"]
+                    if a["candidate"] == first_id)
+    assert "recorded authorization artifact root" in fallback["reason"]
 
 
 def test_restoration_is_idempotent(tmp_path):

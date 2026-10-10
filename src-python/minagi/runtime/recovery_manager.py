@@ -133,8 +133,8 @@ class RecoveryManager:
                 f"staged snapshot for {candidate} is absent — cannot "
                 "restore a model whose artifacts do not exist",
                 permanent=True)
-        backend_id = str(pointer.get("backend_id") or
-                         self._authorized_backend(candidate))
+        context = self._authorized_context(candidate)
+        backend_id = self._authorized_backend(candidate)
         factory = self.backend_factories.get(backend_id)
         if factory is None:
             raise RestorationRefused(
@@ -148,6 +148,12 @@ class RecoveryManager:
         # Re-measure every staged artifact — bytes, not names.
         artifacts, expected = self._remeasure(src)
         artifact_root = digest_root_of(expected)
+        grant_root = str(context.get("artifact_root_digest") or "")
+        if not grant_root or grant_root != artifact_root:
+            raise RestorationRefused(
+                "the staged artifacts do not match the candidate's "
+                "recorded authorization artifact root",
+                permanent=True)
         if is_desired:
             bound_root = str(pointer.get("artifact_root_digest") or "")
             if bound_root and bound_root != artifact_root:
@@ -155,7 +161,6 @@ class RecoveryManager:
                     "the staged artifacts do not match the durable "
                     "commit's artifact root — the record does not "
                     "describe these bytes", permanent=True)
-        context = self._authorized_context(candidate)
         act = self.supervisor.request()
         new_id = act.activation_id
         try:
