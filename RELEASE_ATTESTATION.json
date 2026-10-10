@@ -48,7 +48,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "fc5d861b28a84d0cc238cbd61ef10846d3568f3622cf91fdea7040edf282d1e2",
+ "manifest_sha256": "2b0f190411391acb32afaa8c18f9e1fb193ea4e594426e1253b63e9f2dbe6845",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -227,9 +227,14 @@
    "manifest_sha256": "fc5d861b28a84d0cc238cbd61ef10846d3568f3622cf91fdea7040edf282d1e2",
    "reason": "v16.4.4 post-release lint cleanup: unused import/variable removed in test_v1644_runtime_closure.py; code behavior unchanged.",
    "utc": "2026-10-09T22:08:24.074039Z"
+  },
+  {
+   "manifest_sha256": "2b0f190411391acb32afaa8c18f9e1fb193ea4e594426e1253b63e9f2dbe6845",
+   "reason": "v16.4.5 security and evidence closure: framed worker IPC, worker isolation, revoke-aware restoration (SEC-401/402), release integrity repair with source/evidence separation (SEC-403), test portability (SEC-404); 909 passed, 1 skipped.",
+   "utc": "2026-10-10T22:51:43.328839Z"
   }
  ],
- "reissued_utc": "2026-10-09T22:08:24.074039Z",
+ "reissued_utc": "2026-10-10T22:51:43.328839Z",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -249,7 +254,7 @@
    "release": "mini-AGI-v16.4.2-Authority-and-Activation-Closure"
   }
  ],
- "release": "mini-AGI-V1-v16.4.4-Verified-Runtime-Closure",
+ "release": "mini-AGI-V1-v16.4.5-Security-and-Evidence-Closure",
  "runtime_closure_v1644": {
   "change_manifest": "RELEASE_CHANGE_MANIFEST.json",
   "defects_closed": [
@@ -277,6 +282,17 @@
   "tests": "tests-python/v161/test_v1641_artifact_closure.py, test_v1641_trusted_launcher.py, test_v1641_strict_schema.py, test_v1641_cli.py"
  },
  "schema": "mini-agi-v16.1-release-attestation-v1",
+ "security_and_evidence_closure_v1645": {
+  "defects_closed": [
+   "SEC-401 supervisor deserializes worker-controlled pickle",
+   "SEC-402 cold restoration reactivates revoked promotion",
+   "SEC-403 governed-file mismatches and unmanifested evidence",
+   "SEC-404 multiprocessing test not importable under spawn"
+  ],
+  "detail": "docs/research/V16_4_5_REPAIR_REPORT.md",
+  "evidence_artifact": "mini-AGI-Campaign3A-Evidence.zip",
+  "threat_model": "docs/research/THREAT_MODEL_V1645.md"
+ },
  "signature_algorithm": "Ed25519",
- "status": "PASS_VERIFIED_RUNTIME_CLOSURE_REAL_MODEL_PENDING"
+ "status": "PASS_SECURITY_AND_EVIDENCE_CLOSURE_PLATFORM_QUALIFICATION_PENDING"
 }
