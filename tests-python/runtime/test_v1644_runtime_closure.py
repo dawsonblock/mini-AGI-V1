@@ -30,13 +30,24 @@ from minagi.runtime.serving_router import (  # noqa: E402
 from minagi.runtime.supervisor import (  # noqa: E402
     ServingState, ServingSupervisor)
 from minagi.security.admission_grants import issue_grant  # noqa: E402
-from minagi.v161.artifact_closure import close_tree  # noqa: E402
+from minagi.security.signed_revocations import (  # noqa: E402
+    RevocationSnapshotV2, RevocationStore)
+from minagi.v161.artifact_closure import (  # noqa: E402
+    close_tree, tokenizer_artifact_digest)
 from minagi.v161.authority import (AUTHORITY_ROLES, AuthorityRegistry,  # noqa: E402
                                    write_trust_root)
+from minagi.v161.experiment_protocol import ExperimentProtocolV1  # noqa: E402
 from minagi.v161.immutable_snapshot import stage_snapshot  # noqa: E402
+from minagi.v161.peft_serving import runtime_manifest  # noqa: E402
 
 NOW = datetime(2026, 10, 8, 12, 0, tzinfo=timezone.utc)
 TS = int(NOW.timestamp())
+
+
+def _signed(signer, value):
+    env = signer.sign(value)
+    return {"value": value, "digest": digest(value),
+            "signer_key_id": env.key_id, "signature_b64": env.signature_b64}
 
 
 class FakeBackend:
@@ -78,9 +89,17 @@ def _artifacts(tmp_path, tag="a"):
     if not model.exists():
         model.mkdir()
         (model / "config.json").write_text('{"model_type": "gpt2"}')
+        # tokenizer artifacts live inside the model root — the
+        # convention the signed plan binds
+        (model / "tokenizer.json").write_text('{"vocab": []}')
+        (model / "tokenizer_config.json").write_text('{"chat": "x"}')
     adir = tmp_path / f"adapter-{tag}"
     if not adir.exists():
         adir.mkdir()
+        (adir / "adapter_config.json").write_text(json.dumps({
+            "peft_type": "LORA", "task_type": "CAUSAL_LM", "r": 4,
+            "lora_alpha": 8, "lora_dropout": 0.0,
+            "target_modules": ["c_attn"]}))
         (adir / "adapter_model.safetensors").write_bytes(
             b"w-" + tag.encode())
     return ({"model": close_tree(model).digest,
@@ -88,43 +107,128 @@ def _artifacts(tmp_path, tag="a"):
             {"model": str(model), "adapter": str(adir)})
 
 
+def _docs(signers, tmp_path, tag, *, backend="hf-peft",
+          seed_name="seed-0"):
+    """The complete signed authority chain for one activation — real
+    decision/qualification/plan/manifest documents over the measured
+    artifacts, so cold-start restoration can re-verify original
+    authority (v16.4.5: a bare grant is not restorable)."""
+    digests, paths = _artifacts(tmp_path, tag)
+    proto = ExperimentProtocolV1.from_config({
+        "model": {"dtype": "bfloat16", "quantization": "none",
+                  "trust_remote_code": False},
+        "retention_scorer": "retention_score",
+        "require_native_servable_adapter": False,
+        "lora": {"rank": 4, "alpha": 8, "dropout": 0.0,
+                 "target_modules": ["c_attn"], "learning_rate": 1e-4,
+                 "steps": 2, "max_length": 48}})
+    plan_doc = _signed(signers["plan"], {
+        "schema": "mini-agi-v16.6-colab-campaign-plan-v1",
+        "campaign_id": f"camp-{tag}",
+        "experiment_protocol_digest": proto.digest})
+    bundle_d = digest({"bundle": tag})
+    qual_doc = _signed(signers["qualification"], {
+        "schema": "mini-agi-v16.5-qualification-record-v1",
+        "campaign_id": f"camp-{tag}", "decision": "QUALIFIED",
+        "campaign_plan_digest": plan_doc["digest"],
+        "evaluation_bundle_digest": bundle_d,
+        "runtime_backends": [backend]})
+    manifest = runtime_manifest(
+        model_id="tiny", model_revision="r1",
+        model_digest=digests["model"],
+        tokenizer_digest=tokenizer_artifact_digest(paths["model"]),
+        adapter_dir=paths["adapter"], protocol=proto,
+        campaign_digest=plan_doc["digest"],
+        qualification_record_digest=qual_doc["digest"])
+    if backend != "hf-peft":
+        manifest = dict(manifest)
+        manifest["serving_stack"] = backend
+        manifest["digest"] = digest(
+            {k: v for k, v in manifest.items() if k != "digest"})
+    decision_doc = _signed(signers["promotion"], {
+        "schema": "mini-agi-v16.5-promotion-decision-v1",
+        "campaign_id": f"camp-{tag}",
+        "campaign_plan_digest": plan_doc["digest"],
+        "qualification_record_digest": qual_doc["digest"],
+        "evaluation_bundle_digest": bundle_d,
+        "adapter": "L6",
+        "adapter_artifact_digests": {seed_name:
+                                   manifest["adapter_digest"]},
+        "runtime_manifest_digests": {seed_name: manifest["digest"]},
+        "authorized_at": TS - 60,
+        "expires_at": TS + 3600})
+    return {"decision": decision_doc, "qualification": qual_doc,
+            "plan": plan_doc, "runtime_manifest": manifest,
+            "artifact_root": digest(digests), "digests": digests,
+            "paths": paths}
+
+
 def _grant(signers, artifact_root, *, backend="hf-peft",
-           audience="local-supervisor", epoch=0):
+           audience="local-supervisor", epoch=0,
+           decision_digest=None, qualification_digest=None,
+           manifest_digest=None):
     return issue_grant(
-        signers["admission"], decision_digest=digest({"d": 1}),
-        qualification_digest=digest({"q": 1}),
-        runtime_manifest_digest=digest({"m": 1}),
+        signers["admission"],
+        decision_digest=decision_digest or digest({"d": 1}),
+        qualification_digest=qualification_digest or digest({"q": 1}),
+        runtime_manifest_digest=manifest_digest or digest({"m": 1}),
         artifact_root_digest=artifact_root, backend_id=backend,
         audience_runtime_identity=audience, now=NOW,
         revocation_epoch=epoch)
 
 
 def _supervisor(tmp_path, registry, signers, *, store_dir="journal",
-                router=None):
+                router=None, snapshot_provider=None):
     store = AuthorityStore(Path(tmp_path) / store_dir / "authority.sqlite")
     sup = ServingSupervisor(
         store, runtime_signer=signers["runtime"],
-        registry=registry, now=NOW)
+        registry=registry, now=NOW,
+        revocation_snapshot_provider=snapshot_provider)
     if router is not None:
         sup.router = router
     return sup
 
 
+def _rstore(signers, tmp_path, *, epoch=0, revoked=()):
+    rstore = RevocationStore(tmp_path / "revocations")
+    rstore.publish(RevocationSnapshotV2(
+        epoch=epoch, issued_at=TS - 60, valid_until=TS + 86400,
+        revoked_decision_digests=tuple(revoked)).to_doc(
+            signer=signers["revocation"]))
+    return rstore
+
+
+def _snapshot_provider(rstore, registry):
+    return lambda: rstore.latest_valid(registry, now=NOW, require=False)
+
+
 def _drive_into(sup, signers, tmp_path, backend, *, tag="a",
-                snapshot_root=None):
+                snapshot_root=None, docs=None):
     """Drive a full activation, staging the snapshot under
-    snapshot_root/<aid> so the recovery manager can find it."""
+    snapshot_root/<aid> so the recovery manager can find it. With
+    ``docs`` (from ``_docs``) the grant binds the real authority chain
+    and the signed documents are retained for restoration."""
     digests, paths = _artifacts(tmp_path, tag)
-    grant = _grant(signers, digest(digests),
-                   backend=getattr(backend, "backend_id", "hf-peft"))
+    backend_id = getattr(backend, "backend_id", "hf-peft")
+    grant = _grant(
+        signers, digest(digests), backend=backend_id,
+        decision_digest=(docs or {}).get("decision", {}).get("digest"),
+        qualification_digest=(docs or {}).get(
+            "qualification", {}).get("digest"),
+        manifest_digest=(docs or {}).get(
+            "runtime_manifest", {}).get("digest"))
     act = sup.request()
     aid = act.activation_id
-    sup.authorize(aid, grant)
+    authority_docs = None if docs is None else {
+        k: docs[k] for k in
+        ("decision", "qualification", "plan", "runtime_manifest")}
+    sup.authorize(aid, grant, authority_docs=authority_docs)
     dest = (Path(snapshot_root) / aid if snapshot_root
             else tmp_path / "snap" / tag)
     sup.stage(aid, stage_snapshot(
         dest, paths, expected_digests=digests,
-        manifest_digest=digest({"m": 1})))
+        manifest_digest=(docs or {}).get(
+            "runtime_manifest", {}).get("digest", digest({"m": 1}))))
     sup.prepare(aid, backend)
     sup.health_check(aid)
     sup.commit_activation(aid)
@@ -510,32 +614,32 @@ def _snap(tmp_path, aid, digests, paths, root):
 
 
 def test_cold_restart_restores_live_model(tmp_path):
-    """WP-F / Experiment 4: after a crash the service reauthorizes,
-    reloads, health-checks and publishes a verified live model — the
-    pointer alone never declares SERVING."""
+    """WP-F / Experiment 4 + SEC-403: after a crash the service
+    re-authorizes under CURRENT authority — the complete original
+    chain is re-verified, a fresh grant is issued, and the verified
+    live model is reloaded and published."""
     registry, signers = _chain(tmp_path)
     snaproot = tmp_path / "snaps"
-    sup = _supervisor(tmp_path, registry, signers)
-    backend = FakeBackend()
-    digests, paths = _artifacts(tmp_path, "a")
-    grant = _grant(signers, digest(digests))
-    act = sup.request()
-    aid = act.activation_id
-    sup.authorize(aid, grant)
-    sup.stage(aid, _snap(tmp_path, aid, digests, paths, snaproot))
-    sup.prepare(aid, backend)
-    sup.health_check(aid)
-    sup.commit_activation(aid)
+    rstore = _rstore(signers, tmp_path)
+    sup = _supervisor(tmp_path, registry, signers,
+                      snapshot_provider=_snapshot_provider(
+                          rstore, registry))
+    aid = _drive_into(
+        sup, signers, tmp_path, FakeBackend(), tag="a",
+        snapshot_root=snaproot, docs=_docs(signers, tmp_path, "a"))
     assert sup.serving_state is ServingState.SERVING
 
     # simulate crash: a fresh supervisor on the same store
-    sup2 = _supervisor(tmp_path, registry, signers)
+    sup2 = _supervisor(tmp_path, registry, signers,
+                       snapshot_provider=_snapshot_provider(
+                           rstore, registry))
     assert sup2.serving_state is ServingState.RECOVERY_REQUIRED
 
     mgr = RecoveryManager(
         sup2, admission_signer=signers["admission"],
         registry=registry, snapshot_root=snaproot,
-        backend_factories={"hf-peft": FakeBackend}, now=NOW)
+        backend_factories={"hf-peft": FakeBackend},
+        revocation_store=rstore, now=NOW)
     report = mgr.restore()
     assert report["restoration"]["status"] == "restored"
     new_id = report["restoration"]["restored_activation"]
@@ -618,36 +722,42 @@ def test_restoration_refuses_tampered_artifacts(tmp_path):
     assert report["restoration"]["status"] == "unavailable"
 
 
-def test_fallback_restores_with_its_own_backend(tmp_path):
-    class AlternateBackend(FakeBackend):
-        backend_id = "alternate"
-
+def test_fallback_restores_earlier_valid_activation(tmp_path):
+    """The durable intent's desired model is unrestorable (tampered
+    bytes); recovery falls back to the earlier completed activation
+    whose own authority chain still verifies."""
     registry, signers = _chain(tmp_path)
     snaproot = tmp_path / "snaps"
-    sup = _supervisor(tmp_path, registry, signers)
+    rstore = _rstore(signers, tmp_path)
+    sup = _supervisor(tmp_path, registry, signers,
+                      snapshot_provider=_snapshot_provider(
+                          rstore, registry))
     first_id = _drive_into(
-        sup, signers, tmp_path, AlternateBackend(), tag="a",
-        snapshot_root=snaproot)
+        sup, signers, tmp_path, FakeBackend(), tag="a",
+        snapshot_root=snaproot,
+        docs=_docs(signers, tmp_path, "a"))
     desired_id = _drive_into(
         sup, signers, tmp_path, FakeBackend(), tag="b",
-        snapshot_root=snaproot)
+        snapshot_root=snaproot, docs=_docs(signers, tmp_path, "b"))
 
     staged = snaproot / desired_id / "adapter" / \
         "adapter_model.safetensors"
     staged.chmod(0o600)
     staged.write_bytes(b"tampered desired weights")
 
-    sup2 = _supervisor(tmp_path, registry, signers)
+    sup2 = _supervisor(tmp_path, registry, signers,
+                       snapshot_provider=_snapshot_provider(
+                           rstore, registry))
     mgr = RecoveryManager(
         sup2, admission_signer=signers["admission"],
         registry=registry, snapshot_root=snaproot,
-        backend_factories={"hf-peft": FakeBackend,
-                           "alternate": AlternateBackend}, now=NOW)
+        backend_factories={"hf-peft": FakeBackend},
+        revocation_store=rstore, now=NOW)
     report = mgr.restore()
 
     assert report["restoration"]["status"] == "restored"
     assert report["restoration"]["restored_from"] == first_id
-    assert sup2.store.read_pointer()["backend_id"] == "alternate"
+    assert sup2.store.read_pointer()["backend_id"] == "hf-peft"
 
 
 def test_fallback_restoration_refuses_changed_artifacts(tmp_path):
@@ -676,30 +786,31 @@ def test_fallback_restoration_refuses_changed_artifacts(tmp_path):
     assert report["restoration"]["status"] == "unavailable"
     fallback = next(a for a in report["restoration"]["attempts"]
                     if a["candidate"] == first_id)
-    assert "recorded authorization artifact root" in fallback["reason"]
+    # a tampered artifact fails permanently — restored bytes must
+    # re-measure to the manifest-authorized digests
+    assert fallback["permanent"] is True
 
 
 def test_restoration_is_idempotent(tmp_path):
     """Repeating recovery does not create conflicting generations or
     reuse grants."""
     registry, signers = _chain(tmp_path)
-    sup = _supervisor(tmp_path, registry, signers)
-    backend = FakeBackend()
-    digests, paths = _artifacts(tmp_path, "a")
-    grant = _grant(signers, digest(digests))
-    aid = sup.request().activation_id
-    sup.authorize(aid, grant)
-    sup.stage(aid, _snap(tmp_path, aid, digests, paths,
-                         tmp_path / "snaps"))
-    sup.prepare(aid, backend)
-    sup.health_check(aid)
-    sup.commit_activation(aid)
+    rstore = _rstore(signers, tmp_path)
+    sup = _supervisor(tmp_path, registry, signers,
+                      snapshot_provider=_snapshot_provider(
+                          rstore, registry))
+    _drive_into(sup, signers, tmp_path, FakeBackend(), tag="a",
+                snapshot_root=tmp_path / "snaps",
+                docs=_docs(signers, tmp_path, "a"))
 
-    sup2 = _supervisor(tmp_path, registry, signers)
+    sup2 = _supervisor(tmp_path, registry, signers,
+                       snapshot_provider=_snapshot_provider(
+                           rstore, registry))
     mgr = RecoveryManager(
         sup2, admission_signer=signers["admission"],
         registry=registry, snapshot_root=tmp_path / "snaps",
-        backend_factories={"hf-peft": FakeBackend}, now=NOW)
+        backend_factories={"hf-peft": FakeBackend},
+        revocation_store=rstore, now=NOW)
     r1 = mgr.restore()
     assert r1["restoration"]["status"] == "restored"
     # second restore: nothing to restore — clean no-op

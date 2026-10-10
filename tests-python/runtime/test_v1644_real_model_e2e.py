@@ -39,14 +39,26 @@ from minagi.runtime.recovery_manager import RecoveryManager  # noqa: E402
 from minagi.runtime.serving_router import ServingRouter  # noqa: E402
 from minagi.runtime.supervisor import (  # noqa: E402
     ServingState, ServingSupervisor)
-from minagi.security.admission_grants import issue_grant  # noqa: E402
-from minagi.v161.artifact_closure import close_tree  # noqa: E402
+from minagi.security.signed_revocations import (  # noqa: E402
+    RevocationSnapshotV2, RevocationStore)
+from minagi.v161.artifact_closure import (  # noqa: E402
+    close_tree, tokenizer_artifact_digest)
 from minagi.v161.authority import (AUTHORITY_ROLES, AuthorityRegistry,  # noqa: E402
                                    write_trust_root)
-from minagi.v161.immutable_snapshot import stage_snapshot  # noqa: E402
-from minagi.v161.peft_serving import PeftServingBackend  # noqa: E402
+from minagi.v161.experiment_protocol import ExperimentProtocolV1  # noqa: E402
+from minagi.v161.peft_serving import (PeftServingBackend,  # noqa: E402
+                                      runtime_manifest)
+from minagi.v161.trusted_launcher import (LaunchRequest,  # noqa: E402
+                                          TrustedRuntimeLauncher)
 
 NOW = datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
+TS = int(NOW.timestamp())
+
+
+def _signed(signer, value):
+    env = signer.sign(value)
+    return {"value": value, "digest": digest(value),
+            "signer_key_id": env.key_id, "signature_b64": env.signature_b64}
 
 VOCAB = ["[PAD]", "[EOS]", "[UNK]", "user:", "assistant:", "ask", "me",
          "ans", "ok", "a1", "b2", "c3", "d4", "x", "y", "hello", "world"]
@@ -93,31 +105,96 @@ def _real_artifacts(tmp_path, tag, *, seed):
     adapter_dir = tmp_path / f"adapter-{tag}"
     if not model_dir.exists():
         _save_real_model(model_dir, adapter_dir, seed=seed)
-    return ({"model": close_tree(model_dir).digest,
-             "adapter": close_tree(adapter_dir).digest},
-            {"model": str(model_dir), "adapter": str(adapter_dir)})
+    return model_dir, adapter_dir
 
 
-def _drive(sup, signers, tmp_path, backend, *, tag, seed,
-           snapshot_root):
-    digests, paths = _real_artifacts(tmp_path, tag, seed=seed)
-    grant = issue_grant(
-        signers["admission"], decision_digest=digest({"d": tag}),
-        qualification_digest=digest({"q": tag}),
-        runtime_manifest_digest=digest({"m": tag}),
-        artifact_root_digest=digest(digests), backend_id="hf-peft",
-        audience_runtime_identity="local-supervisor", now=NOW,
-        revocation_epoch=0)
-    aid = sup.request().activation_id
-    sup.authorize(aid, grant)
-    sup.stage(aid, stage_snapshot(
-        Path(snapshot_root) / aid, paths,
-        expected_digests=digests,
-        manifest_digest=digest({"m": tag})))
-    sup.prepare(aid, backend)
-    sup.health_check(aid)
-    sup.commit_activation(aid)
-    return aid
+def _chain_docs(signers, model_dir, adapter_dir, *, campaign_id,
+                seed_name):
+    """The complete signed authority chain for one activation — the
+    same documents the production admission path requires, so
+    cold-start restoration can re-verify real authority (v16.4.5:
+    a synthetic grant is not restorable)."""
+    proto = ExperimentProtocolV1.from_config({
+        "model": {"dtype": "bfloat16", "quantization": "none",
+                  "trust_remote_code": False},
+        "retention_scorer": "retention_score",
+        "require_native_servable_adapter": False,
+        "lora": {"rank": 2, "alpha": 4, "dropout": 0.0,
+                 "target_modules": ["c_attn"], "learning_rate": 1e-4,
+                 "steps": 2, "max_length": 48},
+    })
+    plan_doc = _signed(signers["plan"], {
+        "schema": "mini-agi-v16.6-colab-campaign-plan-v1",
+        "campaign_id": campaign_id,
+        "experiment_protocol_digest": proto.digest})
+    bundle_d = digest({"bundle": campaign_id})
+    qual_doc = _signed(signers["qualification"], {
+        "schema": "mini-agi-v16.5-qualification-record-v1",
+        "campaign_id": campaign_id, "decision": "QUALIFIED",
+        "campaign_plan_digest": plan_doc["digest"],
+        "evaluation_bundle_digest": bundle_d,
+        "runtime_backends": ["hf-peft"]})
+    manifest = runtime_manifest(
+        model_id="tiny", model_revision="r1",
+        model_digest=close_tree(model_dir, resolve_symlinks=True).digest,
+        tokenizer_digest=tokenizer_artifact_digest(model_dir),
+        adapter_dir=adapter_dir, protocol=proto,
+        campaign_digest=plan_doc["digest"],
+        qualification_record_digest=qual_doc["digest"])
+    decision_doc = _signed(signers["promotion"], {
+        "schema": "mini-agi-v16.5-promotion-decision-v1",
+        "campaign_id": campaign_id,
+        "campaign_plan_digest": plan_doc["digest"],
+        "qualification_record_digest": qual_doc["digest"],
+        "evaluation_bundle_digest": bundle_d,
+        "adapter": "L6",
+        "adapter_artifact_digests": {seed_name: manifest["adapter_digest"]},
+        "runtime_manifest_digests": {seed_name: manifest["digest"]},
+        "authorized_at": TS - 60,
+        "expires_at": TS + 3600})
+    return {"plan": plan_doc, "qualification": qual_doc,
+            "decision": decision_doc, "manifest": manifest,
+            "seed": seed_name, "campaign_id": campaign_id}
+
+
+def _launcher(registry, signers, tmp_path, *, store, sup, snaps,
+              rstore):
+    return TrustedRuntimeLauncher(
+        registry, revocation_store=rstore,
+        runtime_signer=signers["runtime"],
+        admission_signer=signers["admission"],
+        snapshot_root=snaps,
+        receipts_dir=tmp_path / "receipts",
+        nonce_journal=tmp_path / "nonces.jsonl",
+        supervisor=sup, authority_store=store, now=NOW)
+
+
+def _drive(launcher, signers, tmp_path, backend, *, tag, seed,
+           campaign):
+    model_dir, adapter_dir = _real_artifacts(tmp_path, tag, seed=seed)
+    docs = _chain_docs(signers, model_dir, adapter_dir,
+                       campaign_id=campaign, seed_name=f"seed-{tag}")
+    result = launcher.launch(
+        LaunchRequest(
+            campaign_id=campaign, seed=f"seed-{tag}",
+            decision_doc=docs["decision"],
+            qualification_doc=docs["qualification"],
+            plan_doc=docs["plan"],
+            runtime_manifest=docs["manifest"],
+            adapter_dir=str(adapter_dir),
+            model_path=str(model_dir),
+            expected_backend="hf-peft"),
+        backend)
+    return result.activation_id
+
+
+def _revocation_store(signers, tmp_path, *, epoch=0, revoked=()):
+    rstore = RevocationStore(tmp_path / "revocations")
+    rstore.publish(RevocationSnapshotV2(
+        epoch=epoch, issued_at=TS - 60, valid_until=TS + 86400,
+        revoked_decision_digests=tuple(revoked)).to_doc(
+            signer=signers["revocation"]))
+    return rstore
 
 
 def _query(router, prompt, *, tokens=4):
@@ -130,16 +207,22 @@ def _query(router, prompt, *, tokens=4):
 def test_real_model_activate_query_rollback_restore(tmp_path):
     registry, signers = _chain(tmp_path)
     snaps = tmp_path / "snaps"
+    rstore = _revocation_store(signers, tmp_path)
     router = ServingRouter(budget=BUDGET)
     store = AuthorityStore(tmp_path / "journal" / "authority.sqlite")
-    sup = ServingSupervisor(store, runtime_signer=signers["runtime"],
-                            registry=registry, now=NOW)
+    sup = ServingSupervisor(
+        store, runtime_signer=signers["runtime"], registry=registry,
+        now=NOW,
+        revocation_snapshot_provider=lambda: rstore.latest_valid(
+            registry, now=NOW, require=False))
     sup.router = router
+    launcher = _launcher(registry, signers, tmp_path, store=store,
+                         sup=sup, snaps=snaps, rstore=rstore)
 
     # --- activate real model A and query it --------------------------
-    aid_a = _drive(sup, signers, tmp_path,
+    aid_a = _drive(launcher, signers, tmp_path,
                    PeftServingBackend(budget=BUDGET),
-                   tag="a", seed=0, snapshot_root=snaps)
+                   tag="a", seed=0, campaign="camp-a")
     assert sup.serving_state is ServingState.SERVING
     out_a = _query(router, "ask hello")
     assert isinstance(out_a["completion"], str)
@@ -148,9 +231,9 @@ def test_real_model_activate_query_rollback_restore(tmp_path):
         BUDGET.max_new_tokens
 
     # --- activate real model B: live switching -----------------------
-    aid_b = _drive(sup, signers, tmp_path,
+    aid_b = _drive(launcher, signers, tmp_path,
                    PeftServingBackend(budget=BUDGET),
-                   tag="b", seed=1, snapshot_root=snaps)
+                   tag="b", seed=1, campaign="camp-b")
     dep = store.deployment()
     assert dep["desired_activation_id"] == aid_b
     assert dep["previous_activation_id"] == aid_a
@@ -170,7 +253,9 @@ def test_real_model_activate_query_rollback_restore(tmp_path):
     router2 = ServingRouter(budget=BUDGET)
     sup2 = ServingSupervisor(
         AuthorityStore(tmp_path / "journal" / "authority.sqlite"),
-        runtime_signer=signers["runtime"], registry=registry, now=NOW)
+        runtime_signer=signers["runtime"], registry=registry, now=NOW,
+        revocation_snapshot_provider=lambda: rstore.latest_valid(
+            registry, now=NOW, require=False))
     sup2.router = router2
     report = sup2.recover()
     assert report["requires_restoration"] == aid_a
@@ -181,6 +266,7 @@ def test_real_model_activate_query_rollback_restore(tmp_path):
         snapshot_root=snaps,
         backend_factories={"hf-peft":
                            (lambda: PeftServingBackend(budget=BUDGET))},
+        revocation_store=rstore,
         now=NOW)
     result = mgr.restore()
     assert result["restoration"]["status"] == "restored"

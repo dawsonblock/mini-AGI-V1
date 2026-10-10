@@ -128,34 +128,67 @@ def test_two_threads_exactly_one_wins(tmp_path):
     assert results["refused"] == 1
 
 
-def _proc_reserve(db_path: str, grant_value: dict, aid: str, q):
-    store = AuthorityStore(db_path)
-    try:
-        store.reserve_grant(AdmissionGrantV1.from_value(grant_value),
-                            activation_id=aid, at=TS)
-        q.put("ok")
-    except GrantConsumed:
-        q.put("refused")
-    except Exception as exc:  # noqa: BLE001
-        q.put(f"error:{exc}")
+def _start_methods():
+    """spawn always; other supported platform methods too — except
+    'fork' on macOS, where sqlite-using children cannot run: system
+    libsqlite3/libdispatch state initialized in the parent is invalid
+    after fork, and the child crashes on its first connect. That is a
+    documented platform limitation, so fork is exercised only where it
+    is genuinely supported."""
+    methods = ["spawn"]
+    for m in multiprocessing.get_all_start_methods():
+        if m != "spawn":
+            methods.append(m)
+    if sys.platform == "darwin":
+        methods = [m for m in methods if m != "fork"]
+    return methods
 
 
-def test_two_processes_exactly_one_wins(tmp_path):
+@pytest.mark.parametrize("start_method", _start_methods())
+def test_two_processes_exactly_one_wins(tmp_path, start_method):
     """BEGIN IMMEDIATE serializes writers across processes — exactly
-    one reservation commits."""
+    one reservation commits, under every supported start method.
+    Worker-module import failure, a hung child, or a child that exits
+    without reporting are each explicit failures — never masked."""
+    sys.path.insert(0, str(ROOT / "tests-python" / "helpers"))
+    try:
+        from grant_ledger_worker import proc_reserve
+    except ImportError as exc:
+        pytest.fail(f"worker module is not importable under "
+                    f"{start_method}: {exc}")
     db = tmp_path / "state" / "authority.sqlite"
-    AuthorityStore(db)  # create schema first
+    AuthorityStore(db).close()  # create schema; never fork with an
+    # open sqlite handle — the child would inherit it unsafely
     doc = _grant_doc(_chain(tmp_path)[1])
-    ctx = multiprocessing.get_context("spawn")
+    ctx = multiprocessing.get_context(start_method)
     q = ctx.Queue()
-    procs = [ctx.Process(target=_proc_reserve,
-                         args=(str(db), doc["value"], f"{i:016x}" * 2, q))
-             for i in range(2)]
+    procs = [ctx.Process(
+        target=proc_reserve,
+        args=(str(db), doc["value"], f"{i:016x}" * 2, TS, q))
+        for i in range(2)]
     for p in procs:
         p.start()
     for p in procs:
         p.join(timeout=30)
-    outcomes = [q.get(timeout=30) for _ in procs]
+    for p in procs:
+        if p.is_alive():
+            p.terminate()
+            p.join(timeout=10)
+            pytest.fail("a grant-reservation child hung — terminated "
+                        f"after the join deadline (exitcode "
+                        f"{p.exitcode})")
+    outcomes = []
+    for p in procs:
+        try:
+            outcomes.append(q.get(timeout=10))
+        except Exception:
+            pytest.fail("a child exited (code "
+                        f"{p.exitcode}) without reporting an outcome — "
+                        "import or crash inside the worker, not a "
+                        "concurrency result")
+    for o in outcomes:
+        if isinstance(o, str) and o.startswith("error:"):
+            pytest.fail(f"child reported a worker error: {o}")
     assert outcomes.count("ok") == 1
     assert outcomes.count("refused") == 1
 

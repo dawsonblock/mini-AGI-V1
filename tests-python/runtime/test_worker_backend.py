@@ -85,15 +85,38 @@ def _route_bg(router, request, results, errors):
 
 # ---------- snapshot transport -------------------------------------------
 
-def test_measured_snapshot_survives_pickling(tmp_path):
-    """RUN-401 transport: the snapshot crossing into the worker keeps
-    its measurement — and re-verification on the restored object
-    still passes."""
+def test_measured_snapshot_descriptor_roundtrip_and_no_pickle(tmp_path):
+    """RUN-401/SEC-401 transport: the snapshot crosses into the worker
+    as a re-measured descriptor — never as a pickled object."""
+    from minagi.v161.immutable_snapshot import (
+        SnapshotError, snapshot_descriptor, snapshot_from_descriptor)
     snap = _snapshot(tmp_path)
-    clone = pickle.loads(pickle.dumps(snap))
+    desc = snapshot_descriptor(snap)
+    # the descriptor is plain JSON data — no live objects on the wire
+    import json
+    desc = json.loads(json.dumps(desc))
+    clone = snapshot_from_descriptor(desc)
     assert clone.manifest_digest == snap.manifest_digest
     assert clone.artifact_digests == snap.artifact_digests
     verify_snapshot(clone)
+    # pickle is refused outright: measurement evidence must not be
+    # re-materialized without measuring
+    with pytest.raises(SnapshotError):
+        pickle.dumps(snap)
+
+
+def test_snapshot_descriptor_refuses_tampered_bytes(tmp_path):
+    """A descriptor is a locator, not proof: if the staged bytes no
+    longer match, the worker-side re-measure refuses the load."""
+    from minagi.v161.immutable_snapshot import (
+        SnapshotError, snapshot_descriptor, snapshot_from_descriptor)
+    snap = _snapshot(tmp_path)
+    desc = snapshot_descriptor(snap)
+    target = snap.root / "adapter" / "adapter_model.safetensors"
+    target.chmod(0o600)
+    target.write_bytes(b"not-the-authorized-weights")
+    with pytest.raises(SnapshotError):
+        snapshot_from_descriptor(desc)
 
 
 # ---------- worker lifecycle ----------------------------------------------

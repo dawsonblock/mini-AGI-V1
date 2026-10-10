@@ -99,24 +99,15 @@ class MeasuredSnapshot:
     def closure(self, name: str) -> TreeClosure:
         return self._closures[name]
 
-    def __getstate__(self):
-        """Serialize an already-measured snapshot for transport to a
-        supervised worker process (v16.4.5 RUN-401). The sentinel still
-        gates CONSTRUCTION — restoring the pickle does not call
-        __init__; it re-materializes measurement evidence produced by
-        stage_snapshot, it cannot create it."""
-        return {"root": self._root, "digests": dict(self._digests),
-                "manifest_digest": self._manifest_digest,
-                "closures": dict(self._closures)}
-
-    def __setstate__(self, state):
-        for _n, d in dict(state.get("digests") or {}).items():
-            validate_digest(d)
-        validate_digest(state["manifest_digest"])
-        self._root = Path(state["root"])
-        self._digests = dict(state["digests"])
-        self._manifest_digest = str(state["manifest_digest"])
-        self._closures = dict(state["closures"])
+    def __reduce__(self):
+        """MeasuredSnapshot does not pickle (v16.4.5 SEC-401): the
+        worker IPC is typed JSON, and a snapshot crosses it as a
+        descriptor (``snapshot_descriptor``) that the worker re-
+        measures through ``snapshot_from_descriptor``. Pickle would
+        restore measurement evidence without measuring."""
+        raise SnapshotError(
+            "MeasuredSnapshot cannot be pickled — transport it as a "
+            "descriptor and re-measure in the receiving process")
 
     def __repr__(self) -> str:  # pragma: no cover - diagnostics only
         return (f"MeasuredSnapshot(root={str(self._root)!r}, "
@@ -189,6 +180,79 @@ def verify_snapshot(snapshot: MeasuredSnapshot) -> None:
         raise SnapshotError(
             "staged snapshot no longer matches the authorized artifacts: "
             + "; ".join(problems))
+
+
+def snapshot_descriptor(snapshot: MeasuredSnapshot) -> dict:
+    """The JSON-safe description of a measured snapshot for worker
+    IPC: root + authorized digests + manifest digest. It is a
+    reference to already-staged immutable bytes, not a serialised
+    object — the receiver must re-measure before use."""
+    if not isinstance(snapshot, MeasuredSnapshot):
+        raise SnapshotError(
+            "snapshot_descriptor requires a MeasuredSnapshot")
+    return {"root": str(snapshot.root),
+            "digests": dict(snapshot.artifact_digests),
+            "manifest_digest": snapshot.manifest_digest}
+
+
+def snapshot_from_descriptor(desc) -> MeasuredSnapshot:
+    """Reconstruct a MeasuredSnapshot inside the worker from its
+    descriptor: re-measure every artifact from disk and refuse when
+    bytes no longer match the authorized digests. The descriptor is
+    trusted only as a locator — proof still comes from measurement."""
+    if not isinstance(desc, dict):
+        raise SnapshotError("snapshot descriptor must be an object")
+    root = Path(str(desc.get("root") or ""))
+    raw_digests = desc.get("digests")
+    if not isinstance(raw_digests, dict) or not raw_digests:
+        raise SnapshotError(
+            "snapshot descriptor must name a non-empty digest map")
+    if len(raw_digests) > 64:
+        raise SnapshotError("snapshot descriptor names too many artifacts")
+    digests: dict[str, str] = {}
+    for name, d in raw_digests.items():
+        name = str(name)
+        if not name or name != Path(name).name:
+            raise SnapshotError(
+                f"artifact name {name!r} is not a plain child of the "
+                "snapshot root")
+        try:
+            validate_digest(str(d))
+        except ValueError as exc:
+            raise SnapshotError(
+                f"artifact digest for {name!r} malformed: {exc}") from exc
+        digests[name] = str(d)
+    try:
+        manifest_digest = str(desc["manifest_digest"])
+        validate_digest(manifest_digest)
+    except (KeyError, ValueError) as exc:
+        raise SnapshotError(
+            f"snapshot descriptor manifest digest invalid: {exc}") from exc
+    if not root.is_dir():
+        raise SnapshotError(
+            f"snapshot root {root} is absent — the staged artifacts do "
+            "not exist in this process")
+    closures: dict[str, TreeClosure] = {}
+    problems: list[str] = []
+    for name, authorized in digests.items():
+        try:
+            closure = close_tree(root / name)
+        except ArtifactClosureError as exc:
+            problems.append(f"{name}: {exc}")
+            continue
+        if closure.digest != authorized:
+            problems.append(
+                f"{name}: measured digest {closure.digest} != "
+                f"authorized {authorized}")
+            continue
+        closures[name] = closure
+    if problems:
+        raise SnapshotError(
+            "snapshot descriptor does not match on-disk bytes: "
+            + "; ".join(problems))
+    return MeasuredSnapshot(
+        root=root, digests=digests, manifest_digest=manifest_digest,
+        closures=closures, _sentinel=_SENTINEL)
 
 
 def _discard(path: Path) -> None:

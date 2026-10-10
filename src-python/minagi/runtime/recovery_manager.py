@@ -126,7 +126,12 @@ class RecoveryManager:
                      pointer: dict, is_desired: bool
                      ) -> str:
         """Drive a fresh supervised activation that re-admits the
-        candidate's measured artifact set under CURRENT authority."""
+        candidate's measured artifact set — but only after the COMPLETE
+        original authority chain re-verifies under current authority
+        and revocation evidence (SEC-403). A fresh grant is not a
+        substitute for validating the original promotion."""
+        from minagi.security.restoration_authority import (
+            RestorationAuthorityRefused)
         src = self.snapshot_root / candidate
         if not src.is_dir():
             raise RestorationRefused(
@@ -140,20 +145,16 @@ class RecoveryManager:
             raise RestorationRefused(
                 f"no registered backend factory for {backend_id!r}",
                 permanent=True)
+        verifier = self._verifier()
         try:
-            revocation_epoch = self._operative_revocation_epoch()
-        except Exception as exc:  # noqa: BLE001 - fail closed
+            snapshot = verifier.operative_snapshot()
+        except RestorationAuthorityRefused as exc:
             raise RestorationRefused(
-                f"current revocation evidence refused: {exc}") from exc
+                f"current revocation evidence refused: {exc}",
+                permanent=True) from exc
         # Re-measure every staged artifact — bytes, not names.
         artifacts, expected = self._remeasure(src)
         artifact_root = digest_root_of(expected)
-        grant_root = str(context.get("artifact_root_digest") or "")
-        if not grant_root or grant_root != artifact_root:
-            raise RestorationRefused(
-                "the staged artifacts do not match the candidate's "
-                "recorded authorization artifact root",
-                permanent=True)
         if is_desired:
             bound_root = str(pointer.get("artifact_root_digest") or "")
             if bound_root and bound_root != artifact_root:
@@ -161,34 +162,50 @@ class RecoveryManager:
                     "the staged artifacts do not match the durable "
                     "commit's artifact root — the record does not "
                     "describe these bytes", permanent=True)
+        docs = {}
+        try:
+            docs = self.supervisor.store.authority_docs(candidate)
+        except Exception:  # noqa: BLE001 - treated as absent below
+            docs = {}
+        backend_manifest_digest = ""
+        if self.supervisor.backend_manifest_doc is not None:
+            backend_manifest_digest = str(
+                self.supervisor.backend_manifest_doc.get("digest") or "")
+        try:
+            auth = verifier.verify(
+                candidate_id=candidate,
+                authorized_context=context,
+                authority_docs=docs,
+                measured_digests=expected,
+                artifact_root_digest=artifact_root,
+                backend_id=backend_id,
+                backend_manifest_digest=backend_manifest_digest,
+                snapshot=snapshot)
+        except RestorationAuthorityRefused as exc:
+            raise RestorationRefused(
+                f"historical authorization refused: {exc}",
+                permanent=True) from exc
         act = self.supervisor.request()
         new_id = act.activation_id
         try:
             grant = issue_grant(
                 self.admission_signer,
-                decision_digest=str(context.get("decision_digest") or
-                                    digest({"restoration_of": candidate,
-                                            "artifact_root":
-                                            artifact_root})),
-                qualification_digest=str(
-                    context.get("qualification_digest") or
-                    digest({"restored_under": "current-policy"})),
-                runtime_manifest_digest=str(
-                    context.get("manifest") or artifact_root),
-                artifact_root_digest=artifact_root,
-                backend_id=backend_id,
-                backend_binary_digest=str(
-                    context.get("backend_binary_digest") or ""),
-                policy_epoch=int(context.get("policy_epoch") or 0),
+                decision_digest=auth.decision_digest,
+                qualification_digest=auth.qualification_digest,
+                runtime_manifest_digest=auth.runtime_manifest_digest,
+                artifact_root_digest=auth.artifact_root_digest,
+                backend_id=auth.backend_id,
+                backend_binary_digest=auth.backend_binary_digest,
+                policy_epoch=auth.policy_epoch,
                 audience_runtime_identity=
                     self.supervisor.runtime_identity,
                 now=self._now,
-                revocation_epoch=int(revocation_epoch))
-            self.supervisor.authorize(new_id, grant)
-            staged = self._restage(new_id, src, expected,
-                                   manifest_digest=str(
-                                       context.get("manifest") or
-                                       artifact_root))
+                revocation_epoch=auth.revocation_epoch)
+            self.supervisor.authorize(new_id, grant,
+                                      authority_docs=docs)
+            staged = self._restage(
+                new_id, src, expected,
+                manifest_digest=auth.runtime_manifest_digest)
             self.supervisor.stage(new_id, staged)
             backend = factory()
             self.supervisor.prepare(new_id, backend)
@@ -207,7 +224,9 @@ class RecoveryManager:
                 activation_id=new_id, event_type="restoration_completed",
                 from_state="ACTIVE", to_state="ACTIVE",
                 at=self.supervisor._at(),
-                detail={"restored_from": candidate},
+                detail={"restored_from": candidate,
+                        "decision_digest": auth.decision_digest,
+                        "revocation_epoch": auth.revocation_epoch},
                 signer=self.supervisor.signer)
         except AuthorityStoreError:
             pass
@@ -239,14 +258,18 @@ class RecoveryManager:
         return str(self._authorized_context(activation_id)
                    .get("backend") or "hf-peft")
 
-    def _operative_revocation_epoch(self) -> int:
-        """Current revocation epoch — restoration is authorized under
-        TODAY'S evidence, never a replayed snapshot."""
-        if self.revocation_store is None:
-            return 0
-        snapshot = self.revocation_store.latest_valid(
-            self.registry, now=self._now)
-        return int(getattr(snapshot, "epoch", 0))
+    def _verifier(self):
+        """The restoration authority verifier, bound to current
+        authority policy: the full original chain must re-verify, and
+        the operative revocation snapshot is enforced — a grant is
+        issued only against the verified bindings it returns."""
+        from minagi.security.restoration_authority import (
+            RestorationAuthorizationVerifier)
+        return RestorationAuthorizationVerifier(
+            self.registry, revocation_store=self.revocation_store,
+            now=self._now,
+            min_policy_epoch=getattr(self.supervisor,
+                                     "min_policy_epoch", 0))
 
     def _remeasure(self, src: Path):
         from minagi.v161.artifact_closure import close_tree

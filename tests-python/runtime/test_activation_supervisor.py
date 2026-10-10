@@ -563,10 +563,13 @@ def test_rollback_rechecks_revocation_epoch(tmp_path):
     epoch is refused — rollback is not a security bypass."""
     registry, signers = _chain(tmp_path)
     sup = _supervisor(tmp_path, registry, signers)
-    sup._revocation_epoch_provider = lambda: 5
+    epoch = {"v": 0}
+    sup._revocation_epoch_provider = lambda: epoch["v"]
     _drive(sup, signers, tmp_path, FakeBackend(), tag="a")
     _drive(sup, signers, tmp_path, FakeBackend(), tag="b")
-    # act-1's grant was issued at revocation_epoch 0 < operative 5
+    # The operative epoch advances AFTER both activations authorized —
+    # act-1's grant was issued at revocation_epoch 0 < operative 5.
+    epoch["v"] = 5
     with pytest.raises(ActivationRefused, match="stale"):
         sup.rollback()
 

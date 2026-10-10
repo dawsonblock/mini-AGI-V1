@@ -110,6 +110,14 @@ CREATE TABLE IF NOT EXISTS deployment (
     last_committed_event_digest TEXT NOT NULL,
     updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS authority_documents (
+    activation_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    doc_digest TEXT NOT NULL,
+    doc_json TEXT NOT NULL,
+    recorded_at INTEGER NOT NULL,
+    PRIMARY KEY (activation_id, kind)
+);
 CREATE TABLE IF NOT EXISTS admin_audit (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id TEXT NOT NULL UNIQUE,
@@ -233,11 +241,19 @@ class AuthorityStore:
     # --- grants -----------------------------------------------------
     def reserve_grant(self, grant, *, activation_id: str, at: int,
                       from_state: str = "", to_state: str = "AUTHORIZED",
-                      detail: dict | None = None) -> dict:
+                      detail: dict | None = None,
+                      documents: dict | None = None) -> dict:
         """Atomically reserve a verified grant and journal the
         AUTHORIZED event. Raises GrantConsumed on id/nonce/digest
         collision — the grant consumed stays consumed even if the
-        activation later fails."""
+        activation later fails.
+
+        ``documents`` (v16.4.5) retains the signed authority documents
+        the admission relied on — ``{"decision": env, "qualification":
+        env, "plan": env, "runtime_manifest": manifest}`` — in the same
+        transaction, so cold-start restoration can re-verify the
+        complete original authority chain rather than trusting
+        journaled digests."""
         try:
             with self._lock:
                 self._db.execute("BEGIN IMMEDIATE")
@@ -263,6 +279,16 @@ class AuthorityStore:
                         (grant.grant_id, grant.nonce, grant.digest,
                          activation_id, grant.audience_runtime_identity,
                          "reserved", int(at), int(grant.expires_at)))
+                    for kind, doc in sorted(
+                            dict(documents or {}).items()):
+                        self._db.execute(
+                            "INSERT INTO authority_documents("
+                            "activation_id, kind, doc_digest, doc_json, "
+                            "recorded_at) VALUES(?,?,?,?,?)",
+                            (activation_id, str(kind), digest(doc),
+                             json.dumps(doc, sort_keys=True,
+                                        separators=(",", ":")),
+                             int(at)))
                     event = self._append_event_txn(
                         activation_id=activation_id,
                         event_type="authorized",
@@ -281,6 +307,17 @@ class AuthorityStore:
         except sqlite3.Error as exc:
             raise AuthorityStoreError(
                 f"grant reservation failed: {exc}") from exc
+
+    def authority_docs(self, activation_id: str) -> dict:
+        """The signed authority documents retained for an activation —
+        ``{kind: document}``. Empty when the activation predates
+        v16.4.5 document retention or when none were recorded;
+        restoration treats absence as refusal, never as a gap to
+        synthesize around."""
+        rows = self._db.execute(
+            "SELECT kind, doc_json FROM authority_documents WHERE "
+            "activation_id = ?", (activation_id,)).fetchall()
+        return {str(k): json.loads(v) for k, v in rows}
 
     def grant_reserved(self, grant_id: str) -> bool:
         row = self._db.execute(

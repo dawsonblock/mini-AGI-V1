@@ -765,11 +765,22 @@ def main(argv=None) -> int:
         budget = InferenceBudgetPolicyV1.from_doc(
             json.loads(Path(args.inference_budget).read_text()))
     store = AuthorityStore(state_dir / "authority.sqlite")
+    rstore = RevocationStore(
+        args.revocation_store or (storage / "revocations"))
+
+    def _revocation_snapshot_provider():
+        """The supervisor re-reads operative revocation evidence at
+        authorize, commit, and rollback — never a cached snapshot. In
+        development an empty store yields None (no floor); published
+        evidence is always enforced."""
+        return rstore.latest_valid(registry, require=False)
+
     supervisor = ServingSupervisor(
         store, runtime_signer=runtime_key, registry=registry,
         runtime_identity=(args.runtime_identity
                           if args.production else "local-supervisor"),
         min_policy_epoch=min_policy_epoch,
+        revocation_snapshot_provider=_revocation_snapshot_provider,
         backend_manifest_doc=backend_manifest_doc,
         backend_modules=backend_modules,
         backend_deps=backend_deps)
@@ -778,8 +789,7 @@ def main(argv=None) -> int:
 
     launcher = TrustedRuntimeLauncher(
         registry,
-        revocation_store=RevocationStore(
-            args.revocation_store or (storage / "revocations")),
+        revocation_store=rstore,
         runtime_signer=runtime_key, admission_signer=admission_key,
         supervisor=supervisor,
         snapshot_root=snapshots,
@@ -824,8 +834,7 @@ def main(argv=None) -> int:
             supervisor, admission_signer=admission_key,
             registry=registry, snapshot_root=snapshots,
             backend_factories=factories,
-            revocation_store=RevocationStore(
-                args.revocation_store or (storage / "revocations")),
+            revocation_store=rstore,
         ).restore().get("restoration")
 
     service = SupervisorService(

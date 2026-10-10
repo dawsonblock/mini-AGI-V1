@@ -123,6 +123,7 @@ class ServingSupervisor:
                  registry, runtime_identity: str = "local-supervisor",
                  min_policy_epoch: int = 0,
                  revocation_epoch_provider=None,
+                 revocation_snapshot_provider=None,
                  backend_manifest_doc=None, backend_modules=(),
                  backend_deps=(),
                  now: datetime | None = None):
@@ -136,6 +137,7 @@ class ServingSupervisor:
         self.runtime_identity = str(runtime_identity)
         self.min_policy_epoch = int(min_policy_epoch)
         self._revocation_epoch_provider = revocation_epoch_provider
+        self._revocation_snapshot_provider = revocation_snapshot_provider
         self.backend_manifest_doc = backend_manifest_doc
         self.backend_modules = tuple(backend_modules)
         self.backend_deps = tuple(backend_deps)
@@ -164,6 +166,50 @@ class ServingSupervisor:
     # --- plumbing ---------------------------------------------------
     def _at(self) -> int:
         return int(as_utc(self._now).timestamp())
+
+    def _operative_revocation(self):
+        """The operative revocation evidence, if a provider is
+        configured: ``(snapshot_or_none, epoch_floor)``. A snapshot
+        provider's callable must return a verified
+        ``RevocationSnapshotV2`` — signature/freshness/monotonicity are
+        checked by the provider (`RevocationStore.latest_valid`); a
+        refusal or exception there fails closed here. Returns
+        ``(None, None)`` when no provider is configured (the epoch
+        floor is simply not enforced)."""
+        snapshot = None
+        floor = None
+        if self._revocation_snapshot_provider is not None:
+            try:
+                snap = self._revocation_snapshot_provider()
+            except Exception as exc:  # noqa: BLE001 - fail closed
+                raise ActivationRefused(
+                    f"operative revocation evidence could not be "
+                    f"established: {exc}") from exc
+            if snap is not None:
+                snapshot = snap
+                floor = int(snap.epoch)
+        elif self._revocation_epoch_provider is not None:
+            epoch = self._revocation_epoch_provider()
+            if epoch is not None:
+                floor = int(epoch)
+        return snapshot, floor
+
+    def _check_decision_live(self, snapshot, *, grant=None,
+                             decision_digest: str | None = None,
+                             what: str = "activation") -> None:
+        """When an operative snapshot exists, the promotion decision a
+        grant binds must not be revoked, and the grant's own signing
+        key must not be revoked. Checked at authorize AND at commit —
+        revocation may advance between the two."""
+        if snapshot is None:
+            return
+        digest_to_check = decision_digest or (
+            str(grant.promotion_decision_digest) if grant else "")
+        if digest_to_check and snapshot.contains(digest_to_check):
+            raise ActivationRefused(
+                f"{what} binds promotion decision {digest_to_check}, "
+                "which is REVOKED by the operative revocation "
+                "snapshot — refused")
 
     def _get(self, activation_id: str) -> _Activation:
         act = self._activations.get(activation_id)
@@ -239,19 +285,39 @@ class ServingSupervisor:
             self._activations[activation_id] = act
             return act
 
-    def authorize(self, activation_id: str, grant_doc) -> _Activation:
+    def authorize(self, activation_id: str, grant_doc, *,
+                  authority_docs: dict | None = None) -> _Activation:
         """AUTHORIZED — the supervisor verifies the grant itself and
         reserves it in the transactional store: id, nonce, digest, and
         activation id are unique across restarts and concurrent
-        callers (SEC-201/SEC-207)."""
+        callers (SEC-201/SEC-207). The grant must satisfy the operative
+        revocation epoch AND its promotion decision must not already be
+        revoked — a grant for a revoked decision is dead on arrival
+        (SEC-403). ``authority_docs`` retains the signed authority
+        documents (decision/qualification/plan/runtime_manifest) with
+        the reservation so cold-start restoration can re-verify the
+        original chain."""
         act = self._get(activation_id)
+        snapshot, floor = self._operative_revocation()
         try:
             grant = verify_grant(
                 grant_doc, self.registry, now=self._now,
-                audience_runtime_identity=self.runtime_identity)
+                audience_runtime_identity=self.runtime_identity,
+                min_revocation_epoch=floor or 0)
         except GrantRefused as exc:
             self.abort(activation_id, reason=f"grant refused: {exc}")
             raise ActivationRefused(f"grant refused: {exc}") from exc
+        try:
+            self._check_decision_live(snapshot, grant=grant,
+                                      what="grant")
+            if snapshot is not None and snapshot.revokes_key(
+                    str((grant_doc or {}).get("signer_key_id") or "")):
+                raise ActivationRefused(
+                    "the key that signed this grant has been revoked "
+                    "by the operative snapshot")
+        except ActivationRefused as exc:
+            self.abort(activation_id, reason=str(exc))
+            raise
         if grant.policy_epoch < self.min_policy_epoch:
             self.abort(activation_id,
                        reason="grant policy epoch superseded")
@@ -259,6 +325,8 @@ class ServingSupervisor:
                 f"grant policy epoch {grant.policy_epoch} is older than "
                 f"the operative epoch {self.min_policy_epoch} — "
                 "superseded authorization refused")
+        docs = dict(authority_docs or {})
+        from egai.common.canonical import digest as _doc_digest
         with self._lock:
             try:
                 self.store.reserve_grant(
@@ -275,7 +343,10 @@ class ServingSupervisor:
                             "artifact_root_digest":
                                 grant.artifact_root_digest,
                             "backend_binary_digest":
-                                grant.backend_binary_digest})
+                                grant.backend_binary_digest,
+                            "doc_digests": {k: _doc_digest(v)
+                                            for k, v in docs.items()}},
+                    documents=docs)
             except GrantConsumed as exc:
                 self.abort(activation_id, reason="grant replay")
                 raise ActivationRefused(
@@ -457,6 +528,28 @@ class ServingSupervisor:
                     f"{expected_generation} but the durable generation "
                     f"is {current_gen} — refusing to activate onto a "
                     "superseded transition")
+            # Re-read the operative revocation evidence immediately
+            # before authorizing traffic — revocation may have advanced
+            # while the candidate staged/prepared (SEC-403 race). A
+            # grant bound to a stale epoch or a revoked decision is
+            # refused here, never routed.
+            snapshot, floor = self._operative_revocation()
+            if act.grant is not None and floor is not None and \
+                    int(act.grant.revocation_epoch) < int(floor):
+                self.abort(activation_id,
+                           reason="revocation epoch advanced during "
+                                  "preparation")
+                raise ActivationRefused(
+                    f"grant was issued against revocation epoch "
+                    f"{act.grant.revocation_epoch}; the operative "
+                    f"epoch is now {floor} — the candidate must be "
+                    "re-authorized under current revocation evidence")
+            try:
+                self._check_decision_live(snapshot, grant=act.grant,
+                                          what="activation")
+            except ActivationRefused as exc:
+                self.abort(activation_id, reason=str(exc))
+                raise
             # stage 1 — durable authorization BEFORE traffic
             try:
                 commit = self.store.commit_activation_intent(
@@ -791,6 +884,67 @@ class ServingSupervisor:
             return
         self.abort(self._active_id, reason=reason or "quarantined")
 
+    def apply_revocation_snapshot(self, snapshot) -> dict:
+        """Revocation response for already-serving models (SEC-403):
+        a newly operative snapshot may withdraw a live activation's
+        authority. Any resident activation whose grant binds a revoked
+        promotion decision is withdrawn — the active one is quarantined
+        (which reconciles the durable pointer and republishes a
+        predecessor whose own authorization is still live), a retained
+        one is retired. Returns the actions taken for the journal."""
+        actions = {"quarantined": [], "retired": []}
+        if snapshot is None:
+            return actions
+        with self._lock:
+            # Non-active residents first: a revoked predecessor must be
+            # gone before the active quarantine picks a rollback
+            # fallback among "still resident" completions.
+            order = [a for a in self._live_handles
+                     if a != self._active_id]
+            if self._active_id:
+                order.append(self._active_id)
+            for aid in order:
+                act = self._activations.get(aid)
+                grant = act.grant if act is not None else None
+                if grant is None:
+                    continue
+                if not snapshot.contains(
+                        str(grant.promotion_decision_digest)):
+                    continue
+                if aid == self._active_id:
+                    # quarantine_active's fallback restores only a
+                    # still-resident predecessor; one whose own decision
+                    # is revoked is filtered below by checking first.
+                    self.abort(
+                        aid,
+                        reason="promotion decision revoked by the "
+                               "operative snapshot")
+                    actions["quarantined"].append(aid)
+                else:
+                    pair = self._live_handles.pop(aid, None)
+                    self._retire_backend(
+                        act if act is not None else
+                        _Activation(aid, ActivationState.ABORTED), pair)
+                    if aid == self._retained:
+                        self._retained = None
+                    if act is not None and not act.state.terminal:
+                        try:
+                            durable = self._durable_state(
+                                aid, act.state.value)
+                            self.store.append_event(
+                                activation_id=aid,
+                                event_type="retired",
+                                from_state=durable,
+                                to_state="ABORTED", at=self._at(),
+                                detail={"reason": "promotion decision "
+                                                  "revoked by the "
+                                                  "operative snapshot"})
+                        except AuthorityStoreError:
+                            pass
+                        act.state = ActivationState.ABORTED
+                    actions["retired"].append(aid)
+        return actions
+
     def rollback(self, activation_id: str | None = None,
                  *, min_revocation_epoch: int | None = None) -> str | None:
         """Restore a retained committed predecessor. The target must be
@@ -809,10 +963,12 @@ class ServingSupervisor:
                     "not improvise")
             tgt_act = self._activations.get(target)
             # Rollback does not bypass security: the predecessor's grant
-            # must still satisfy the operative revocation epoch.
+            # must still satisfy the operative revocation epoch, and its
+            # promotion decision must not itself be revoked.
+            snapshot, prov_floor = self._operative_revocation()
             floor = min_revocation_epoch
-            if floor is None and self._revocation_epoch_provider is not None:
-                floor = int(self._revocation_epoch_provider())
+            if floor is None:
+                floor = prov_floor
             if floor is not None and tgt_act is not None and \
                     tgt_act.grant is not None and \
                     int(tgt_act.grant.revocation_epoch) < int(floor):
@@ -821,6 +977,9 @@ class ServingSupervisor:
                     f"revocation epoch {tgt_act.grant.revocation_epoch}; "
                     f"the operative epoch is {floor} — stale "
                     "authorization refused")
+            self._check_decision_live(
+                snapshot, grant=(tgt_act.grant if tgt_act else None),
+                what="rollback target")
             b, h = self._live_handles[target]
             try:
                 b.health_probe(h)

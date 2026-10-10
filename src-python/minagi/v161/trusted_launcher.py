@@ -284,7 +284,13 @@ class TrustedRuntimeLauncher:
                 audience_runtime_identity=self.supervisor.runtime_identity,
                 now=self._now,
                 revocation_epoch=snapshot.epoch)
-            self.supervisor.authorize(activation_id, grant_doc)
+            self.supervisor.authorize(
+                activation_id, grant_doc,
+                authority_docs={
+                    "decision": request.decision_doc,
+                    "qualification": request.qualification_doc,
+                    "plan": request.plan_doc,
+                    "runtime_manifest": request.runtime_manifest})
 
             # STAGED — physical copy-and-verify under the destination
             try:
