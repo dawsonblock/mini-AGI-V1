@@ -48,7 +48,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "f07dcb0dbb9bbb4dc592889b84504509af21ac5e96fc48af815bc94236e037aa",
+ "manifest_sha256": "adfa48b1c9994602477f022347f7982f35a0d3c9277f7afae42420a1e6590aab",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -237,9 +237,14 @@
    "manifest_sha256": "f07dcb0dbb9bbb4dc592889b84504509af21ac5e96fc48af815bc94236e037aa",
    "reason": "re-manifest after verify_final_package.py evidence-manifest prefix fix",
    "utc": "2026-10-10T22:53:25.425603Z"
+  },
+  {
+   "manifest_sha256": "adfa48b1c9994602477f022347f7982f35a0d3c9277f7afae42420a1e6590aab",
+   "reason": "untrack dist-v1645 build outputs from governed set",
+   "utc": "2026-10-10T22:54:55.330465Z"
   }
  ],
- "reissued_utc": "2026-10-10T22:53:25.425603Z",
+ "reissued_utc": "2026-10-10T22:54:55.330465Z",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
