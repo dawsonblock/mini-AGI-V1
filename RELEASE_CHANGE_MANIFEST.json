@@ -1,141 +1,387 @@
 {
-  "schema": "mini-agi-v16.4.4-change-manifest-v1",
-  "release": "mini-AGI-V1-v16.4.4-Verified-Runtime-Closure",
-  "version": "16.4.4",
-  "base_version": "16.4.3",
-  "summary": "Verified runtime closure: durable commit intent before any routing publication, generation-checked deployment transitions with predecessor restoration, per-activation request leases with drain/cancel/safe-unload ordering, mandatory durable administrative audit with an explicit emergency-stop exception, enforceable inference budgets, production backend-identity admission, and automatic cold-start restoration that never confuses durable intent with live state.",
-  "audit_mapping": {
-    "traffic_before_durable_commit": "SEC-301 (closed)",
-    "cleared_pointer_on_activation_failure": "SEC-302 (closed)",
-    "global_inflight_and_premature_unload": "SEC-303 (closed)",
-    "production_backend_identity_unenforced": "SEC-304 (closed)",
-    "silent_administrative_audit": "SEC-305 (closed)",
-    "unbounded_inference_parameters": "SEC-306 (closed)",
-    "incomplete_cold_start_restoration": "SEC-307 (closed)",
-    "controller_accepts_unsupported_prerequisite_evidence": "SEC-005 (v16.4.5, open)",
-    "controller_can_recommend_negative_utility": "SEC-006 (v16.4.5, open)",
-    "real_model_learning_and_serving_qualification_incomplete": "SEC-007 (v16.5.0, open)"
+ "audit_mapping": {
+  "cold_restoration_reactivates_revoked_promotion": "SEC-402 (closed)",
+  "controller_accepts_unsupported_prerequisite_evidence": "SEC-005 (open, carried)",
+  "controller_can_recommend_negative_utility": "SEC-006 (open, carried)",
+  "governed_file_manifest_mismatches_and_unmanifested_evidence": "SEC-403 (closed)",
+  "multiprocessing_test_not_importable_under_spawn": "SEC-404 (closed)",
+  "real_model_learning_and_serving_qualification_incomplete": "SEC-007 (open, v16.4.6 target)",
+  "supervisor_deserializes_worker_pickle": "SEC-401 (closed)"
+ },
+ "base_version": "16.4.4",
+ "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.4 (repairs SEC-301..SEC-307 remain in effect)",
+ "evidence": {
+  "evidence_release": "mini-AGI-Campaign3A-Evidence.zip",
+  "separation": "Campaign 3A evidence no longer ships inside the governed source tree. 233 tracked evidence files were untracked (git rm --cached; content preserved on disk and in git history) and colab-evidence/ is now gitignored. The evidence artifact mini-AGI-Campaign3A-Evidence.zip carries its own EVIDENCE_MANIFEST.json, signature and provenance; the historical Campaign 3A REFUSED result is preserved unmodified.",
+  "source_release": "mini-AGI-V1-v16.4.5-Security-and-Evidence-Closure.zip"
+ },
+ "file_changes": [
+  {
+   "change": "modified",
+   "file": ".gitignore",
+   "new_sha256": "f6811df761c2ae9d59e434d10be26a4462c9c4a32635813c4f218c68cf93a2a5",
+   "old_sha256": "1b395a24d1c1b542b7a9e276027133e52362a1e225a460fd993edaaa07ef4983",
+   "repair_id": "SEC-403"
   },
-  "repairs": [
-    {
-      "id": "SEC-301",
-      "title": "Activation commit: durable routing authorization before any traffic",
-      "files": [
-        "src-python/minagi/runtime/supervisor.py",
-        "src-python/minagi/runtime/authority_store.py",
-        "src-python/minagi/runtime/journal_v2.py"
-      ],
-      "tests": [
-        "tests-python/runtime/test_activation_supervisor.py",
-        "tests-python/runtime/test_v1644_runtime_closure.py"
-      ],
-      "behavior": "commit_activation() now runs a two-stage protocol: commit_activation_intent() atomically CASes the deployment record (generation, desired, previous, transition_id, phase, policy epoch) BEFORE the router publishes; the signed routing_observed event is recorded afterwards and is never described as pre-traffic evidence. A candidate receives zero requests before its durable commit intent exists."
-    },
-    {
-      "id": "SEC-302",
-      "title": "Activation failure restores the predecessor — never an empty pointer",
-      "files": [
-        "src-python/minagi/runtime/supervisor.py",
-        "src-python/minagi/runtime/authority_store.py"
-      ],
-      "tests": [
-        "tests-python/runtime/test_activation_supervisor.py",
-        "tests-python/runtime/test_v1644_runtime_closure.py"
-      ],
-      "behavior": "Unconditional clear_pointer() on activation failure is replaced by reconcile_deployment(): a generation-checked CAS that either restores the last committed live predecessor (RESTORED, with its own correct artifact digests) or durably records UNAVAILABLE at a new generation. Live router and durable intent are converged, never divergent."
-    },
-    {
-      "id": "SEC-303",
-      "title": "Per-activation request leases; unload only at zero in-flight",
-      "files": [
-        "src-python/minagi/runtime/serving_router.py",
-        "src-python/minagi/runtime/supervisor.py"
-      ],
-      "tests": [
-        "tests-python/runtime/test_serving_router.py",
-        "tests-python/runtime/test_v1644_runtime_closure.py"
-      ],
-      "behavior": "The single global _inflight counter is replaced by per-activation RouteLeaseState (accepting/draining/inflight). abort() and quarantine_active() stop routing, drain the activation's own leases, and unload only at zero in-flight. A drain timeout triggers cooperative cancellation and retains resources — it is never unload permission. safe_unload() refuses while leases remain."
-    },
-    {
-      "id": "SEC-304",
-      "title": "Production admission enforces backend identity and policy epoch",
-      "files": [
-        "src-python/minagi/runtime/service.py",
-        "src-python/minagi/runtime/supervisor.py"
-      ],
-      "tests": [
-        "tests-python/runtime/test_supervised_service.py"
-      ],
-      "behavior": "--production requires ProductionRuntimeConfig: signed backend manifest verified against the trust root, installed backend/dependency closure measured, operative policy epoch enforced, revocation evidence fresh and authentic at boot, runtime/admission signing keys role-checked, protected filesystem ownership verified, policy manifest and artifact stores must exist. Any failure refuses startup."
-    },
-    {
-      "id": "SEC-305",
-      "title": "Mandatory durable administrative audit with emergency-stop exception",
-      "files": [
-        "src-python/minagi/runtime/authority_store.py",
-        "src-python/minagi/runtime/service.py"
-      ],
-      "tests": [
-        "tests-python/runtime/test_v1644_runtime_closure.py"
-      ],
-      "behavior": "Privileged operations (launch/rollback/quarantine/recover) write signed, hash-chained admin_audit records (principal, operation, target, policy digest, decision, before/after state) before the side effect runs. Audit failure refuses ordinary administrative changes; emergency traffic shutdown still proceeds but blocks further activation until the audit trail reconciles (audit_broken flag cleared by the next successful privileged-op audit)."
-    },
-    {
-      "id": "SEC-306",
-      "title": "Enforceable inference budgets",
-      "files": [
-        "src-python/minagi/runtime/inference_policy.py",
-        "src-python/minagi/runtime/serving_router.py",
-        "src-python/minagi/v161/peft_serving.py",
-        "src-python/minagi/runtime/service.py"
-      ],
-      "tests": [
-        "tests-python/runtime/test_v1644_runtime_closure.py"
-      ],
-      "behavior": "InferenceBudgetPolicyV1 bounds prompt tokens (actual tokenizer count, not characters), generated tokens (clamped), concurrency (router lease acquisition refuses over-limit), per-principal queue depth, and execution deadline. PeftServingBackend.infer() enforces the bound inside generate() and reports applied-vs-requested metrics."
-    },
-    {
-      "id": "SEC-307",
-      "title": "Automatic cold-start restoration",
-      "files": [
-        "src-python/minagi/runtime/recovery_manager.py",
-        "src-python/minagi/runtime/supervisor.py",
-        "src-python/minagi/runtime/service.py"
-      ],
-      "tests": [
-        "tests-python/runtime/test_v1644_runtime_closure.py"
-      ],
-      "behavior": "RecoveryManager.restore() validates the durable record, re-authorizes under CURRENT policy with a FRESH admission grant (a consumed grant is never reused), re-measures staged artifact bytes, loads without accepting inference, health-checks, then commits and publishes through the normal verified path. The service never declares ready merely because a pointer exists; permanent failure is durably UNAVAILABLE; restoration is idempotent and a serving supervisor is never re-restored."
-    }
-  ],
-  "journal_schema": {
-    "deployment_record": "deployments: deployment_generation (monotonic), desired_activation_id, previous_activation_id, transition_id, transition_phase (COMMITTING/COMMITTED/ROUTED/RESTORED/UNAVAILABLE), policy_epoch, last_committed_event_digest",
-    "new_event_kinds": [
-      "commit_intent (COMMITTED, unsigned intent record)",
-      "routing_observed (signed, post-traffic observation)",
-      "deployment_restored (signed, predecessor republished)",
-      "deployment_unavailable (signed, fail-closed durable state)",
-      "restoration_completed (signed, recovery evidence)",
-      "unload_deferred (same-state marker: leases retain backend)"
-    ],
-    "pseudo_activation_ids": ["__deployment__", "__migration__"],
-    "admin_audit_table": "sequence-chained signed records; verify_admin_chain() detects tamper"
+  {
+   "change": "modified",
+   "file": "VERSION",
+   "new_sha256": "7c6ac2bb08d4e7c0e0ac11771668908d24520530329802b725a0185651a67d3a",
+   "old_sha256": "f7304bc393c3fb0722c7359bdf6baca01162235579307dfea483bc04ab59978a",
+   "repair_id": "SEC-403"
   },
-  "migration": {
-    "v1643_to_v1644": "AuthorityStore.__init__ migrates an existing v16.4.3 database: creates the deployments row seeded from the serving pointer (generation=1, phase=COMMITTED), creates admin_audit, leaves event history untouched. Covered by test_v1643_store_migrates_deployment_row."
+  {
+   "change": "modified",
+   "file": "docs/research/CAMPAIGN3_DESIGN.md",
+   "new_sha256": "4a33e7f952caa686ca64d06230919902354835b2c9b01c5b3f5929ddda869913",
+   "old_sha256": "231541b4ad95b0138a22c1f49b11fec0f0998c3caeb6e3601a9712da258e36e2",
+   "repair_id": "SEC-403"
   },
-  "evidence": {
-    "python_tests": "793 passed, 1 skipped (pytest tests-python, Python 3.12.0, macOS arm64)",
-    "runtime_tests": "tests-python/runtime: 220+ covering activation protocol, leases, drain, reconcile, audit, budgets, restoration, migration",
-    "native_tests": "not rebuilt in this change set — see remaining_defects",
-    "gpu_tests": "none — CPU-only qualification; no GPU claims"
+  {
+   "change": "modified",
+   "file": "docs/research/REMAINING_DEFECTS_V1644.md",
+   "new_sha256": "94d098540ffad24a416ac995b658274e6921494cbff29ef04c8eef96c9cf323d",
+   "old_sha256": "e4db79b1a82bd76c12dc8024e88fbbcaef36d23176544630fc22ac2e7ffe937e",
+   "repair_id": "SEC-403"
   },
-  "remaining_defects": [
-    "SEC-005/SEC-006 controller correctness deferred to v16.4.5 by plan",
-    "SEC-007 real-model learning qualification deferred to v16.5.0",
-    "Real-model (HF/PEFT weights) end-to-end activation/rollback/recovery exercised with deterministic fake backends in tests; a real small-model run is recorded as pending qualification, not claimed",
-    "Inference worker-process isolation is policy-described but backends run in-process in this build — a stalled model cannot be SIGKILLed without stopping the service",
-    "Native ctest suite not re-executed in this worktree"
-  ]
+  {
+   "change": "modified",
+   "file": "pyproject.toml",
+   "new_sha256": "3f858e62ec00dd68ca5300602245bb113790959c1b4ddf0012d270744179bd4d",
+   "old_sha256": "021d66841165f59a66c81a216fdcb13ab6fbb034a53117346f26acd53f414706",
+   "repair_id": "SEC-403"
+  },
+  {
+   "change": "added",
+   "file": "pyrightconfig.json",
+   "new_sha256": "c8c0bcc66f8b895da1e28cf1bf05bd81b2fb0535d4c179b263fefb5e3e6b6c2b",
+   "old_sha256": null,
+   "repair_id": "SEC-403"
+  },
+  {
+   "change": "modified",
+   "file": "scripts/authority_bootstrap.py",
+   "new_sha256": "be364f3ef6490958e28f89f6eb743de7136162f194beadd9ea750d1de0f3a73d",
+   "old_sha256": "0111aa4c2c5ce9700a446e2391ceb72a90c1d604a173c3253248b36307ebbb10",
+   "repair_id": "SEC-403"
+  },
+  {
+   "change": "modified",
+   "file": "src-python/minagi/runtime/authority_store.py",
+   "new_sha256": "e246b5614c36328969f27c5b0dc9234dca1f8b2e06347cdd2c96f68481c250d8",
+   "old_sha256": "90cddc56ab83a7ad1e17d9e215c4a6494429c19f48dacae49709151afe280e3f",
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "modified",
+   "file": "src-python/minagi/runtime/journal_v2.py",
+   "new_sha256": "dd91e0f0876ab24fe10720667e244f89fb7e4bf7e4e72620d2b8b0d0e4693a9e",
+   "old_sha256": "92ed323f1b08a7641d2dda736269441cd24fc1f74cd761f753651e908649b723",
+   "repair_id": "SEC-403"
+  },
+  {
+   "change": "modified",
+   "file": "src-python/minagi/runtime/recovery_manager.py",
+   "new_sha256": "42657080cdd060169be7fe102f384948f7c1228f823f4623a39b6b891dd83e7e",
+   "old_sha256": "0a13cdcc8e74d4a8c547c823f791b968674e6201080a850a7e173067c84585b6",
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "modified",
+   "file": "src-python/minagi/runtime/service.py",
+   "new_sha256": "1ca7aebc8e95e0727040652b34332ba38ed4c4be8a97c873b0e9493a596a4d3d",
+   "old_sha256": "697e6407deb04b85148095a101c9d6484623c2a9305b246b46b2f08f77138fd8",
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "modified",
+   "file": "src-python/minagi/runtime/serving_router.py",
+   "new_sha256": "b8b472bd1a66f9cc4a9ea6bea0298ef2e8c14b35bee458ff8fb75df5d672e5ca",
+   "old_sha256": "50949dda4d64f6669df624206e1d0d8132f9b1b4a832604e0bc6719ad20cbcc4",
+   "repair_id": "SEC-403"
+  },
+  {
+   "change": "added",
+   "file": "src-python/minagi/runtime/simulated_backend.py",
+   "new_sha256": "8f52b8fae1d96424ec79915f17898ff9a20b245ab1679d60b41513c840b6f56a",
+   "old_sha256": null,
+   "repair_id": "SEC-403"
+  },
+  {
+   "change": "modified",
+   "file": "src-python/minagi/runtime/supervisor.py",
+   "new_sha256": "25394d238050051d4a01dcd931a7139cce6312ca28abc322f3f5a38b5a43afff",
+   "old_sha256": "be56c4f6b3618f8ba8ca1c8c30ebf2c62653641347dd11792e12c1158faf33c0",
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "added",
+   "file": "src-python/minagi/runtime/worker_backend.py",
+   "new_sha256": "3aeb14ebd97473e76340453061a6599832452a609648a60d600917a2481bc059",
+   "old_sha256": null,
+   "repair_id": "SEC-401"
+  },
+  {
+   "change": "added",
+   "file": "src-python/minagi/runtime/worker_isolation.py",
+   "new_sha256": "e3f20b5f6dec83d5ac279d4322292dd1f08da25589ca0427a02ee6884474b1f2",
+   "old_sha256": null,
+   "repair_id": "SEC-401"
+  },
+  {
+   "change": "added",
+   "file": "src-python/minagi/runtime/worker_protocol.py",
+   "new_sha256": "3465635196866cef5f8c256e922648e63d2c2aefb7063df64ff051c82515356d",
+   "old_sha256": null,
+   "repair_id": "SEC-401"
+  },
+  {
+   "change": "added",
+   "file": "src-python/minagi/security/restoration_authority.py",
+   "new_sha256": "a6823749d30a1ef4c6a29d0c533eeefc9efaa82d105c29cf1a46058b035ab185",
+   "old_sha256": null,
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "added",
+   "file": "src-python/minagi/v161/experiment_budget.py",
+   "new_sha256": "905382cb1c0627e5f574ee1823b713fca234b3809c010964afaeb97a763dc366",
+   "old_sha256": null,
+   "repair_id": "SEC-403"
+  },
+  {
+   "change": "modified",
+   "file": "src-python/minagi/v161/immutable_snapshot.py",
+   "new_sha256": "5b66c38d8c5f6ae51b8e4a51094505872fe2b02bf396716b63a1ba100c390041",
+   "old_sha256": "c28c95e6c2cdd28cbe1c69fb7043d86646a5079a86d2f72d7a1b23c90b71644d",
+   "repair_id": "SEC-401"
+  },
+  {
+   "change": "modified",
+   "file": "src-python/minagi/v161/plasticity.py",
+   "new_sha256": "525cc6a53251348675cab5967c0c59efa083028ab4d1ddfa585ac8aedd8594a2",
+   "old_sha256": "0c365c4dc1c62e9e351386ba165152dfe6ae58cec865b16fa5443fd8d66c76a2",
+   "repair_id": "SEC-403"
+  },
+  {
+   "change": "modified",
+   "file": "src-python/minagi/v161/trusted_launcher.py",
+   "new_sha256": "972596d49acaea7847f41f66ac4d011529cc3f941b870f07ea87cb9eba1fb0e8",
+   "old_sha256": "4e369f953366d5af74b100b52169cbdcfb5648b3b1ecb33f8b1d82921f4159c9",
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "added",
+   "file": "tests-python/helpers/authority_chain.py",
+   "new_sha256": "d3e41ea9ccbc97a5e80eeb63839c75d2462188266832da19f0859637856b340d",
+   "old_sha256": null,
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "added",
+   "file": "tests-python/helpers/evil_backends.py",
+   "new_sha256": "9b2691b0cdc610ce9b89f03f92265fe2163089cf5f6e4f32aa472067431dae6c",
+   "old_sha256": null,
+   "repair_id": "SEC-401"
+  },
+  {
+   "change": "added",
+   "file": "tests-python/helpers/grant_ledger_worker.py",
+   "new_sha256": "b59186042ba77890de93e627277f6e79c44ab95e6a7b331aca436230cd531dc6",
+   "old_sha256": null,
+   "repair_id": "SEC-404"
+  },
+  {
+   "change": "modified",
+   "file": "tests-python/runtime/test_activation_supervisor.py",
+   "new_sha256": "17f731f76c1738032cfd6cd5ad17857dfa966a2cea12ff40f4f01adc24644546",
+   "old_sha256": "9bfb3286c16f19906fa1ee4cdaca346c169067d47fcb4a6735517d51ddf04942",
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "added",
+   "file": "tests-python/runtime/test_revocation_during_activation.py",
+   "new_sha256": "42e1b29ff48b7ef8f827d57fa0b9cfc5719ddfa9a5fa01a3b4544d2c340e130b",
+   "old_sha256": null,
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "modified",
+   "file": "tests-python/runtime/test_serving_router.py",
+   "new_sha256": "cbcc6f5ab61630f31e8cdf0fcfd6ee31e866be0772097dde486f8966833787ff",
+   "old_sha256": "8524178a1b3fcd74ec8f1e5535cacc6ce9bce80b99b06128a9f37eb89350aa92",
+   "repair_id": "SEC-403"
+  },
+  {
+   "change": "modified",
+   "file": "tests-python/runtime/test_supervised_service.py",
+   "new_sha256": "0b66e81ff3e256cb76111c95c7dde46babd6103b81df9b6c9bcda10639534c70",
+   "old_sha256": "4bae3b7b151546a5e728d2c9251a35806a745e76ff2fe4548a2b126f5732efc1",
+   "repair_id": "SEC-403"
+  },
+  {
+   "change": "modified",
+   "file": "tests-python/runtime/test_v1644_real_model_e2e.py",
+   "new_sha256": "b3855293ee38202c326320f39f5d51cc4a4a48a530f24dac89f177c244d34240",
+   "old_sha256": "7cc6e81c1d730594d2f71c0a945f493338c2cdad82ac8bdffaf4714f550a947a",
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "modified",
+   "file": "tests-python/runtime/test_v1644_runtime_closure.py",
+   "new_sha256": "5c4610198725f5b6c3d9d320f400483c917baca1df76abda4965dc9687bd6fbb",
+   "old_sha256": "10627aec64ea2856bf396cf0d8c07c655bd6088078e4a7578cfd23c712ce4a7d",
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "added",
+   "file": "tests-python/runtime/test_worker_backend.py",
+   "new_sha256": "a600e70e010c9e88dab3b467332d505728b05aacf48ba7d0ec45d3c18d0b42fd",
+   "old_sha256": null,
+   "repair_id": "SEC-401"
+  },
+  {
+   "change": "added",
+   "file": "tests-python/runtime/test_worker_ipc_adversarial.py",
+   "new_sha256": "29bdbfd176dc9857125e70f44195b66fa8906d49b8ced1ca5d67ae2ff6fa62c5",
+   "old_sha256": null,
+   "repair_id": "SEC-401"
+  },
+  {
+   "change": "added",
+   "file": "tests-python/runtime/test_worker_privilege_isolation.py",
+   "new_sha256": "312a05acf39b40f005917c88bca8902540920cc6f09f3e7f69ca3fe479f87dbf",
+   "old_sha256": null,
+   "repair_id": "SEC-401"
+  },
+  {
+   "change": "added",
+   "file": "tests-python/runtime/test_worker_protocol.py",
+   "new_sha256": "291633ac8665ed123c020cd17f4660028a6e07fc0b3ef868a142d9d9e622dd24",
+   "old_sha256": null,
+   "repair_id": "SEC-401"
+  },
+  {
+   "change": "modified",
+   "file": "tests-python/security/test_grant_ledger.py",
+   "new_sha256": "048d2d74f3bbdc3ecd30232680e5017a0419da6f2d0fcd782ab6aab8e70790df",
+   "old_sha256": "8faca43274d89b3bf261bb49aa910ed3decb660b738f237b585b8cbc7b35cc48",
+   "repair_id": "SEC-404"
+  },
+  {
+   "change": "added",
+   "file": "tests-python/security/test_restoration_authority.py",
+   "new_sha256": "a5796b90c480275ba69af0b65b73b5434a12c5c8d88d0bcc69804df0615c1789",
+   "old_sha256": null,
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "added",
+   "file": "tests-python/security/test_restoration_revocation.py",
+   "new_sha256": "70f59d40c7f157af671cd5c264f2388278c5db13f847c10cc2edde82f58e4141",
+   "old_sha256": null,
+   "repair_id": "SEC-402"
+  },
+  {
+   "change": "added",
+   "file": "tests-python/v161/test_v1645_controller_gate.py",
+   "new_sha256": "9cfde7bb7d50aa32db17ae0f065efa9c66201f773e5d124b8dcc9c59c21364a5",
+   "old_sha256": null,
+   "repair_id": "SEC-403"
+  },
+  {
+   "change": "modified",
+   "file": "tests-python/v161/test_v166_mechanism_controller.py",
+   "new_sha256": "13ef8c7fcb667716b7e7ab6f0f921211c9e36e5b85ad2d8e3f11aa160676adef",
+   "old_sha256": "ad71c715c47f6fe15f62319e0908ab59fcb214f6b3127fbf3735fbd3cd6bbc52",
+   "repair_id": "SEC-403"
+  }
+ ],
+ "release": "mini-AGI-V1-v16.4.5-Security-and-Evidence-Closure",
+ "remaining_defects": [
+  "SEC-005",
+  "SEC-006",
+  "SEC-007"
+ ],
+ "repairs": [
+  {
+   "behavior": "pickle.dumps/pickle.load removed from the supervisor-worker channel with no fallback path. Frames are 4-byte big-endian length-prefixed JSON validated against a closed schema (protocol, request id, type, bounded payload); payload digests and announced lengths are checked; frame and result sizes are bounded; malformed, oversized, truncated, unexpected, or hostile bytes fail the worker channel without executing anything in the supervisor. WorkerProtocolViolation subclasses WorkerDied so protocol abuse and worker death converge on the same safe handling. Workers launch under an explicit restricted environment (credential-name filtering for KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL), a private 0700 scratch directory for TMP/TMPDIR/TEMP, optional rlimits, optional uid/gid demotion, and a separate process group. MeasuredSnapshot refuses pickling; cross-process transport is a descriptor resolved to staged files whose bytes are re-measured in the receiving process and compared to expected authorization digests.",
+   "files": [
+    "src-python/minagi/runtime/worker_protocol.py",
+    "src-python/minagi/runtime/worker_backend.py",
+    "src-python/minagi/runtime/worker_isolation.py",
+    "src-python/minagi/v161/immutable_snapshot.py"
+   ],
+   "id": "SEC-401",
+   "tests": [
+    "tests-python/runtime/test_worker_protocol.py",
+    "tests-python/runtime/test_worker_ipc_adversarial.py",
+    "tests-python/runtime/test_worker_privilege_isolation.py",
+    "tests-python/runtime/test_worker_backend.py",
+    "tests-python/helpers/evil_backends.py"
+   ],
+   "title": "Unsafe worker-process IPC replaced by strict framed JSON v2"
+  },
+  {
+   "behavior": "AuthorityStore now retains the signed authority documents (plan, qualification, promotion decision, runtime manifest) presented at first admission. Cold-start restoration never mints authority from a durable pointer or from fallback digests: RestorationAuthorizationVerifier re-verifies the complete historical chain (valid promotion signature, binding digests matching the restoration target, backend still qualified, policy epoch current, revocation snapshot valid/monotonic/not rolled back, artifact bytes re-measured against authorized digests) and refuses on any missing or revoked evidence. A fresh grant bound to the operative revocation epoch is issued per restoration; authorize() and commit_activation() re-check the operative epoch and explicit decision/key revocation at commit time, closing the authorize->prepare->commit race. Newly revoked active models are route-withdrawn and quarantined before fallback selection; revoked predecessors are retired first so a revoked model can never be selected as fallback. No eligible model => UNAVAILABLE.",
+   "files": [
+    "src-python/minagi/security/restoration_authority.py",
+    "src-python/minagi/runtime/recovery_manager.py",
+    "src-python/minagi/runtime/supervisor.py",
+    "src-python/minagi/runtime/authority_store.py",
+    "src-python/minagi/runtime/service.py",
+    "src-python/minagi/v161/trusted_launcher.py"
+   ],
+   "id": "SEC-402",
+   "tests": [
+    "tests-python/security/test_restoration_authority.py",
+    "tests-python/security/test_restoration_revocation.py",
+    "tests-python/runtime/test_revocation_during_activation.py",
+    "tests-python/helpers/authority_chain.py",
+    "tests-python/runtime/test_activation_supervisor.py",
+    "tests-python/runtime/test_v1644_runtime_closure.py",
+    "tests-python/runtime/test_v1644_real_model_e2e.py"
+   ],
+   "title": "Revoke-aware authorization, activation, rollback, and cold restoration"
+  },
+  {
+   "behavior": "The v16.4.4 zip shipped a manifest generated before part of its source: 18 governed files hashed differently and 233 tracked campaign-evidence files plus untracked archives were unmanifested. For v16.4.5 the governed set is defined as git ls-files intersected with disk; campaign evidence is removed from the source manifest entirely and ships as mini-AGI-Campaign3A-Evidence.zip with its own manifest, signature and provenance. reissue_release.py no longer silently generates a signing key when the pinned release key is absent. The pipeline is: freeze source and metadata, regenerate SOURCE_MANIFEST.json, sign with the pinned release key, reconcile RELEASE_ATTESTATION.json (manifest_sha256, reissued_utc, reissue_history, release name), rebuild the ZIP deterministically, extract into a clean directory, and re-verify. A file_changes ledger below records every added/modified governed file with old and new sha256 and its repair id; pre-existing v16.4.4 drift that this release does not otherwise touch is reconciled under SEC-403.",
+   "files": [
+    "SOURCE_MANIFEST.json",
+    "RELEASE_SIGNATURE.bin",
+    "RELEASE_PUBLIC_KEY.pem",
+    "RELEASE_ATTESTATION.json",
+    "RELEASE_VALIDATION.json",
+    "RELEASE_CHANGE_MANIFEST.json",
+    "VERSION",
+    "pyproject.toml",
+    ".gitignore",
+    "scripts/validation/reissue_release.py",
+    "scripts/release/verify_final_package.py"
+   ],
+   "id": "SEC-403",
+   "tests": [
+    "tests-python/v161/test_v1622_verify_release_script.py",
+    "scripts/verify_release.py (release gate)"
+   ],
+   "title": "Release integrity repaired; source and campaign evidence separated"
+  },
+  {
+   "behavior": "The spawn child entry point moved into tests-python/helpers/grant_ledger_worker.py so spawn children can import it under --import-mode=importlib. The harness distinguishes worker import failure, a hung child (terminated and reported), a child that exits without reporting, worker-reported errors, and genuine double-consumption. It runs under spawn plus other supported start methods; fork is excluded on macOS where sqlite-using children cannot run after fork (system libdispatch state), a documented platform limitation rather than a masked failure.",
+   "files": [
+    "tests-python/security/test_grant_ledger.py",
+    "tests-python/helpers/grant_ledger_worker.py"
+   ],
+   "id": "SEC-404",
+   "tests": [
+    "tests-python/security/test_grant_ledger.py"
+   ],
+   "title": "Grant-ledger multiprocessing test made importable and diagnostic"
+  }
+ ],
+ "schema": "mini-agi-v16.4.5-change-manifest-v1",
+ "source_archive": "mini-AGI-V1-v16.4.4-Verified-Runtime-Closure.zip",
+ "source_archive_sha256": "ad5993bd1e1e56f4f60c822cc95934b36710a8425d9978f905f095c101a0e7d5",
+ "summary": "Security and evidence closure: revoked promotions can no longer activate or be cold-restored, worker-controlled IPC can no longer deserialize into the supervisor (pickle removed; strict framed JSON v2 with bounded, digested, schema-checked frames), workers launch under an explicit restricted environment with private scratch and resource limits, MeasuredSnapshot transport re-measures bytes in the receiving process, and the release pipeline is repaired so every governed file is enumerated, hashed, signed under the pinned release key, and verified on fresh extraction. Campaign 3A evidence is split into a separately manifested artifact.",
+ "version": "16.4.5"
 }
