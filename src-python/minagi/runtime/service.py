@@ -80,11 +80,17 @@ AUTH_FAILURE_WINDOW_SECONDS = 60.0
 def peer_uid(conn: socket.socket) -> int | None:
     """Extract the authenticated peer uid, or None when the platform
     cannot prove it (in which case the connection must be refused)."""
-    if hasattr(socket, "getpeereid"):
+    getpeereid = getattr(conn, "getpeereid", None)
+    if getpeereid is not None:
+        # FreeBSD / DragonFly: socket.getpeereid() returns the uid.
         try:
-            return int(conn.getpeereid()[0])
-        except (AttributeError, OSError):
-            return None
+            return int(getpeereid())
+        except (AttributeError, OSError, TypeError):
+            pass
+    if sys.platform == "darwin":
+        uid = _darwin_peer_uid(conn)
+        if uid is not None:
+            return uid
     if hasattr(socket, "SO_PEERCRED"):
         try:
             creds = conn.getsockopt(socket.SOL_SOCKET,
@@ -94,6 +100,22 @@ def peer_uid(conn: socket.socket) -> int | None:
             return int(uid)
         except OSError:
             return None
+    return None
+
+
+def _darwin_peer_uid(conn: socket.socket) -> int | None:
+    """macOS: getpeereid(2) exists in libSystem but CPython does not
+    expose it as a socket method — call it on the socket fd."""
+    import ctypes
+    try:
+        libc = ctypes.CDLL("libSystem.B.dylib", use_errno=True)
+        uid = ctypes.c_uint32()
+        gid = ctypes.c_uint32()
+        if libc.getpeereid(conn.fileno(), ctypes.byref(uid),
+                           ctypes.byref(gid)) == 0:
+            return int(uid.value)
+    except (OSError, AttributeError, ValueError):
+        pass
     return None
 
 

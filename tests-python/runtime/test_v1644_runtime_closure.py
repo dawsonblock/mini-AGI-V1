@@ -3,6 +3,8 @@
 plus the supervisor-level in-flight quarantine invariant (WP-B/G3).
 """
 import json
+import os
+import socket
 import sys
 import threading
 import time
@@ -256,6 +258,24 @@ def test_emergency_quarantine_survives_audit_outage(tmp_path):
     del store.append_admin_audit
     resp = svc._handle_request({"op": "recover"}, op)
     assert resp["ok"] and svc._audit_broken is False
+
+
+def test_peer_uid_proves_local_identity(tmp_path):
+    """OPS-006: peer_uid must extract the real peer uid wherever the
+    platform offers a mechanism (SO_PEERCRED on Linux, getpeereid(2)
+    on macOS/BSD) — not silently fall through to None."""
+    from minagi.runtime.service import peer_uid
+    a, b = socket.socketpair()
+    try:
+        uid = peer_uid(a)
+        if sys.platform in ("linux", "darwin") or \
+                sys.platform.startswith("freebsd"):
+            assert uid == os.getuid()
+        else:
+            pytest.skip("no peer-credential mechanism on this platform")
+    finally:
+        a.close()
+        b.close()
 
 
 def test_audit_outage_flag_survives_restart(tmp_path):
