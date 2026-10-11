@@ -339,8 +339,7 @@ def test_unit_marker_survives_group_detach():
     p = subprocess.Popen(
         [sys.executable, "-c",
          "import os,time\nos.setsid()\ntime.sleep(120)"],
-        env={**os.environ, **worker_unit_env(unit)},
-        start_new_session=True)
+        env={**os.environ, **worker_unit_env(unit)})
     try:
         time.sleep(0.3)
         from minagi.runtime.worker_isolation import _marker_holders
@@ -436,7 +435,19 @@ def test_demoted_worker_cannot_read_supervisor_files(tmp_path):
     backend = WorkerBackend(
         spec, start_timeout=30.0,
         isolation=WorkerIsolationPolicy(demote_to=(65534, 65534)))
-    h = backend.load(_snapshot(tmp_path))
+    # Approved model artifacts are worker-readable by policy — the
+    # snapshot crosses as a descriptor the worker re-measures, so its
+    # files must be readable by the worker identity (production stages
+    # them under a group/world-readable artifact root). `protected`
+    # deliberately stays 0700.
+    snap = _snapshot(tmp_path)
+    tmp_path.chmod(0o755)
+    for p in (tmp_path / "snap").rglob("*"):
+        p.chmod(0o755 if p.is_dir() else 0o644)
+    for p in (tmp_path / "ad").rglob("*"):
+        p.chmod(0o755 if p.is_dir() else 0o644)
+    (tmp_path / "ad").chmod(0o755)
+    h = backend.load(snap)
     report = backend.infer(h, {
         "paths": [str(key), str(db)],
         "write_paths": [str(protected / "evil"), str(key)]})
@@ -446,11 +457,9 @@ def test_demoted_worker_cannot_read_supervisor_files(tmp_path):
     assert report["write"][str(protected / "evil")] == "denied"
     assert report["write"][str(key)] == "denied"
     # scratch is still usable — the worker can do its own work
-    import tempfile
-    scratch = tempfile.gettempdir()
-    env = backend.infer(h, {"paths": [], "write_paths":
-                            [f"{scratch}/worker-scratch-probe"]})
-    assert env["write"][f"{scratch}/worker-scratch-probe"] == "WRITABLE"
+    own = str(Path(h.private_tmp) / "worker-scratch-probe")
+    env = backend.infer(h, {"paths": [], "write_paths": [own]})
+    assert env["write"][own] == "WRITABLE"
     backend.terminate(h)
 
 

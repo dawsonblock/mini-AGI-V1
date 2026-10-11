@@ -376,12 +376,20 @@ def wrap_argv(argv: list, policy: WorkerIsolationPolicy) -> list:
     return [exe, "-f", str(profile), *argv]
 
 
-def tmp_is_private(path: Path) -> bool:
-    """The mode/ownership contract a worker scratch dir must hold."""
+def tmp_is_private(path: Path, *, worker_uid: int | None = None) -> bool:
+    """The mode/ownership contract a worker scratch dir must hold.
+    Same-identity workers: 0700 owned by the supervisor. Demoted
+    workers: 0750 owned by the worker uid with the supervisor's gid —
+    the worker enters its own scratch, the supervisor keeps
+    read/traverse for result collection, nothing else can enter."""
     st = path.lstat()
-    return stat.S_ISDIR(st.st_mode) and not stat.S_ISLNK(st.st_mode) \
-        and stat.S_IMODE(st.st_mode) == 0o700 \
-        and st.st_uid == os.getuid()
+    if not stat.S_ISDIR(st.st_mode) or stat.S_ISLNK(st.st_mode):
+        return False
+    mode = stat.S_IMODE(st.st_mode)
+    if worker_uid is None:
+        return mode == 0o700 and st.st_uid == os.getuid()
+    return mode == 0o750 and st.st_uid == int(worker_uid) \
+        and st.st_gid == os.getgid()
 
 
 __all__ = ["DEFAULT_ISOLATION", "IsolationError", "SAFE_ENV_PASSTHROUGH",
