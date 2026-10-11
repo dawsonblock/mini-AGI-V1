@@ -15,8 +15,8 @@
 | `test_worker_scratch_worker_owned` | uid demotion requires privilege |
 | `test_demoted_worker_cannot_read_supervisor_files` | uid demotion requires privilege |
 
-The last three qualify on the Linux root profile (Colab) — recorded
-in the Colab run section below once executed.
+The last three qualify on the Linux root profile (Colab) — PASSED there
+(see below).
 
 ## Deterministic build + fresh-extraction verify
 
@@ -27,3 +27,21 @@ in the Colab run section below once executed.
 
 Manifest `e325f0f4…` signed under the pinned release key.
 Report: `dist-v1646/VERIFICATION_REPORT.json`.
+
+
+## Google Colab (T4 session `v1646-qual`, Ubuntu root, Python 3.13)
+
+- Release verification on fresh extraction: **PASS** — 1522 files,
+  manifest `66c53a77…`, pinned key `0f9d7358`.
+- `test_v1646_worker_isolation.py`: **39/39 PASS** — including the
+  uid-65534 demotion tests (worker cannot read the supervisor's
+  0600 key/DB or write protected paths; worker-owned scratch
+  writable) and the `/proc` env-marker detach test.
+- Full suite: **931 passed, 20 skipped, 0 failed** (~65s).
+- Colab skips: documented platform unavailability only.
+- Note: `torchao 0.10.0` (preinstalled) conflicts with peft's >=0.16
+  check — uninstalled in-session; not a code defect.
+
+## Native CPU (macOS, QW3_ENABLE_CUDA=OFF)
+
+- `ctest` over the test targets: **28/28 PASS**.
