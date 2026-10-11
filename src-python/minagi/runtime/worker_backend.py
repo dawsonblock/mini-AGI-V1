@@ -737,7 +737,6 @@ class _WorkerLoop:
         self.overflow_dir = overflow_dir
 
     def _reply(self, rid, ok, result=None, error=None, op=None):
-        payload: dict = {}
         if ok:
             try:
                 blob = encode_response(rid, True, {"result": result})
