@@ -33,6 +33,32 @@ Follow-on hardening landed on this branch after the initial push:
   the dead HTTP probe `selected_replay_gate.py` was removed — the
   Mini-AGI service speaks on unix sockets, nothing could answer it.
 
+## v16.4.7 audit repairs (closed)
+
+An independent extraction audit of the v16.4.6 package found the
+following — all now repaired in v16.4.7 (see
+`V16_4_7_ISOLATION_ENFORCEMENT.md`):
+
+- **CLOSED — production in-process bypass** (P0): `--production
+  --backend-isolation inprocess` skipped `resolve_worker_policy`
+  entirely. Now refused at CLI parse and backend construction.
+- **CLOSED — zombie survivors** (P0): state-Z descendants were counted
+  as live by `os.kill(pid,0)`; `_zombie_pids` filters them everywhere.
+- **CLOSED — normal unload left detached children** (P1): `unload()`
+  snapshots the containment set before the unload RPC and sweeps
+  after a clean leader exit.
+- **CLOSED — network isolation declared not applied** (P0): the
+  launcher `unshare(CLONE_NEWNET)`s pre-demotion; validation probes
+  CAP_SYS_ADMIN, not binary presence.
+- **CLOSED — `preexec_fn` in a multithreaded supervisor**: replaced
+  by `worker_launcher.py` (cgroup→netns→mountns→rlimits→
+  NO_NEW_PRIVS→demotion→exec).
+- **CLOSED — fs confinement = separate uid** (P1): controls split;
+  confinement requires a real mount namespace or seatbelt profile.
+- **CLOSED — cgroups**: `WorkerCgroup` is the authoritative Linux
+  unit — kernel-tracked membership survives detach/reparent/
+  env-scrub; `cgroup.kill` is atomic teardown.
+
 ## Open — platform qualification
 
 - **Worker privilege isolation on Linux** — the demotion path
@@ -47,12 +73,6 @@ Follow-on hardening landed on this branch after the initial push:
   (no descendants can be created); without it,
   `require_process_containment` refuses startup. sandbox-exec is
   deprecated upstream — operators must qualify their own profile.
-- **Network isolation** — wired as a required-when-requested control
-  (`--worker-net-isolation`); enforcement is a Linux network
-  namespace, or the seatbelt profile's `deny network*` on macOS.
-- **cgroups** — the stronger descendant-containment mechanism
-  (catches post-parent-death escapees). Recommended for Linux
-  production; not yet wired.
 
 ## Open — donor-tree hygiene (documented, not blocking)
 

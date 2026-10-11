@@ -47,3 +47,18 @@ adds only these qualification docs — same code, same verdict.
 ## Native CPU (macOS, QW3_ENABLE_CUDA=OFF)
 
 - `ctest` over the test targets: **28/28 PASS**.
+
+## v16.4.7 audit-repair results (this tree)
+
+- `pytest tests-python` on this macOS host (Python 3.12):
+  **957 passed, 7 skipped, 0 failed** — includes the 6 new
+  audit-repair tests (CLI refusal, zombie, unload-sweep, launcher
+  refusal/round-trip/exec; cgroup + applied-network-denial tests
+  skip honestly off-Linux).
+- Runtime suite `tests-python/runtime`: **322 passed, 6 skipped**.
+- `test_v1646_worker_isolation.py`: **45 passed, 6 skipped**.
+- The audit's two Linux containment failures
+  (`test_terminate_tree_kills_children_and_grandchildren`,
+  `test_terminate_tree_sigterm_ignoring_descendant`) are addressed
+  by zombie-aware ownership plus cgroup v2 containment — the Linux
+  gated tests qualify on the production-reference host.
