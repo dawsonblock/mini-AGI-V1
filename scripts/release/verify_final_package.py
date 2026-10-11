@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Build and verify the v16.4.5 release artifacts (SEC-403).
+"""Build and verify the v16.4.6 release artifacts (SEC-403 carried).
 
 Two separately verifiable artifacts:
 
-  mini-AGI-V1-v16.4.5-Security-and-Evidence-Closure.zip
+  mini-AGI-V1-v16.4.6-Worker-Isolation-and-Process-Closure.zip
       governed source = `git ls-files` intersected with disk (exactly the
       set a fresh clone receives), written deterministically and then
       verified on fresh extraction with scripts/verify_release.py's
@@ -43,7 +43,8 @@ ENVELOPE = {"SOURCE_MANIFEST.json", "RELEASE_SIGNATURE.bin",
 EVIDENCE_ENVELOPE = {"EVIDENCE_MANIFEST.json", "EVIDENCE_SIGNATURE.bin",
                      "RELEASE_PUBLIC_KEY.pem", "EVIDENCE_PROVENANCE.json"}
 EVIDENCE_ROOT = "colab-evidence"
-SOURCE_ZIP = "mini-AGI-V1-v16.4.5-Security-and-Evidence-Closure.zip"
+SOURCE_ZIP = ("mini-AGI-V1-v16.4.6-Worker-Isolation-and-"
+              "Process-Closure.zip")
 EVIDENCE_ZIP = "mini-AGI-Campaign3A-Evidence.zip"
 # sha256 of the v16.4.4 source archive this release repairs, recorded at
 # freeze time for provenance (never re-signed or rewritten).
@@ -194,9 +195,10 @@ def main() -> int:
         "split_from": {
             "archive": "mini-AGI-V1-v16.4.4-Verified-Runtime-Closure.zip",
             "sha256": BASE_ARCHIVE_SHA256},
-        "separated_in": "v16.4.5 (SEC-403): experiment evidence ships as a "
-                        "separately verified artifact, not inside the "
-                        "governed source tree",
+        "separated_in": "v16.4.5 (SEC-403, carried into v16.4.6): "
+                        "experiment evidence ships as a separately "
+                        "verified artifact, not inside the governed "
+                        "source tree",
         "files": len(ev_files)}
     ev_zip = out / EVIDENCE_ZIP
     with zipfile.ZipFile(ev_zip, "w", compression=zipfile.ZIP_DEFLATED,

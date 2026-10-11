@@ -263,9 +263,14 @@
    "manifest_sha256": "9153d0f3f24988a1c7473e28385604c5899d7d4e086f2ed3ce8554bdcd6b78d7",
    "reason": "Colab T4 qualification recorded (release verify PASS; 891/20/0; real-model e2e PASS)",
    "utc": "2026-10-11T00:22:41.749960Z"
+  },
+  {
+   "manifest_sha256": "f9c93ae91b0247f39bbb2c903de7374fde638edbb8ed935677d575aba454599b",
+   "reason": "v16.4.6 worker isolation and process closure: separate worker OS identity enforced for production, verified process-tree termination, bounded worker error codes (no dynamic exception classes), descriptor-pinned overflow reads, production startup wiring with manifest backend_id. 946 passed, 4 skipped.",
+   "utc": "2026-10-11T02:57:02.314311Z"
   }
  ],
- "reissued_utc": "2026-10-11T00:22:41.749960Z",
+ "reissued_utc": "2026-10-11T02:57:02.314311Z",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
