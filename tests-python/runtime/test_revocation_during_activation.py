@@ -16,8 +16,7 @@ import authority_chain as ac  # noqa: E402
 from minagi.runtime.authority_store import AuthorityStore  # noqa: E402
 from minagi.runtime.serving_router import ServingRouter  # noqa: E402
 from minagi.runtime.supervisor import (  # noqa: E402
-    ActivationRefused, ActivationState, ServingState,
-    ServingSupervisor)
+    ActivationRefused, ServingState, ServingSupervisor)
 from minagi.security.signed_revocations import (  # noqa: E402
     RevocationSnapshotV2)
 from minagi.v161.immutable_snapshot import stage_snapshot  # noqa: E402
