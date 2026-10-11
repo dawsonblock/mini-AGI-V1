@@ -27,7 +27,7 @@ from minagi.runtime.worker_protocol import (  # noqa: E402
     MAX_OVERFLOW_BYTES, OverflowRef, ProtocolRefused,
     WorkerProtocolError, read_overflow, write_overflow)
 from minagi.runtime.worker_backend import (  # noqa: E402
-    BackendSpec, RemoteBackendError, WorkerBackend, WorkerDied)
+    BackendSpec, RemoteBackendError, WorkerBackend)
 
 
 def _snapshot(tmp_path):
@@ -216,7 +216,6 @@ def test_overflow_dir_swap_cannot_redirect(tmp_path):
 def test_overflow_concurrent_replacement_never_parses_wrong(tmp_path):
     """A worker rewriting the file mid-read must yield either the
     announced bytes or a refusal — never silently parsed garbage."""
-    import hashlib
     import threading
     d = tmp_path / "ov"
     d.mkdir()
