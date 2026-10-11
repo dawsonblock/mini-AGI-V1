@@ -7,9 +7,10 @@
   "base_version": "16.4.7",
   "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.6/16.4.7 (repairs SEC-301..SEC-504, VAL-501 remain in effect)",
   "evidence": {
-    "gate_status": "G5-G8 verified by tests; G1-G4+G10 pending Linux qualification",
-    "linux_boundary": "test_v1648_linux_nsjail.py authored; execution pending SSH/Linux target",
-    "python_tests": "364 runtime passed / 6 skipped; full suite 998 passed / 7 skipped / 0 failed (macOS)"
+    "gate_status": "G1-G4 verified on real Linux boundary (containered systemd 252 + cgroup v2 + NsJail); G5-G9 verified by tests/envelope; G10 real-model lifecycle pending bare-metal host",
+    "linux_boundary": "test_v1648_linux_nsjail.py: 7/7 PASS in privileged Debian container (linuxkit 7.0.14 aarch64); preflight qualified=true; capeff=0; detached child proven via its own /proc/self/cgroup",
+    "nsjail_binary": "pinned commit 4ff54a6e0d5b65a0e1633d6e2fd1425ba6c882ce; sha256:a9408ab22219cb71e9e6d8ff571a594983d098df0acf1e4447494cfa0c1b3af8",
+    "python_tests": "full suite 999 passed / 14 skipped / 0 failed (macOS); executor suite 42; Linux-gated 7"
   },
   "file_changes": [
     {
@@ -29,7 +30,7 @@
       "path": "src-python/minagi/runtime/worker_executor.py"
     },
     {
-      "change": "new: restricted launch broker \u2014 digest validation, nonce replay refusal, workspace, exact systemd-run argv, cgroup resolution, verified teardown",
+      "change": "new: restricted launch broker — digest validation, nonce replay refusal, workspace, exact systemd-run argv, cgroup resolution, verified teardown",
       "path": "src-python/minagi/runtime/worker_launch_broker.py"
     },
     {
@@ -71,12 +72,40 @@
     {
       "change": "new: repair report, threat model, nsjail config, host qualification, adversarial results, real-model lifecycle, remaining defects, issue register",
       "path": "docs/security/"
+    },
+    {
+      "change": "qualification: as-spelled mount dsts, non-absolute dst refused, nonexistent runtime srcs skipped, covered same-permission child mounts dropped, parents first",
+      "path": "src-python/minagi/runtime/isolation_profile.py"
+    },
+    {
+      "change": "qualification: cgroup v2 occupancy reads cgroup.events.populated (cgroup.procs fallback); python_path_entries normalized + actually mounted",
+      "path": "src-python/minagi/runtime/worker_launch_broker.py"
+    },
+    {
+      "change": "qualification: probe hold window for live-cgroup verification; detached child reports /proc/self/cgroup",
+      "path": "src-python/minagi/runtime/isolation_preflight.py"
+    },
+    {
+      "change": "load() passes admitted snapshot root via executor.launch(extra_ro) into the jail mount set",
+      "path": "src-python/minagi/runtime/worker_backend.py"
+    },
+    {
+      "change": "launch() gains extra_ro kwarg; dev executor ignores it (host-readable by design)",
+      "path": "src-python/minagi/runtime/worker_executor.py"
+    },
+    {
+      "change": "extra_ro merged into broker-screened ro mounts",
+      "path": "src-python/minagi/runtime/nsjail_executor.py"
+    },
+    {
+      "change": "recorded: containered-Linux qualification PASS + defects found/fixed",
+      "path": "docs/security/LINUX_HOST_QUALIFICATION.md"
     }
   ],
   "release": "mini-AGI-V1-v16.4.8-Linux-Isolation-and-Security-Closure",
   "remaining_defects": {
-    "ipc_transport": "systemd-run --pipe (not a dedicated unix socket) \u2014 recorded decision",
-    "qualification": "Linux run not yet executed \u2014 G1-G4, G10 unclaimed",
+    "ipc_transport": "systemd-run --pipe (not a dedicated unix socket) — recorded decision",
+    "qualification": "Linux run not yet executed — G1-G4, G10 unclaimed",
     "seccomp": "nsjail built-in default policy; kafel policy is deployment-specific future work"
   },
   "repairs": {
@@ -90,6 +119,6 @@
   },
   "schema": "mini-agi-v16.4.8-change-manifest-v1",
   "source_archive": "dist-v1646/mini-AGI-V1-v16.4.7-Runtime-Isolation-Enforcement.zip",
-  "summary": "Worker isolation closure: the production boundary is a restricted launch broker (digest-bound requests, replay nonces, fixed argv, env allowlist, denied-path mount screening) that runs a pinned NsJail binary inside a managed systemd cgroup-v2 unit \u2014 custom pivot_root/mount-propagation/process-discovery code is off the production path. Capability detection reads CapEff (uid 0 no longer implies CAP_SYS_ADMIN); the frozen isolation profile's digest is bound to every launch; seatbelt is Darwin-only; production startup requires the nsjail executor and refuses every insecure fallback.",
+  "summary": "Worker isolation closure: the production boundary is a restricted launch broker (digest-bound requests, replay nonces, fixed argv, env allowlist, denied-path mount screening) that runs a pinned NsJail binary inside a managed systemd cgroup-v2 unit — custom pivot_root/mount-propagation/process-discovery code is off the production path. Capability detection reads CapEff (uid 0 no longer implies CAP_SYS_ADMIN); the frozen isolation profile's digest is bound to every launch; seatbelt is Darwin-only; production startup requires the nsjail executor and refuses every insecure fallback.",
   "version": "16.4.8"
 }
