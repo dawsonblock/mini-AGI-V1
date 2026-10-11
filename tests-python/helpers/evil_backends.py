@@ -167,7 +167,6 @@ class SpawnBackend:
 
     def infer(self, handle, request):  # pragma: no cover - in child
         import os
-        import signal
         import subprocess
         import sys
         import time
