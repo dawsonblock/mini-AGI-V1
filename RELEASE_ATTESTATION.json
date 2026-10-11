@@ -48,7 +48,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "570e6f1f7a59219ae8891f1b86de6dc002ff893622fa8e409f7f9fb96b129889",
+ "manifest_sha256": "93c844c5127b054167dfe7e21765ef4cf081326665e7aa96c555fb1802e64bdf",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -247,9 +247,14 @@
    "manifest_sha256": "570e6f1f7a59219ae8891f1b86de6dc002ff893622fa8e409f7f9fb96b129889",
    "reason": "SEC-005/006 recorded closed in change manifest/validation; only SEC-007 remains open",
    "utc": "2026-10-10T23:26:29.475151Z"
+  },
+  {
+   "manifest_sha256": "93c844c5127b054167dfe7e21765ef4cf081326665e7aa96c555fb1802e64bdf",
+   "reason": "package __version__/SBOM bumped to 16.4.5 (version-identity test caught post-bump drift on Colab)",
+   "utc": "2026-10-11T00:06:12.294105Z"
   }
  ],
- "reissued_utc": "2026-10-10T23:26:29.475151Z",
+ "reissued_utc": "2026-10-11T00:06:12.294105Z",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
