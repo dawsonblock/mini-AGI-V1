@@ -643,3 +643,189 @@ def test_seatbelt_profile_denies_fork_network_and_writes(tmp_path):
     finally:
         if rendered:
             os.unlink(rendered)
+
+
+# ================= v16.4.7 audit repairs — enforcement, not policy =========
+
+def test_production_inprocess_refused_at_cli(tmp_path):
+    """Audit P0: ``--production --backend-isolation inprocess`` must
+    be refused through the REAL CLI entry point — an explicit bypass
+    is a configuration error, not an override. The refusal happens at
+    parse time before any trust material or backend is touched."""
+    from minagi.runtime.service import main
+    with pytest.raises(SystemExit, match="in-process backend"):
+        main(["--socket", str(tmp_path / "op.sock"),
+              "--storage-root", str(tmp_path / "store"),
+              "--production", "--backend-isolation", "inprocess"])
+
+
+def test_zombie_never_counts_as_survivor():
+    """Audit P0: a dead-but-unreaped descendant is NOT a live
+    process. Zombies answer kill(pid,0) yet execute nothing — the
+    controller must distinguish state Z from a running descendant."""
+    from minagi.runtime.worker_isolation import (
+        WorkerProcessController, _pid_state, _zombie_pids)
+    proc = subprocess.Popen([sys.executable, "-c", "pass"])
+    try:
+        # the child exits but stays a zombie until we reap it
+        deadline = time.monotonic() + 5.0
+        while _pid_state(proc.pid) != "Z" \
+                and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert _pid_state(proc.pid) == "Z", \
+            "could not produce a zombie on this host"
+        assert proc.pid in _zombie_pids({proc.pid})
+        ctl = WorkerProcessController()
+        assert proc.pid not in ctl._owned({proc.pid}, None, None), \
+            "zombie reported as a live survivor"
+    finally:
+        proc.wait()  # reap
+
+
+def test_unload_sweeps_detached_descendant(tmp_path):
+    """Audit P1: a worker that exits CLEANLY must still lose its
+    detached children — unload() runs the containment sweep; a clean
+    leader exit is not proof of an empty unit."""
+    spec = BackendSpec(module="evil_backends",
+                       qualname="SpawnBackend", kwargs={})
+    backend = WorkerBackend(spec, start_timeout=30.0)
+    h = backend.load(_snapshot(tmp_path))
+    detached = backend.infer(
+        h, {"op": "spawn", "setsid": True, "ignore_term": True})["pid"]
+    backend.unload(h)
+    assert _wait_dead(detached), \
+        "detached descendant survived a normal unload"
+
+
+def test_launcher_refuses_without_spec():
+    """The launcher exits EX_SOFTWARE with a stderr reason when its
+    spec fd is absent — a half-isolated worker never starts."""
+    out = subprocess.run(
+        [sys.executable, "-m", "minagi.runtime.worker_launcher"],
+        capture_output=True, text=True,
+        env={**os.environ, "PYTHONPATH": str(ROOT / "src-python")})
+    assert out.returncode == 70
+    assert "MINAGI_LAUNCH_SPEC_FD" in out.stderr
+
+
+def test_launch_spec_round_trip(tmp_path):
+    """The supervisor→launcher contract serializes to a private fd —
+    never argv, never a filesystem path — and round-trips intact."""
+    import json
+    from minagi.runtime.worker_isolation import (
+        build_launch_spec, needs_launcher, spec_to_fd)
+    policy = production_policy(worker_uid=65534, worker_gid=65534,
+                               network_isolation=True)
+    assert needs_launcher(policy)
+    spec = build_launch_spec(
+        policy, exec_argv=[sys.executable, "-m", "x"],
+        scratch=tmp_path, cgroup_path="/cg/unit-x")
+    fd, done = spec_to_fd(spec)
+    try:
+        got = json.loads(os.read(fd, 1 << 20))
+        assert got == spec
+        assert got["uid"] == 65534 and got["netns"] is True
+        assert got["cgroup"] == "/cg/unit-x"
+        assert got["cwd"] == str(tmp_path)
+        assert got["mountns"]["ro_binds"]
+    finally:
+        done()
+
+
+def test_launcher_executes_worker_image(tmp_path):
+    """The launcher applies bounds then execs the worker entry —
+    the isolation step lives OUTSIDE the supervisor's fork path
+    (no preexec_fn in a multithreaded process)."""
+    from minagi.runtime.worker_isolation import spec_to_fd
+    spec = {"exec_argv": [sys.executable, "-c",
+                          "import resource;"
+                          "print(resource.getrlimit("
+                          "resource.RLIMIT_NOFILE)[0])"],
+            "rlimits": {"nofile": 64}}
+    fd, done = spec_to_fd(spec)
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "src-python"),
+           "MINAGI_LAUNCH_SPEC_FD": str(fd)}
+    try:
+        out = subprocess.run(
+            [sys.executable, "-m", "minagi.runtime.worker_launcher"],
+            pass_fds=(fd,), capture_output=True, text=True, env=env)
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip() == "64", out.stdout
+    finally:
+        done()
+
+
+@pytest.mark.skipif(not supported()["cgroup_v2"],
+                    reason="cgroup v2 unavailable — qualified on a "
+                           "Linux host with a writable cgroup root")
+def test_cgroup_membership_survives_detach_and_scrub(tmp_path):
+    """Audit P0: cgroup membership is KERNEL state — a descendant
+    that setsid()s, reparents, and execs with a scrubbed environment
+    is still accounted. This is the class of escape ancestry graphs,
+    process groups, and env markers cannot see."""
+    from minagi.runtime.worker_isolation import (
+        WorkerCgroup, new_worker_unit)
+    cg = WorkerCgroup.create(new_worker_unit())
+    assert cg is not None
+    code = (
+        "import os,time\n"
+        "pid=os.fork()\n"
+        "if pid==0:\n"
+        "    os.setsid(); p2=os.fork()\n"
+        "    if p2>0: os._exit(0)\n"
+        "    os.execve('/bin/sleep',['sleep','30'],{'PATH':'/bin'})\n"
+        "time.sleep(30)\n")
+    proc = subprocess.Popen([sys.executable, "-c", code])
+    try:
+        (cg.path / "cgroup.procs").write_text(str(proc.pid))
+        deadline = time.monotonic() + 5.0
+        while len(cg.live_pids()) < 2 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        members = cg.live_pids()
+        assert len(members) >= 2, \
+            f"detached+scrubbed descendant escaped cgroup: {members}"
+        cg.kill_all()
+        deadline = time.monotonic() + 5.0
+        while cg.live_pids() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not cg.live_pids(), "cgroup.kill left live members"
+    finally:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        proc.wait()
+        cg.release()
+
+
+@pytest.mark.skipif(
+    not supported()["network_namespace"] or os.geteuid() != 0,
+    reason="netns + demotion need CAP_SYS_ADMIN/root — qualified on "
+           "a Linux production host")
+def test_network_isolation_actually_denies_worker(tmp_path):
+    """Audit P0: requesting network isolation must DENY a real
+    connection from inside the worker — capability reporting is not
+    enforcement. The worker enters a fresh netns at launch; even
+    loopback is unreachable."""
+    import socket
+    from minagi.runtime.worker_isolation import production_policy
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+    spec = BackendSpec(module="evil_backends",
+                       qualname="AccessProbeBackend", kwargs={})
+    backend = WorkerBackend(
+        spec, start_timeout=30.0,
+        isolation=production_policy(
+            worker_uid=65534, worker_gid=65534,
+            network_isolation=True))
+    try:
+        h = backend.load(_snapshot(tmp_path))
+        rep = backend.infer(h, {"connect": f"127.0.0.1:{port}"})
+        assert rep["uid"] == 65534
+        assert rep["connect"] != "CONNECTED", \
+            "worker reached the network despite require_network_" \
+            "isolation — isolation was reported, not applied"
+    finally:
+        srv.close()

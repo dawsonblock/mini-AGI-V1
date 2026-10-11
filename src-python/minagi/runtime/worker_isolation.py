@@ -40,6 +40,7 @@ import re
 import select
 import shutil
 import stat
+import sys
 import tempfile
 import threading
 from dataclasses import dataclass, field
@@ -98,6 +99,14 @@ class WorkerIsolationPolicy:
                       containment mechanism. ``@SCRATCH@`` renders to
                       the worker's private scratch at spawn. Only
                       counted toward required containment when set
+    mount_ro          paths bind-mounted READ-ONLY inside the worker's
+                      private mount namespace (Linux) — the interpreter,
+                      runtime modules and admitted model artifacts
+    mount_rw          paths bind-mounted read-write — worker scratch
+    no_new_privs      prctl(PR_SET_NO_NEW_PRIVS) — the demoted worker
+                      can never re-gain privilege through exec'd
+                      setuid/file-capability binaries (Linux; skipped
+                      on other platforms)
 
     v16.4.6 enforcement requirements — when a ``require_*`` flag is set,
     :func:`validate_isolation` refuses the policy unless the host can
@@ -130,6 +139,9 @@ class WorkerIsolationPolicy:
     max_file_bytes: int | None = None
     demote_to: tuple[int, int] | None = None
     sandbox_profile: str | None = None
+    mount_ro: tuple[str, ...] = ()
+    mount_rw: tuple[str, ...] = ()
+    no_new_privs: bool = True
     require_separate_identity: bool = False
     require_filesystem_confinement: bool = False
     require_process_containment: bool = False
@@ -156,10 +168,19 @@ def supported() -> dict:
     }
     caps["can_demote_now"] = _has_demote_privilege()
     caps["proc_fs"] = Path("/proc/self/stat").is_file()
-    caps["network_namespace"] = (
-        caps["platform"] == "Linux"
-        and shutil.which("unshare") is not None
+    caps["cap_sys_admin"] = _cap_eff(21)
+    # "applicable" means the launcher can actually CREATE the
+    # namespace — CAP_SYS_ADMIN (or root) — not merely that the
+    # mechanism exists on the host. A binary present but a syscall
+    # that EPERMs is reported as unavailable.
+    caps["can_unshare_net"] = (
+        caps["platform"] == "Linux" and caps["cap_sys_admin"]
         and Path("/proc/self/ns/net").is_file())
+    caps["can_unshare_mount"] = (
+        caps["platform"] == "Linux" and caps["cap_sys_admin"])
+    caps["network_namespace"] = caps["can_unshare_net"]
+    caps["mount_namespace"] = caps["can_unshare_mount"]
+    caps["cgroup_v2"] = _cgroup_v2_root() is not None
     caps["kill_group"] = hasattr(os, "killpg")
     caps["kqueue_tracking"] = kqueue_tracking_supported()
     return caps
@@ -179,23 +200,76 @@ def _has_demote_privilege() -> bool:
     return False
 
 
+def _cap_eff(bit: int) -> bool:
+    """Does this process hold Linux capability <bit> in its effective
+    set? Root trivially does; otherwise inspect /proc/self/status
+    CapEff. False on platforms without capabilities."""
+    if os.geteuid() == 0:
+        return True
+    try:
+        for line in Path("/proc/self/status").read_text().splitlines():
+            if line.startswith("CapEff:"):
+                return bool(int(line.split()[1], 16) & (1 << bit))
+    except OSError:
+        pass
+    return False
+
+
+def _runtime_ro_binds() -> tuple:
+    """Read-only binds the worker interpreter and runtime need inside
+    a private mount namespace: the interpreter itself, its shared
+    libraries, the stdlib and every live sys.path entry."""
+    import sysconfig
+    binds: list = []
+
+    def add(p):
+        if not p:
+            return
+        try:
+            rp = str(Path(p).resolve())
+        except OSError:
+            return
+        if rp not in binds and Path(rp).exists():
+            binds.append(rp)
+
+    add(sys.executable)
+    for d in ("/usr/lib", "/lib", "/lib64", "/usr/local/lib",
+              sysconfig.get_paths().get("stdlib", "")):
+        add(d)
+    for d in sys.path:
+        add(d)
+    return tuple(binds)
+
+
+def _bundled_seatbelt_profile():
+    """The shipped macOS reference profile — present when running
+    from a source tree or release, None otherwise."""
+    profile = (Path(__file__).resolve().parents[3]
+               / "configs" / "minagi-worker-seatbelt.sb")
+    return str(profile) if profile.is_file() else None
+
+
 def production_policy(*, worker_uid: int, worker_gid: int,
                       cpu_seconds: int | None = None,
                       memory_bytes: int | None = None,
                       max_processes: int = 32,
                       max_open_files: int = 256,
-                      network_isolation: bool = False
-                      ) -> "WorkerIsolationPolicy":
+                      network_isolation: bool = False,
+                      mount_ro: tuple = ()) -> "WorkerIsolationPolicy":
     """The production isolation profile — every enforcement flag on.
-    `network_isolation` additionally requires a namespace mechanism;
-    leave it off where the host cannot enforce it (the validation
-    step refuses rather than pretending)."""
+    ``mount_ro`` gets the interpreter/runtime binds automatically;
+    callers add workload paths (e.g. the admitted snapshot root) via
+    ``mount_ro``. On macOS the bundled seatbelt profile is attached
+    when present — its production qualification is host-specific."""
     return WorkerIsolationPolicy(
         require_separate_identity=True,
         require_filesystem_confinement=True,
         require_process_containment=True,
         require_network_isolation=network_isolation,
         demote_to=(int(worker_uid), int(worker_gid)),
+        sandbox_profile=_bundled_seatbelt_profile(),
+        mount_ro=_runtime_ro_binds() + tuple(mount_ro),
+        no_new_privs=True,
         cpu_seconds=cpu_seconds, memory_bytes=memory_bytes,
         max_processes=max_processes, max_open_files=max_open_files)
 
@@ -241,26 +315,43 @@ def validate_isolation(policy: WorkerIsolationPolicy, *,
                 "filesystem confinement without a separate worker "
                 "identity is illusory — a same-uid worker reads every "
                 "supervisor-owned file")
-        need(True, "filesystem_confinement", True,
-             "unreachable (separate identity enforced above)")
+        # Identity separation and filesystem confinement are DIFFERENT
+        # controls: a distinct uid can still read every world-readable
+        # host file. Confinement is only claimed when a real filesystem
+        # restriction is actually applied at launch — a private mount
+        # namespace exposing only approved binds (Linux), or a seatbelt
+        # profile (macOS). A separate uid alone is identity separation,
+        # not confinement.
+        mountns_fs = (caps["mount_namespace"]
+                      and bool(policy.mount_ro or policy.mount_rw))
+        seatbelt_fs = (caps["sandbox_exec"]
+                       and bool(policy.sandbox_profile))
+        need(True, "filesystem_confinement",
+             mountns_fs or seatbelt_fs,
+             "no filesystem-confinement mechanism will be applied — "
+             "need a Linux mount namespace (CAP_SYS_ADMIN) with "
+             "configured binds or a seatbelt profile; a separate uid "
+             "alone only protects permission-guarded files")
     # Group control alone is not containment — a detached descendant
-    # escapes a group signal. Real containment needs a tracking
-    # mechanism that survives reparenting (/proc ancestry+marker on
-    # Linux, kqueue NOTE_TRACK where the kernel still honours it) or
-    # a seatbelt profile that makes descendant creation impossible
-    # (macOS: sandbox-exec with deny process-fork).
+    # escapes a group signal. Kernel-owned cgroup v2 membership is the
+    # preferred mechanism (survives detach/reparent/env-scrubbing);
+    # scanning (/proc ancestry+marker, kqueue NOTE_TRACK) and fork
+    # denial (seatbelt) are supporting fallbacks.
     sandbox_containment = (caps["sandbox_exec"]
                            and bool(policy.sandbox_profile))
     need(policy.require_process_containment, "process_containment",
-         caps["process_group"] and caps["kill_group"]
-         and (caps["proc_fs"] or caps["kqueue_tracking"]
-              or sandbox_containment),
-         "no descendant-containment mechanism on this host (need /proc "
-         "scan, kqueue NOTE_TRACK, or a sandbox_profile that denies "
-         "process-fork)")
+         caps["cgroup_v2"]
+         or (caps["process_group"] and caps["kill_group"]
+             and (caps["proc_fs"] or caps["kqueue_tracking"]
+                  or sandbox_containment)),
+         "no descendant-containment mechanism on this host (need "
+         "cgroup v2, /proc scan, kqueue NOTE_TRACK, or a "
+         "sandbox_profile that denies process-fork)")
     need(policy.require_network_isolation, "network_isolation",
-         caps["network_namespace"],
-         "no network-namespace mechanism on this host")
+         caps["network_namespace"] or sandbox_containment,
+         "no applicable network-isolation mechanism on this host "
+         "(need CAP_SYS_ADMIN for a Linux network namespace, or a "
+         "seatbelt profile that denies network access)")
     for field_name, name, key in (
             ("cpu_seconds", "cpu", "rlimit_cpu"),
             ("memory_bytes", "memory", "rlimit_as"),
@@ -476,6 +567,52 @@ def _proc_fields(pid: int):
         return None
 
 
+def _pid_state(pid: int):
+    """One-char process state ('R','S','Z',...) or None if the pid is
+    gone — /proc on Linux, a `ps` probe elsewhere. A 'Z'ombie is DEAD:
+    it answers kill(pid,0) but holds no executing thread — treating it
+    as live misreports a reparented corpse as a surviving descendant."""
+    try:
+        stat_text = Path(f"/proc/{pid}/stat").read_text()
+        return stat_text.rsplit(")", 1)[1].split()[0]
+    except (OSError, IndexError, ValueError):
+        pass
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(int(pid))],
+            capture_output=True, text=True, timeout=5).stdout.strip()
+        return out[:1] or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _zombie_pids(pids) -> set:
+    """The subset of pids that are zombies — dead-but-unreaped. Bulk
+    ps scan off-Linux; per-pid stat reads under /proc."""
+    pids = {int(p) for p in pids}
+    if not pids:
+        return set()
+    if Path("/proc").is_dir():
+        return {p for p in pids if _pid_state(p) == "Z"}
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["ps", "-eo", "pid=,stat="], capture_output=True,
+            text=True, timeout=5).stdout
+    except Exception:  # noqa: BLE001
+        return set()
+    dead = set()
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].startswith("Z"):
+            try:
+                dead.add(int(parts[0]))
+            except ValueError:
+                continue
+    return pids & dead
+
+
 def _ps_table() -> dict:
     """pid -> (ppid, pgrp, session) via ps — portable fallback."""
     try:
@@ -689,6 +826,103 @@ def _marker_holders(unit: str) -> set:
     return holders
 
 
+
+def _cgroup_v2_root():
+    """A cgroup-v2 directory we may create worker units under — or
+    None. Detection, not assumption: the mount must be unified v2
+    (``cgroup.controllers`` present) and actually writable by us.
+    Membership tracking via cgroup.procs/cgroup.kill needs no
+    controller delegation, so any writable leaf suffices."""
+    import os
+    base = Path(os.environ.get("MINAGI_CGROUP_ROOT")
+                or "/sys/fs/cgroup")
+    if not (base / "cgroup.controllers").exists():
+        return None
+    units = base / "minagi.units"
+    try:
+        units.mkdir(exist_ok=True)
+        probe = units / ".probe"
+        probe.mkdir()
+        probe.rmdir()
+    except OSError:
+        return None
+    return units
+
+
+class WorkerCgroup:
+    """Kernel-owned containment for one worker unit — Linux cgroup v2.
+
+    Membership is kernel state: a descendant cannot leave the cgroup
+    by detaching (setsid), being reparented, or exec'ing with a
+    scrubbed environment — the three escapes that defeat ancestry
+    graphs, process groups and env markers. This is the authoritative
+    ownership boundary where available; the scanning mechanisms are
+    complements, not substitutes.
+    """
+
+    def __init__(self, path):
+        self.path = Path(path)
+
+    @classmethod
+    def create(cls, name: str) -> "WorkerCgroup | None":
+        """mkdir the unit's cgroup under the delegated root — None
+        when cgroup v2 is unavailable or unwritable."""
+        root = _cgroup_v2_root()
+        if root is None:
+            return None
+        path = root / f"minagi-{name}"
+        try:
+            path.mkdir(mode=0o700)
+        except OSError:
+            return None
+        return cls(path)
+
+    def live_pids(self) -> set:
+        """Current kernel-tracked membership — pids, immune to
+        reparenting and env scrubbing."""
+        try:
+            text = (self.path / "cgroup.procs").read_text()
+        except OSError:
+            return set()
+        out = set()
+        for tok in text.split():
+            try:
+                out.add(int(tok))
+            except ValueError:
+                continue
+        return out
+
+    def kill_all(self) -> None:
+        """SIGKILL every member atomically. cgroup.kill (kernel 5.14+)
+        is the race-free path — it kills the whole subtree atomically,
+        no pid enumeration window. Older kernels: enumerate and kill."""
+        import signal
+        kill_file = self.path / "cgroup.kill"
+        try:
+            kill_file.write_text("1")
+            return
+        except OSError:
+            pass
+        for pid in self.live_pids():
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+
+    def empty(self) -> bool:
+        try:
+            return not self.live_pids()
+        except OSError:
+            return True
+
+    def release(self) -> None:
+        """Remove the cgroup — only succeeds when empty."""
+        try:
+            self.path.rmdir()
+        except OSError:
+            pass
+
+
 class WorkerProcessController:
     """Verified lifecycle for one worker containment unit.
 
@@ -743,29 +977,37 @@ class WorkerProcessController:
             live.add(pid)
         if unit:
             live |= _marker_holders(unit)
+        # Zombies are DEAD: they answer kill(pid,0) but execute
+        # nothing — a descendant killed and reparented to init sits
+        # as 'Z' until the new parent reaps it. Counting them makes
+        # teardown race-reported as a containment failure.
+        live -= _zombie_pids(live)
         return live
 
     def terminate_tree(self, proc, *, leader_pid: int | None = None,
                        tracked: set | None = None,
                        unit: str | None = None,
-                       extra_tracked=None) -> set:
+                       extra_tracked=None,
+                       cgroup: "WorkerCgroup | None" = None) -> set:
         """Stop routing -> escalate -> reap -> verify. ``proc`` is the
         leader's Popen handle; ``tracked`` is an optional ancestry
         snapshot taken while the leader lived; ``unit`` is the env
         marker token identifying the containment set; ``extra_tracked``
         is an optional live pid accessor (kqueue tracker) consulted at
-        each ownership check. Returns the set of pids that could NOT
-        be confirmed dead (empty on success)."""
+        each ownership check; ``cgroup`` is the kernel-owned unit —
+        when present it is the authoritative kill+verify boundary.
+        Works whether the leader is alive, exiting, or already dead —
+        the survivor sweep runs regardless. Returns the set of pids
+        that could NOT be confirmed dead (empty on success)."""
         import signal
         import time
         pid = int(leader_pid if leader_pid is not None else proc.pid or 0)
         tracked = set(tracked or ()) | ({pid} if pid else set())
-        if pid:
-            if proc.poll() is None:
-                self._signal_group(pid, signal.SIGTERM)
-                deadline = time.monotonic() + self.term_grace
-                while proc.poll() is None and time.monotonic() < deadline:
-                    time.sleep(0.02)
+        if pid and proc.poll() is None:
+            self._signal_group(pid, signal.SIGTERM)
+            deadline = time.monotonic() + self.term_grace
+            while proc.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.02)
             if proc.poll() is None:
                 self._signal_group(pid, signal.SIGKILL)
         try:
@@ -775,7 +1017,14 @@ class WorkerProcessController:
                 os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
+        if cgroup is not None:
+            # kernel-enforced teardown: kills every member including
+            # detached/reparented/scrubbed descendants, then verify.
+            cgroup.kill_all()
         survivors = self._owned(tracked, unit, extra_tracked)
+        if cgroup is not None:
+            survivors |= cgroup.live_pids() - _zombie_pids(
+                cgroup.live_pids())
         if survivors:
             for spid in survivors:
                 try:
@@ -785,30 +1034,140 @@ class WorkerProcessController:
             import time as _t
             _t.sleep(0.05)
             survivors = self._owned(tracked, unit, extra_tracked)
+            if cgroup is not None:
+                survivors |= cgroup.live_pids() - _zombie_pids(
+                    cgroup.live_pids())
         return survivors
 
     def verify_terminated(self, leader_pid: int,
                           tracked: set | None = None,
                           unit: str | None = None,
-                          extra_tracked=None) -> set:
-        """The acceptance check: zero processes owned by the unit.
-        Returns the surviving pid set — must be empty."""
+                          extra_tracked=None,
+                          cgroup: "WorkerCgroup | None" = None) -> set:
+        """The acceptance check: zero processes owned by the unit —
+        scanned survivors UNION live cgroup membership. Returns the
+        surviving pid set — must be empty."""
         tracked = set(tracked or ())
         tracked.discard(int(leader_pid))
-        return self._owned(tracked, unit, extra_tracked)
+        live = self._owned(tracked, unit, extra_tracked)
+        if cgroup is not None:
+            live |= cgroup.live_pids() - _zombie_pids(
+                cgroup.live_pids())
+        return live
 
     def cleanup_resources(self, private_tmp) -> None:
         if private_tmp is not None:
             shutil.rmtree(private_tmp, ignore_errors=True)
 
 
+# ---------------------------------------------------------------------------
+# Launch boundary — the supervisor builds a spec; the LAUNCHER applies it
+# ---------------------------------------------------------------------------
+
+def needs_launcher(policy: WorkerIsolationPolicy) -> bool:
+    """True when the worker needs any privileged/bounded setup that
+    must not run inside the supervisor's fork path — demotion, POSIX
+    limits, namespaces, cgroup attach or no_new_privs. The DEFAULT
+    profile applies RLIMIT_NOFILE, so workers go through the launcher
+    whenever limits are set."""
+    return bool(
+        policy.demote_to is not None
+        or policy.cpu_seconds is not None
+        or policy.memory_bytes is not None
+        or policy.max_processes is not None
+        or policy.max_open_files is not None
+        or policy.max_file_bytes is not None
+        or policy.require_network_isolation
+        or policy.mount_ro or policy.mount_rw
+        or policy.no_new_privs)
+
+
+def build_launch_spec(policy: WorkerIsolationPolicy, *,
+                      exec_argv: list, scratch,
+                      cgroup_path=None,
+                      extra_ro: tuple = ()) -> dict:
+    """Translate the policy into the worker_launcher spec — the
+    declarative contract the privileged launch step applies. Mount
+    confinement auto-binds the interpreter/runtime reads and the
+    worker scratch; ``extra_ro`` adds caller-approved paths (e.g. the
+    admitted snapshot)."""
+    rl = {}
+    if policy.cpu_seconds is not None:
+        rl["cpu"] = int(policy.cpu_seconds)
+    if policy.memory_bytes is not None:
+        rl["as"] = int(policy.memory_bytes)
+    if policy.max_processes is not None:
+        rl["nproc"] = int(policy.max_processes)
+    if policy.max_open_files is not None:
+        rl["nofile"] = int(policy.max_open_files)
+    if policy.max_file_bytes is not None:
+        rl["fsize"] = int(policy.max_file_bytes)
+    spec = {"exec_argv": [str(a) for a in exec_argv],
+            "rlimits": rl,
+            "cwd": str(scratch),
+            "no_new_privs": bool(policy.no_new_privs)}
+    if policy.demote_to is not None:
+        spec["uid"] = int(policy.demote_to[0])
+        spec["gid"] = int(policy.demote_to[1])
+        spec["home"] = "/nonexistent"
+    if policy.require_network_isolation:
+        spec["netns"] = True
+    if policy.mount_ro or policy.mount_rw:
+        ro = [str(p) for p in policy.mount_ro] + [str(p) for p in extra_ro]
+        rw = [str(p) for p in policy.mount_rw] + [str(scratch)]
+        spec["mountns"] = {"ro_binds": ro, "rw_binds": rw}
+    if cgroup_path is not None:
+        spec["cgroup"] = str(cgroup_path)
+    return spec
+
+
+def spec_to_fd(spec: dict) -> tuple:
+    """Serialize the launch spec to an anonymous fd for pass_fds —
+    never argv, never the filesystem. Returns (fd, cleanup); the fd
+    is caller-owned until closed (no GC finalizer can reap it)."""
+    import json
+    data = json.dumps(spec).encode()
+    if hasattr(os, "memfd_create"):
+        fd = os.memfd_create("minagi-launch-spec")  # Linux
+        os.write(fd, data)
+        os.lseek(fd, 0, os.SEEK_SET)
+        return fd, lambda: os.close(fd)
+    import tempfile
+    fd, name = tempfile.mkstemp(prefix="minagi-launch-spec-")
+    try:
+        os.unlink(name)  # anonymous: only the fd references it
+        os.write(fd, data)
+        os.lseek(fd, 0, os.SEEK_SET)
+    except Exception:  # noqa: BLE001
+        os.close(fd)
+        raise
+    return fd, lambda: os.close(fd)
+
+
+def set_child_subreaper() -> bool:
+    """Make THIS process a subreaper (Linux PR_SET_CHILD_SUBREAPER):
+    orphaned worker descendants reparent here instead of init, so a
+    detached/scrubbed grandchild remains reachable for teardown and
+    reaping. One-time supervisor call; harmless to repeat."""
+    if os.uname().sysname != "Linux":
+        return False
+    import ctypes
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        PR_SET_CHILD_SUBREAPER = 36
+        return libc.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) == 0
+    except (AttributeError, OSError):
+        return False
+
+
 __all__ = ["DEFAULT_ISOLATION", "IsolationError",
            "KqueueDescendantTracker", "SAFE_ENV_PASSTHROUGH",
-           "WORKER_UNIT_ENV", "WorkerIsolationPolicy",
-           "WorkerProcessController", "build_env", "descendants_of",
-           "kqueue_tracking_supported",
+           "WORKER_UNIT_ENV", "WorkerCgroup", "WorkerIsolationPolicy",
+           "WorkerProcessController", "build_env", "build_launch_spec",
+           "descendants_of", "kqueue_tracking_supported",
            "make_private_tmp", "make_worker_scratch",
-           "production_policy", "supported", "tmp_is_private",
-           "new_worker_unit", "validate_isolation", "worker_preexec",
-           "worker_unit_env",
-           "wrap_argv"]
+           "needs_launcher", "new_worker_unit", "production_policy",
+           "set_child_subreaper", "spec_to_fd", "supported",
+           "tmp_is_private", "validate_isolation", "worker_preexec",
+           "worker_unit_env", "wrap_argv", "_pid_state",
+           "_zombie_pids"]

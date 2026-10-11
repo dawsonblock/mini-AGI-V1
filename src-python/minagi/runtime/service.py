@@ -633,7 +633,12 @@ def resolve_worker_policy(args, *, production: bool,
         policy = production_policy(
             worker_uid=worker_uid, worker_gid=worker_gid,
             network_isolation=getattr(
-                args, "worker_net_isolation", False))
+                args, "worker_net_isolation", False),
+            # the admitted model artifacts the worker must be able
+            # to READ inside its mount namespace — bound read-only;
+            # the key material under storage/.keys is never bound
+            mount_ro=(str(Path(args.storage_root).resolve()
+                          / "snapshots"),))
         try:
             iso_report = validate_isolation(policy)
         except IsolationError as exc:
@@ -735,6 +740,19 @@ def main(argv=None) -> int:
                          "(Linux network namespace); startup refuses "
                          "where the host cannot enforce it")
     args = ap.parse_args(argv)
+
+    if args.production and (
+            args.backend_isolation or "process") != "process":
+        # SEC-501 hard close: --production + an explicit in-process
+        # backend are contradictory — model code would run with the
+        # supervisor's OS identity and signing authority. Refuse at
+        # parse time, before any trust material is touched; there is
+        # no permissive fallback.
+        raise SystemExit(
+            "production startup refused — an in-process backend "
+            "executes model code with the supervisor's authority "
+            "(SEC-501): --backend-isolation inprocess is refused "
+            "under --production")
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from egai.common.crypto import Ed25519Signer
@@ -888,6 +906,18 @@ def main(argv=None) -> int:
     # --backend-isolation is given explicitly.
     isolation = args.backend_isolation or (
         "process" if args.production else "inprocess")
+    if args.production and isolation != "process":
+        # SEC-501 hard close: under --production an in-process backend
+        # would execute model code with the supervisor's OS identity
+        # and signing authority — the exact boundary this release
+        # exists to enforce. An explicit --backend-isolation inprocess
+        # request is a configuration error, never an override, and
+        # there is no permissive fallback.
+        raise SystemExit(
+            "production startup refused — an in-process backend "
+            "executes model code with the supervisor's authority "
+            "(SEC-501): --backend-isolation inprocess is refused "
+            "under --production")
     worker_isolation_report = "inprocess"
     if isolation == "process":
         from minagi.runtime.worker_backend import (
