@@ -11,7 +11,7 @@ Enforcement · target v16.4.8 Linux Isolation and Security Closure.
 | SEC-704 | Detached processes escape discovery — `/proc` ancestry + env markers lose reparented/setsid children | FIXED (source; needs Linux run) | kernel-owned cgroup: `KillMode=control-group` systemd unit per worker; teardown verifies `cgroup.populated==0`, never `/proc` scanning as the claim | `test_g4_detached_descendant_stays_owned`, `test_g4_spawn_backend_children_all_terminated` (Linux-gated) |
 | SEC-705 | macOS Seatbelt invoked on Linux — `sandbox_exec` credited wherever a same-named binary existed on PATH | FIXED | `supported()["sandbox_exec"]` gated on Darwin; `production_policy` attaches the bundled profile only on Darwin; `wrap_argv` refuses a profile off-Darwin | `test_seatbelt_wrap_refused_off_darwin`, `test_seatbelt_not_credited_on_linux`, `test_production_policy_no_sandbox_profile_on_linux` |
 | SEC-706 | Incorrect bind-mount targets — custom launcher mounted at wrong dst | FIXED (source; needs Linux run) | `resolve_mounts` computes broker-owned binds (runtime closure ro, artifacts ro at identical paths, scratch rw at `/work`, `/dev/{null,zero,urandom}`); `denied_paths` refuse authority mounts | `test_resolve_mounts_denies_authority`, `test_render_config_required_fields`, `test_g1_authority_dir_never_mounted` (Linux) |
-| SEC-707 | Inconsistent release metadata | PENDING | regenerate manifest/signature/SBOM/source inventory from final source after code freeze | release verification run (final step) |
+| SEC-707 | Inconsistent release metadata | FIXED | `SOURCE_MANIFEST.json` regenerated over final tracked tree (1544 files) and re-signed with the pinned key; attestation/validation/change-manifest/SBOM/version reconciled to 16.4.8 | `verify_release.py --root` PASS on `git archive` extraction AND on the built ZIP (`836a65c4…`, manifest `7e46786a…`) — G9 |
 
 ## Exit-gate status
 
@@ -25,5 +25,5 @@ Enforcement · target v16.4.8 Linux Isolation and Security Closure.
 | G6 production refuses missing/ineffective restrictions | verified by unit tests | `resolve_worker_executor` SystemExit paths |
 | G7 lifecycle correctness | verified on dev executor | 364 runtime tests incl. IPC adversarial + spawn/unload |
 | G8 regression tests pass | verified | `test_v1648_executor_isolation.py` 42 tests |
-| G9 release inventory | pending | final release step |
+| G9 release inventory | verified | clean-extraction `verify_release.py` PASS (1544 files, pinned key fp `0f9d7358`, manifest `7e46786a`, zip `836a65c4`) |
 | G10 real-model lifecycle | pending | needs Linux host + HF/PEFT env |
