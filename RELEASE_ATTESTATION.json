@@ -68,7 +68,7 @@
     "qualification": "macOS suite green; Linux boundary run pending",
     "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
   },
-  "manifest_sha256": "863af6f3675215a85c836f467a7ed7980403032ae907fbd46cdee0009813741f",
+  "manifest_sha256": "7e46786ab5e7d05cb1502a4b3f39620af894fe3f4a46359d2110116ac8d4d7ef",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -331,12 +331,12 @@
     },
     {
       "commit": "HEAD",
-      "manifest_sha256": "863af6f3675215a85c836f467a7ed7980403032ae907fbd46cdee0009813741f",
+      "manifest_sha256": "7e46786ab5e7d05cb1502a4b3f39620af894fe3f4a46359d2110116ac8d4d7ef",
       "reason": "v16.4.8 linux isolation and security closure: executor architecture \u2014 restricted launch broker + pinned NsJail inside managed systemd cgroup-v2 units; CapEff-honest capability checks; frozen digest-bound isolation profile; Darwin-gated seatbelt; production requires the nsjail executor. 998 passed, 7 skipped; Linux boundary qualification pending (no host).",
-      "utc": "2026-10-11T08:54:10.853140+00:00"
+      "utc": "2026-10-11T08:55:21.140118+00:00"
     }
   ],
-  "reissued_utc": "2026-10-11T08:54:10.853140+00:00",
+  "reissued_utc": "2026-10-11T08:55:21.140118+00:00",
   "reissues": [
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -362,9 +362,9 @@
       "release": "mini-AGI-V1-v16.4.6-Worker-Isolation-and-Process-Closure"
     },
     {
-      "manifest_sha256": "863af6f3675215a85c836f467a7ed7980403032ae907fbd46cdee0009813741f",
+      "manifest_sha256": "7e46786ab5e7d05cb1502a4b3f39620af894fe3f4a46359d2110116ac8d4d7ef",
       "reason": "v16.4.8 linux isolation and security closure: executor architecture \u2014 restricted launch broker + pinned NsJail inside managed systemd cgroup-v2 units; CapEff-honest capability checks; frozen digest-bound isolation profile; Darwin-gated seatbelt; production requires the nsjail executor. 998 passed, 7 skipped; Linux boundary qualification pending (no host).",
-      "reissued_utc": "2026-10-11T08:54:10.853140+00:00",
+      "reissued_utc": "2026-10-11T08:55:21.140118+00:00",
       "release": "mini-AGI-V1-v16.4.8-Linux-Isolation-and-Security-Closure"
     }
   ],

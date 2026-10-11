@@ -2,7 +2,7 @@
   "files": {
     ".flake8": "e2ec64dbbb3e1719b45cc43840bff9ba1d2c8ffb31b9c6e4d1528ae0bbad01cd",
     ".github/workflows/rc11-integrity.yml": "fee069097b18dffc68a619f58ed997594e52a43e61ee5f3a0074bc0f231cdf3f",
-    ".gitignore": "cf9ffc94b9efb5e126c66f5300be581caf5a33fe2f89bd4b41532fff3ddb84f4",
+    ".gitignore": "8ce19bf7288aea0be1684078d4e169c2b3a4c459492c85b0e8a5b0e4c1dbe467",
     "ALPHA5_ARCHITECTURE.md": "bc429e09b58757ea474fea4d7bcd3831b21fe5aaf0d0bdac31ee8a7295cdcf50",
     "CHANGELOG.md": "e0ebb1fba5b01d25ff02fc2714f1d6ae43c61c017d267412a666acfdac51e3a2",
     "CMakeLists.txt": "8a0269b4cd846157451cb7421f7031ff319564be20ac10f3dd95be908366fe76",
