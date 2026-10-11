@@ -22,8 +22,8 @@ in the Colab run section below once executed.
 
 | Artifact | sha256 | Result |
 |---|---|---|
-| `mini-AGI-V1-v16.4.6-Worker-Isolation-and-Process-Closure.zip` | `f8e569ec116129d12a379881cc7775ec2eabe5bb6acff3719f6e3ade13e8c0e7` | PASS — 1523 files, pinned key `0f9d7358` |
+| `mini-AGI-V1-v16.4.6-Worker-Isolation-and-Process-Closure.zip` | `f431b727ce6f152c0b9ee4172cd862e13397af7ec29036889c6148c013e153a3` | PASS — 1523 files, pinned key `0f9d7358` |
 | `mini-AGI-Campaign3A-Evidence.zip` | `e458b6d666c65f6c2b787cc8a1f6ce8cadd3e7d96214322880f25e31631bb1db` | PASS — 246 files |
 
-Manifest `ad371f84…` signed under the pinned release key.
+Manifest `e325f0f4…` signed under the pinned release key.
 Report: `dist-v1646/VERIFICATION_REPORT.json`.
