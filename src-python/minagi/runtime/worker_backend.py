@@ -59,17 +59,15 @@ import subprocess
 import sys
 import threading
 import traceback
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
+from .worker_executor import (DevelopmentWorkerExecutor,
+                              LaunchedWorker, WorkerExecutor)
 from .worker_isolation import (DEFAULT_ISOLATION, IsolationError,
-                               KqueueDescendantTracker, WorkerCgroup,
                                WorkerIsolationPolicy,
                                WorkerProcessController, build_env,
-                               build_launch_spec, descendants_of,
-                               make_private_tmp, make_worker_scratch,
-                               needs_launcher, new_worker_unit,
-                               set_child_subreaper, spec_to_fd,
-                               worker_unit_env, wrap_argv)
+                               descendants_of, set_child_subreaper,
+                               worker_unit_env)
 from .worker_protocol import (MAX_PENDING_REQUESTS, OverflowRef,
                               ProtocolRefused, WorkerProtocolError,
                               decode_typed, encode_request,
@@ -218,7 +216,8 @@ class _WorkerHandle:
     __slots__ = ("owner", "proc", "reader", "pending", "send_lock",
                  "seq", "dead", "stalled", "unloaded", "private_tmp",
                  "overflow_dir", "overflow_fd", "tracked_pids", "unit",
-                 "tracker", "profile_path", "cgroup")
+                 "tracker", "profile_path", "cgroup",
+                 "launched", "tx", "rx")
 
     def __init__(self, *, owner, proc):
         self.owner = owner
@@ -238,6 +237,12 @@ class _WorkerHandle:
         self.tracker = None
         self.profile_path = None
         self.cgroup = None
+        self.launched = None
+        # default to the proc's pipes — executor launches overwrite
+        # these with the unit's protocol streams; synthetic handles
+        # (IPC tests) carry only a proc.
+        self.tx = getattr(proc, "stdin", None)
+        self.rx = getattr(proc, "stdout", None)
 
     @property
     def pid(self) -> int:
@@ -259,7 +264,10 @@ class WorkerBackend:
                  request_watchdog: float | None = None,
                  env: dict | None = None,
                  isolation: WorkerIsolationPolicy | None = None,
-                 backend_id: str | None = None):
+                 backend_id: str | None = None,
+                 executor: WorkerExecutor | None = None,
+                 backend_manifest_digest: str = "",
+                 artifact_digests: tuple = ()):
         self.spec = spec
         # backend_id: supplied explicitly, it comes from the verified
         # signed manifest (production — the parent never imports the
@@ -284,37 +292,35 @@ class WorkerBackend:
         self.controller = WorkerProcessController()
         if env:
             # Backward-compatible surface: explicit env additions are
-            # still refused when they look credential-bearing. Every
-            # policy field — including v16.4.6 enforcement flags — is
-            # preserved across the merge.
+            # still refused when they look credential-bearing.
+            # SEC-703: dataclasses.replace on the FROZEN policy — the
+            # previous field-by-field reconstruction silently dropped
+            # mount_ro/mount_rw/no_new_privs, so an env override could
+            # strip the worker's filesystem confinement.
             merged = dict(self.isolation.env)
             merged.update({str(k): str(v) for k, v in env.items()})
-            self.isolation = WorkerIsolationPolicy(
-                env_passthrough=self.isolation.env_passthrough,
-                env=merged,
-                cpu_seconds=self.isolation.cpu_seconds,
-                memory_bytes=self.isolation.memory_bytes,
-                max_processes=self.isolation.max_processes,
-                max_open_files=self.isolation.max_open_files,
-                max_file_bytes=self.isolation.max_file_bytes,
-                demote_to=self.isolation.demote_to,
-                sandbox_profile=self.isolation.sandbox_profile,
-                require_separate_identity=(
-                    self.isolation.require_separate_identity),
-                require_filesystem_confinement=(
-                    self.isolation.require_filesystem_confinement),
-                require_process_containment=(
-                    self.isolation.require_process_containment),
-                require_network_isolation=(
-                    self.isolation.require_network_isolation))
+            self.isolation = replace(self.isolation, env=merged)
+        # Approval digests bound to every launch — the supervisor
+        # sets them from the verified manifest/admission evidence so
+        # the worker's run identity is provably the approved one.
+        self.backend_manifest_digest = str(backend_manifest_digest)
+        self.artifact_digests = tuple(artifact_digests)
+        # The launch boundary is the executor's — the backend owns
+        # protocol and lifecycle, the executor owns process creation,
+        # containment and teardown. Default is the development
+        # executor; production injects NsJailWorkerExecutor and this
+        # class cannot degrade back (v16.4.8 Step 13).
+        self._executor = executor or DevelopmentWorkerExecutor(
+            executable=self.executable)
         self._loaded = False
         self._load_lock = threading.Lock()
         self._handles: list[_WorkerHandle] = []
         self._handles_lock = threading.Lock()
-        # Linux: adopt orphaned worker descendants — a detached,
-        # reparented grandchild stays reachable for teardown/reaping
-        # instead of escaping to init. No-op off Linux.
-        set_child_subreaper()
+        # Linux: adopt orphaned worker descendants — needed only by
+        # the development executor's ancestry tracking; the nsjail
+        # executor's cgroup is the authoritative boundary.
+        if getattr(self._executor, "needs_subreaper", True):
+            set_child_subreaper()
         atexit.register(self._atexit_cleanup)
 
     # --- serving-backend contract ------------------------------------
@@ -390,38 +396,61 @@ class WorkerBackend:
             h.tracked_pids = frozenset(
                 descendants_of(h.pid) | {h.pid}
                 | (h.tracker.live_pids() if h.tracker else set()))
+            if h.launched is not None:
+                h.launched.tracked_pids = h.tracked_pids
         if h.dead is None:
             try:
                 self._rpc(h, {"op": "unload"},
                           timeout=self.shutdown_grace, what="unload")
             except Exception:  # noqa: BLE001 - the kill below is authoritative
                 pass
-        try:
-            h.proc.wait(timeout=self.shutdown_grace)
-        except subprocess.TimeoutExpired:
+        if h.launched.wait(timeout=self.shutdown_grace) is None:
             self.terminate(h)
             return
-        except Exception:  # noqa: BLE001
-            self.terminate(h)
-            return
-        if h.proc.poll() is None:
+        if h.launched.alive():
             self.terminate(h)
             return
         # A clean worker exit does NOT imply a clean containment unit —
         # children it spawned may still be running detached. Sweep the
         # unit exactly like a forced termination; a clean unload that
         # leaves live descendants is reported, not silently closed.
-        survivors = self.controller.terminate_tree(
-            h.proc, leader_pid=h.pid,
-            tracked=set(h.tracked_pids), unit=h.unit,
-            extra_tracked=(h.tracker.live_pids if h.tracker else None),
-            cgroup=h.cgroup)
-        if survivors:
+        rep = self._teardown(h)
+        if not rep.verified:
             self._mark_dead(h, WorkerDied(
-                f"backend worker pid {h.pid} unloaded but descendant "
-                f"processes {sorted(survivors)} could not be "
-                "confirmed dead — containment is not proven"))
+                f"backend worker pid {h.pid} unloaded but the "
+                f"containment unit is not proven empty "
+                f"({rep.mechanism}: {rep.detail})"))
         self._close(h)
+
+    def _teardown(self, h: "_WorkerHandle"):
+        """Verified containment teardown: the executor's managed unit
+        when the worker was really launched, the process controller
+        for handles that carry only a proc (synthetic IPC handles —
+        no executor unit ever existed for them)."""
+        from .worker_executor import TerminationReport
+        if h.proc is not None and h.proc.poll() is None:
+            h.tracked_pids = frozenset(
+                descendants_of(h.pid) | {h.pid}
+                | (h.tracker.live_pids() if h.tracker else set()))
+            if h.launched is not None:
+                h.launched.tracked_pids = h.tracked_pids
+        deadline = (self.controller.term_grace
+                    + self.controller.kill_grace)
+        if h.launched is not None:
+            return self._executor.terminate(
+                h.launched, deadline_seconds=deadline)
+        survivors = self.controller.terminate_tree(
+            h.proc, leader_pid=(h.proc.pid if h.proc else None),
+            tracked=set(h.tracked_pids), unit=h.unit,
+            extra_tracked=(h.tracker.live_pids if h.tracker
+                           else None),
+            cgroup=h.cgroup)
+        return TerminationReport(
+            survivors=frozenset(survivors),
+            verified=not survivors, mechanism="controller",
+            detail="" if not survivors else
+            f"descendants {sorted(survivors)} could not be "
+            "confirmed dead — containment is not proven")
 
     def terminate(self, handle) -> None:
         """The RUN-401 remedy: terminate the worker's whole containment
@@ -433,33 +462,25 @@ class WorkerBackend:
         release, and the OS — not the backend — reclaims the model's
         resources."""
         h = self._check(handle)
-        if h.proc.poll() is None:
-            h.tracked_pids = frozenset(
-                descendants_of(h.pid) | {h.pid}
-                | (h.tracker.live_pids() if h.tracker else set()))
-        survivors = self.controller.terminate_tree(
-            h.proc, leader_pid=h.pid,
-            tracked=set(h.tracked_pids), unit=h.unit,
-            extra_tracked=(h.tracker.live_pids if h.tracker else None),
-            cgroup=h.cgroup)
-        if survivors:
+        rep = self._teardown(h)
+        if not rep.verified:
             self._mark_dead(h, WorkerDied(
-                f"backend worker pid {h.pid} terminated; descendant "
-                f"processes {sorted(survivors)} could not be confirmed "
-                "dead — containment is not proven"))
+                f"backend worker pid {h.pid} terminated; containment "
+                f"unit not proven empty ({rep.mechanism}: "
+                f"{rep.detail})"))
         else:
             self._mark_dead(h, WorkerDied(
-                f"backend worker pid {h.pid} and its process tree "
-                "terminated"))
+                f"backend worker pid {h.pid} and its containment "
+                "unit terminated"))
         self._close(h)
 
     # --- introspection -------------------------------------------------
     def alive(self, handle) -> bool:
         h = self._check(handle)
-        return h.dead is None and h.proc.poll() is None
+        return h.dead is None and h.launched.alive()
 
     def worker_pid(self, handle) -> int:
-        return self._check(handle).pid
+        return self._check(handle).launched.pid
 
     # --- internals ------------------------------------------------------
     def _check(self, handle) -> _WorkerHandle:
@@ -470,104 +491,51 @@ class WorkerBackend:
         return handle
 
     def _spawn(self) -> _WorkerHandle:
-        # Worker-owned scratch when the policy demotes (SEC-501): the
-        # demoted uid must still be able to enter its own workspace —
-        # group is the supervisor's so result collection stays
-        # supervisor-readable without world access.
-        if self.isolation.demote_to is not None:
-            private_tmp = make_worker_scratch(
-                self.isolation.demote_to, group_gid=os.getgid())
-        else:
-            private_tmp = make_private_tmp()
-        overflow_dir = private_tmp / "overflow"
-        try:
-            overflow_dir.mkdir(mode=0o750)
-            if self.isolation.demote_to is not None:
-                os.chown(overflow_dir, int(self.isolation.demote_to[0]),
-                         os.getgid())
-            # SEC-504: pin the directory's descriptor NOW, before the
-            # worker can influence the path — later result reads open
-            # the leaf relative to this inode, so renaming the dir or
-            # planting a symlink cannot redirect the read.
-            overflow_fd = os.open(
-                str(overflow_dir),
-                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-                | getattr(os, "O_NOFOLLOW", 0))
-        except OSError as exc:
-            import shutil
-            shutil.rmtree(private_tmp, ignore_errors=True)
-            raise IsolationError(
-                f"could not establish the worker result directory: "
-                f"{exc}") from exc
+        # Launch is the executor's job (v16.4.8): prepare() makes the
+        # private workspace + unit token, the supervisor builds the
+        # env binding them, then launch() creates the process and its
+        # containment unit. The backend never touches fork/exec or
+        # process discovery itself.
+        dirs = self._executor.prepare(worker_id=None,
+                                      isolation=self.isolation)
+        private_tmp = dirs.private_tmp
+        overflow_dir = dirs.overflow_dir
+        overflow_fd = dirs.overflow_fd
         pythonpath = os.pathsep.join(p for p in sys.path if p)
         env = build_env(self.isolation, pythonpath=pythonpath,
                         private_tmp=private_tmp)
         # The containment-unit token — inherited by every descendant,
         # lets the supervisor prove nothing owned survives teardown.
-        unit = new_worker_unit()
+        unit = dirs.unit_token
         env.update(worker_unit_env(unit))
-        worker_argv, rendered_profile = wrap_argv(
-            [self.executable, "-m", "minagi.runtime.worker_backend"],
-            self.isolation,
-            render_vars={"SCRATCH": str(private_tmp)})
-        # Kernel-owned containment where available (Linux cgroup v2):
-        # created BEFORE spawn so the launcher self-registers and every
-        # descendant is born inside the unit.
-        cgroup = WorkerCgroup.create(unit)  # None off-Linux/unwritable
-        spec_fd = None
-        release_spec = None
-        popen_kwargs = {}
-        if needs_launcher(self.isolation) or cgroup is not None:
-            # The launcher applies demotion/limits/namespaces/cgroup
-            # OUTSIDE the supervisor's fork path — no preexec_fn, which
-            # is unsafe in this multithreaded process.
-            spec = build_launch_spec(
-                self.isolation, exec_argv=worker_argv,
-                scratch=private_tmp,
-                cgroup_path=(cgroup.path if cgroup else None))
-            spec_fd, release_spec = spec_to_fd(spec)
-            argv = [self.executable,
-                    "-m", "minagi.runtime.worker_launcher"]
-            env["MINAGI_LAUNCH_SPEC_FD"] = str(spec_fd)
-            popen_kwargs["pass_fds"] = (spec_fd,)
-        else:
-            argv = worker_argv
-            release_spec = None
+        from .worker_isolation import policy_digest as _pdigest
         try:
-            proc = subprocess.Popen(
-                argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                env=env, cwd=str(private_tmp),
-                start_new_session=True, **popen_kwargs)
-        except (OSError, IsolationError) as exc:
-            os.close(overflow_fd)
-            import shutil
-            shutil.rmtree(private_tmp, ignore_errors=True)
-            if rendered_profile is not None:
-                try:
-                    os.unlink(rendered_profile)
-                except OSError:
-                    pass
-            if cgroup is not None:
-                cgroup.release()
+            launched = self._executor.launch(
+                dirs,
+                worker_argv=[self.executable, "-m",
+                             "minagi.runtime.worker_backend"],
+                env=env, isolation=self.isolation, spec=self.spec,
+                policy_digest=_pdigest(self.isolation),
+                artifact_digests=self.artifact_digests,
+                backend_manifest_digest=self.backend_manifest_digest)
+        except (IsolationError, PermissionError) as exc:
             raise WorkerDied(
-                f"worker interpreter could not start: {exc}") from exc
-        finally:
-            if release_spec is not None:
-                try:
-                    release_spec()
-                except OSError:
-                    pass
+                f"worker could not start under executor "
+                f"{self._executor.name!r}: {exc}") from exc
+        proc = launched.proc
         h = _WorkerHandle(owner=self, proc=proc)
+        h.launched = launched
+        h.tx = launched.tx
+        h.rx = launched.rx
         h.private_tmp = private_tmp
         h.overflow_dir = overflow_dir
         h.overflow_fd = overflow_fd
         h.unit = unit
-        h.cgroup = cgroup
-        # kqueue fork-following fixes membership at fork time — the
-        # ancestry graph and env marker cannot see a descendant that
-        # detached, reparented, and scrubbed its environment.
-        h.tracker = KqueueDescendantTracker.attach(proc.pid)
-        h.profile_path = rendered_profile
+        h.cgroup = launched.cgroup
+        # kqueue fork-following fixes membership at fork time (dev
+        # executor; None where the cgroup is the containment truth).
+        h.tracker = launched.tracker
+        h.profile_path = dirs.rendered_profile
         reader = threading.Thread(
             target=self._reader, args=(h,),
             name=f"minagi-worker-rx-{proc.pid}", daemon=True)
@@ -621,8 +589,8 @@ class WorkerBackend:
                     from exc
             h.pending[rid] = p
             try:
-                h.proc.stdin.write(blob)
-                h.proc.stdin.flush()
+                h.tx.write(blob)
+                h.tx.flush()
             except Exception as exc:  # noqa: BLE001 - broken pipe = dead
                 h.pending.pop(rid, None)
                 self._mark_dead(h, WorkerDied(
@@ -690,7 +658,7 @@ class WorkerBackend:
         violation: str | None = None
         try:
             while True:
-                reply = read_frame(h.proc.stdout, types=RESPONSE_TYPES)
+                reply = read_frame(h.rx, types=RESPONSE_TYPES)
                 if reply is None:
                     break
                 rid = str(reply.get("request_id") or "")
@@ -730,44 +698,30 @@ class WorkerBackend:
 
     def _close(self, h: _WorkerHandle) -> None:
         self._mark_dead(h, WorkerDied(f"backend worker pid {h.pid} closed"))
-        for stream in (h.proc.stdin, h.proc.stdout):
+        if h.launched is not None:
             try:
-                stream.close()
+                self._executor.release(h.launched)
             except Exception:  # noqa: BLE001
                 pass
-        if h.overflow_fd is not None:
-            try:
-                os.close(h.overflow_fd)
-            except OSError:
-                pass
-            h.overflow_fd = None
-        if h.tracker is not None:
-            h.tracker.close()
-            h.tracker = None
-        if h.cgroup is not None:
-            h.cgroup.release()
-            h.cgroup = None
-        if h.private_tmp is not None:
-            import shutil
-            shutil.rmtree(h.private_tmp, ignore_errors=True)
+        else:
+            for stream in (h.tx, h.rx):
+                try:
+                    if stream is not None:
+                        stream.close()
+                except Exception:  # noqa: BLE001
+                    pass
+        h.tracker = None
+        h.cgroup = None
         with self._handles_lock:
             if h in self._handles:
                 self._handles.remove(h)
 
     def _kill_and_reap(self, h: _WorkerHandle) -> None:
-        if h.proc.poll() is None:
-            h.tracked_pids = frozenset(
-                descendants_of(h.pid) | {h.pid}
-                | (h.tracker.live_pids() if h.tracker else set()))
-        survivors = self.controller.terminate_tree(
-            h.proc, leader_pid=h.pid,
-            tracked=set(h.tracked_pids), unit=h.unit,
-            extra_tracked=(h.tracker.live_pids if h.tracker else None),
-            cgroup=h.cgroup)
-        if survivors:
+        rep = self._teardown(h)
+        if not rep.verified:
             self._mark_dead(h, WorkerDied(
-                f"backend worker pid {h.pid} killed; descendants "
-                f"{sorted(survivors)} could not be confirmed dead"))
+                f"backend worker pid {h.pid} killed; containment "
+                f"not proven empty ({rep.mechanism}: {rep.detail})"))
         else:
             self._mark_dead(h, WorkerDied(
                 f"backend worker pid {h.pid} killed"))

@@ -73,6 +73,12 @@ def _looks_secret(name: str) -> bool:
     return any(m in upper for m in _SECRET_MARKERS)
 
 
+def _sysname() -> str:
+    """The host kernel name — test seam for platform-specific
+    executor selection (SEC-705)."""
+    return os.uname().sysname if hasattr(os, "uname") else ""
+
+
 @dataclass(frozen=True)
 class WorkerIsolationPolicy:
     """How a worker process is confined.
@@ -163,8 +169,12 @@ def supported() -> dict:
         "rlimit_fsize": hasattr(resource, "RLIMIT_FSIZE"),
         "setuid_demote": hasattr(os, "setuid") and hasattr(os, "setgid"),
         "process_group": hasattr(os, "setsid"),
-        "sandbox_exec": shutil.which("sandbox-exec") is not None,
-        "platform": os.uname().sysname if hasattr(os, "uname") else "",
+        # SEC-705: sandbox-exec is a Darwin-only mechanism — a same-
+        # named binary on another platform's PATH is not a working
+        # confinement mechanism and must never be credited.
+        "sandbox_exec": (_sysname() == "Darwin"
+                         and shutil.which("sandbox-exec") is not None),
+        "platform": _sysname(),
     }
     caps["can_demote_now"] = _has_demote_privilege()
     caps["proc_fs"] = Path("/proc/self/stat").is_file()
@@ -187,25 +197,21 @@ def supported() -> dict:
 
 
 def _has_demote_privilege() -> bool:
-    """Can this process setuid a child? True for root or a process
-    holding CAP_SETUID (Linux)."""
-    if os.geteuid() == 0:
-        return True
-    try:
-        for line in Path("/proc/self/status").read_text().splitlines():
-            if line.startswith("CapEff:"):
-                return bool(int(line.split()[1], 16) & (1 << 7))
-    except OSError:
-        pass
-    return False
+    """Can this process setuid a child? On Linux the answer lives in
+    CapEff (CAP_SETUID, bit 7) — uid 0 inside a container may hold no
+    capabilities at all, so euid is not evidence (SEC-701). On
+    capability-free platforms euid 0 is the only authority there is."""
+    if _sysname() != "Linux":
+        return os.geteuid() == 0
+    return _cap_eff(7)
 
 
 def _cap_eff(bit: int) -> bool:
     """Does this process hold Linux capability <bit> in its effective
-    set? Root trivially does; otherwise inspect /proc/self/status
-    CapEff. False on platforms without capabilities."""
-    if os.geteuid() == 0:
-        return True
+    set? SEC-701: the ONLY evidence is /proc/self/status CapEff —
+    uid 0 no longer short-circuits to True, because a "root" inside a
+    restricted container holds only the bounded cap set the runtime
+    granted. False on platforms without a capability model."""
     try:
         for line in Path("/proc/self/status").read_text().splitlines():
             if line.startswith("CapEff:"):
@@ -213,6 +219,29 @@ def _cap_eff(bit: int) -> bool:
     except OSError:
         pass
     return False
+
+
+def _unprivileged_userns() -> bool:
+    """Can an unprivileged process create a user namespace here —
+    the rootless NsJail path? Checks the kernel knobs that gate it;
+    False off Linux."""
+    if _sysname() != "Linux":
+        return False
+    knob = Path("/proc/sys/kernel/unprivileged_userns_clone")
+    if knob.is_file():
+        try:
+            if int(knob.read_text().strip()) == 0:
+                return False
+        except (OSError, ValueError):
+            return False
+    maxns = Path("/proc/sys/user/max_user_namespaces")
+    if maxns.is_file():
+        try:
+            if int(maxns.read_text().strip()) <= 0:
+                return False
+        except (OSError, ValueError):
+            return False
+    return Path("/proc/self/ns/user").is_file()
 
 
 def _runtime_ro_binds() -> tuple:
@@ -267,7 +296,11 @@ def production_policy(*, worker_uid: int, worker_gid: int,
         require_process_containment=True,
         require_network_isolation=network_isolation,
         demote_to=(int(worker_uid), int(worker_gid)),
-        sandbox_profile=_bundled_seatbelt_profile(),
+        # SEC-705: never attach a Darwin seatbelt profile on another
+        # kernel — an unenforced mechanism in the policy is a false
+        # claim of confinement.
+        sandbox_profile=(_bundled_seatbelt_profile()
+                         if _sysname() == "Darwin" else None),
         mount_ro=_runtime_ro_binds() + tuple(mount_ro),
         no_new_privs=True,
         cpu_seconds=cpu_seconds, memory_bytes=memory_bytes,
@@ -484,6 +517,12 @@ def wrap_argv(argv: list, policy: WorkerIsolationPolicy, *,
     original profile path when no rendering was needed."""
     if not policy.sandbox_profile:
         return list(argv), None
+    if _sysname() != "Darwin":
+        raise IsolationError(
+            f"sandbox_profile {policy.sandbox_profile!r} configured "
+            f"on {_sysname() or 'unknown'} — seatbelt is a Darwin-only "
+            "mechanism; refusing to launch under an unenforced "
+            "boundary (SEC-705)")
     exe = shutil.which("sandbox-exec")
     if exe is None:
         raise IsolationError(
@@ -509,6 +548,23 @@ def wrap_argv(argv: list, policy: WorkerIsolationPolicy, *,
     else:
         rendered = None
     return [exe, "-f", rendered or str(profile), *argv], rendered
+
+
+def policy_digest(policy: WorkerIsolationPolicy) -> str:
+    """sha256:<hex> over the policy's canonical serialization — the
+    launch-time binding proving the worker's declared boundary is the
+    approved one (SEC-703)."""
+    import hashlib
+    import json
+    from dataclasses import asdict
+    doc = asdict(policy)
+    doc["demote_to"] = list(policy.demote_to) \
+        if policy.demote_to else None
+    doc["mount_ro"] = sorted(str(p) for p in policy.mount_ro)
+    doc["mount_rw"] = sorted(str(p) for p in policy.mount_rw)
+    blob = json.dumps(doc, sort_keys=True, separators=(",", ":"),
+                      default=str).encode()
+    return "sha256:" + hashlib.sha256(blob).hexdigest()
 
 
 def tmp_is_private(path: Path, *, worker_uid: int | None = None) -> bool:

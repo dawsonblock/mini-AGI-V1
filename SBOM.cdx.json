@@ -62,7 +62,7 @@
     "component": {
       "name": "mini-AGI-V1-v16.4.7-Runtime-Isolation-Enforcement",
       "type": "application",
-      "version": "16.4.7"
+      "version": "16.4.8"
     }
   },
   "specVersion": "1.5",

@@ -1,0 +1,35 @@
+{
+  "schema": "minagi-isolation-profile-v1",
+  "profile_id": "linux-production-offline-v1",
+  "executor": "nsjail",
+  "network": "deny",
+  "separate_os_identity": true,
+  "mount_namespace": true,
+  "pid_namespace": true,
+  "ipc_namespace": true,
+  "user_namespace": true,
+  "uts_namespace": true,
+  "cgroup_namespace": false,
+  "require_cgroup_v2": true,
+  "allow_privilege_escalation": false,
+  "mount_proc": true,
+  "read_only_resources": [
+    "approved_runtime",
+    "approved_model_artifacts"
+  ],
+  "writable_resources": [
+    "worker_scratch"
+  ],
+  "deny_authority_access": true,
+  "max_processes": 32,
+  "max_open_files": 256,
+  "unit_tasks_max": 32,
+  "unit_properties": [
+    "KillMode=control-group",
+    "NoNewPrivileges=yes",
+    "Delegate=yes"
+  ],
+  "seccomp": "default",
+  "nice_level": 19,
+  "hostname": "minagi-worker"
+}
