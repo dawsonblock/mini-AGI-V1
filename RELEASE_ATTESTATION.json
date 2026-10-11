@@ -54,7 +54,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "0c0ae48b81773ddeafe8b9cffab00a24fd70c61c2b77244356903f534919b969",
+ "manifest_sha256": "55ce5e326a2703035ed8e05a1221c3dfd3c45daa9579dfe3e34bdb29c9251625",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -283,9 +283,14 @@
    "manifest_sha256": "0c0ae48b81773ddeafe8b9cffab00a24fd70c61c2b77244356903f534919b969",
    "reason": "final v16.4.6 re-issue after TEST_RESULTS hash update",
    "utc": "2026-10-11T03:03:00.382723Z"
+  },
+  {
+   "manifest_sha256": "55ce5e326a2703035ed8e05a1221c3dfd3c45daa9579dfe3e34bdb29c9251625",
+   "reason": "v16.4.6 re-issue after Linux-qualification test fixes",
+   "utc": "2026-10-11T03:19:04.574207Z"
   }
  ],
- "reissued_utc": "2026-10-11T03:03:00.382723Z",
+ "reissued_utc": "2026-10-11T03:19:04.574207Z",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
