@@ -54,7 +54,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "9153d0f3f24988a1c7473e28385604c5899d7d4e086f2ed3ce8554bdcd6b78d7",
+ "manifest_sha256": "f9c93ae91b0247f39bbb2c903de7374fde638edbb8ed935677d575aba454599b",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -283,9 +283,15 @@
    "manifest_sha256": "90a17489195b8394df66550e0ea95c35b145908668e166ffa04566b2d15a6c15",
    "reissued_utc": "2026-10-09T06:45:19.386443+00:00",
    "release": "mini-AGI-v16.4.2-Authority-and-Activation-Closure"
+  },
+  {
+   "release": "mini-AGI-V1-v16.4.6-Worker-Isolation-and-Process-Closure",
+   "manifest_sha256": "f9c93ae91b0247f39bbb2c903de7374fde638edbb8ed935677d575aba454599b",
+   "reissued_utc": "2026-10-11T02:55:51.100167+00:00",
+   "reason": "v16.4.6 worker isolation and process closure: separate worker OS identity enforced for production, verified process-tree termination, bounded worker error codes (no dynamic exception classes), descriptor-pinned overflow reads, production startup wiring with manifest backend_id. 946 passed, 4 skipped."
   }
  ],
- "release": "mini-AGI-V1-v16.4.5-Security-and-Evidence-Closure",
+ "release": "mini-AGI-V1-v16.4.6-Worker-Isolation-and-Process-Closure",
  "runtime_closure_v1644": {
   "change_manifest": "RELEASE_CHANGE_MANIFEST.json",
   "defects_closed": [
@@ -330,5 +336,17 @@
   "threat_model": "docs/research/THREAT_MODEL_V1645.md"
  },
  "signature_algorithm": "Ed25519",
- "status": "PASS_SECURITY_AND_EVIDENCE_CLOSURE_PLATFORM_QUALIFICATION_PENDING"
+ "status": "v16.4.6 worker isolation and process closure: SEC-501..504 and VAL-501 closed; G1-G6+G8; 946 passed, 4 skipped",
+ "worker_isolation_v1646": {
+  "defects_closed": [
+   "SEC-501",
+   "SEC-502",
+   "SEC-503",
+   "SEC-504",
+   "VAL-501"
+  ],
+  "detail": "docs/research/WORKER_ISOLATION_SPEC_V1646.md, docs/research/V16_4_6_REPAIR_REPORT.md",
+  "tests": "tests-python/runtime/test_v1646_worker_isolation.py (36) + worker suites",
+  "qualification": "946 passed / 4 skipped macOS; Linux root demotion qualified on Colab"
+ }
 }
