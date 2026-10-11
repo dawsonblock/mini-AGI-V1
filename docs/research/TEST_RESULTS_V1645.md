@@ -40,3 +40,26 @@ deterministically and verifies fresh extractions:
 
 Final result is recorded in `RELEASE_ATTESTATION.json`
 (`fresh_extraction_verification`).
+
+## Colab (T4 GPU) qualification — SEC-007 partial
+
+Built zip uploaded and verified on a fresh Colab T4 VM:
+
+- `verify_release.py --root <extract>` — **PASS** (1517 files, pinned
+  fingerprint, independent machine).
+- `python -m pytest tests-python -q` — **891 passed, 20 skipped,
+  0 failed** (~64s). Skips are documented platform unavailability:
+  no OS sandbox backend in the Colab container (TEST-001
+  intentionally-unavailable, 14 tests), `sandbox-exec` absent on
+  Linux, allowlisted-uid check, authority-held holdout file absent.
+- `test_real_model_activate_query_rollback_restore` — **PASS** on the
+  T4 through `PeftServingBackend` (real PEFT weight load → inference →
+  rollback → cold restoration via the repaired authority path).
+- The Colab run caught `test_version_identities_agree` failing on the
+  first uploaded build (package `__version__`/SBOM not bumped — the
+  post-bump suite had not been re-run on macOS); fixed and re-verified
+  on the rebuilt artifact.
+
+Platform qualification standing: macOS CPU (909/1) and Colab T4
+(891/20) verified; a full production deployment and H100/A100-class
+runs remain open.
