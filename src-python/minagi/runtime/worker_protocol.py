@@ -355,27 +355,58 @@ def write_overflow(directory, name: str, value) -> OverflowRef:
         name=name, sha256=hashlib.sha256(raw).hexdigest(), size=len(raw))
 
 
-def read_overflow(directory, ref: OverflowRef):
-    """Read + verify an overflow result the worker stored. Only the
-    caller-supplied directory and the message-carried file name are
-    combined — a worker cannot redirect the read elsewhere — and the
-    bytes must match the announced digest before they are parsed."""
-    target = Path(directory) / ref.name
+def read_overflow(directory, ref: OverflowRef, *, dir_fd=None):
+    """Read + verify an overflow result by file descriptor — v16.4.6
+    WP4/SEC-504. The overflow directory is opened once (or supplied
+    already open, pinned by the supervisor since spawn) with
+    O_NOFOLLOW so it cannot be swapped for a symlinked path; the leaf
+    opens relative to that descriptor with O_NOFOLLOW so a symlink or
+    renamed-away replacement cannot be followed; the SAME descriptor
+    is fstat-checked and read — the bytes checked are the bytes
+    parsed, with no path-based TOCTOU window."""
+    import os
+    import stat as _stat
+    own_dir_fd = dir_fd is None
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) \
+        | getattr(os, "O_NOFOLLOW", 0)
     try:
-        if target.is_symlink() or not target.is_file():
+        if own_dir_fd:
+            dir_fd = os.open(str(directory), flags)
+        leaf_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(ref.name, leaf_flags, dir_fd=dir_fd)
+        except OSError as exc:
             raise WorkerProtocolError(
-                "overflow result path is not a regular file")
-        size = target.stat().st_size
-        if size != ref.size or size > MAX_OVERFLOW_BYTES:
-            raise WorkerProtocolError(
-                f"overflow result size {size} does not match the "
-                f"announced {ref.size} bytes")
-        raw = target.read_bytes()
+                f"overflow result unreadable: {exc}") from exc
+        try:
+            st = os.fstat(fd)
+            if not _stat.S_ISREG(st.st_mode):
+                raise WorkerProtocolError(
+                    "overflow result path is not a regular file")
+            if st.st_size != ref.size or st.st_size > MAX_OVERFLOW_BYTES:
+                raise WorkerProtocolError(
+                    f"overflow result size {st.st_size} does not match "
+                    f"the announced {ref.size} bytes")
+            chunks: list = []
+            remaining = st.st_size
+            while remaining > 0:
+                chunk = os.read(fd, min(remaining, 1 << 20))
+                if not chunk:
+                    raise WorkerProtocolError(
+                        "overflow result truncated during read")
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+        finally:
+            os.close(fd)
     except WorkerProtocolError:
         raise
     except OSError as exc:
         raise WorkerProtocolError(
             f"overflow result unreadable: {exc}") from exc
+    finally:
+        if own_dir_fd and dir_fd is not None:
+            os.close(dir_fd)
     if hashlib.sha256(raw).hexdigest() != ref.sha256:
         raise WorkerProtocolError(
             "overflow result digest mismatch — the stored bytes are "

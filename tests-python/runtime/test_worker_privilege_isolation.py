@@ -68,8 +68,22 @@ def test_private_tmp_is_0700_and_owned():
 # ---------- resource limits --------------------------------------------------
 
 def test_preexec_none_when_no_limits():
+    """No limits + no demote → no preexec work. Containment does not
+    depend on preexec: the unit token travels in the child's env."""
     assert worker_preexec(
         WorkerIsolationPolicy(max_open_files=None)) is None
+
+
+def test_worker_unit_token_marks_env():
+    """The unit token travels in the worker's initial environment —
+    descendants inherit it even after setsid()."""
+    from minagi.runtime.worker_isolation import (
+        WORKER_UNIT_ENV, new_worker_unit, worker_unit_env)
+    unit = new_worker_unit()
+    env = worker_unit_env(unit)
+    assert env[WORKER_UNIT_ENV] == unit
+    unit2 = new_worker_unit()
+    assert unit2 != unit  # unguessable per-worker tokens
 
 
 def test_preexec_reports_platform_support():

@@ -594,6 +594,66 @@ class SupervisorService:
         self._pool.shutdown(wait=True)
 
 
+def resolve_worker_policy(args, *, production: bool,
+                          manifest_backend_id=None):
+    """SEC-501/WP5: resolve the worker isolation profile the service
+    will enforce — fail closed. Returns (policy, backend_id, report).
+
+    Production: a separate worker OS identity is MANDATORY and every
+    required containment control must be enforceable on this host —
+    SystemExit refusal otherwise, never a silent downgrade.
+    Development: the same-identity default unless flags demote, always
+    reported as development so it is never confused with production.
+    """
+    from minagi.runtime.worker_isolation import (
+        DEFAULT_ISOLATION, IsolationError, WorkerIsolationPolicy,
+        production_policy, validate_isolation)
+    worker_uid, worker_gid = args.worker_uid, args.worker_gid
+    if getattr(args, "worker_user", None):
+        import pwd
+        try:
+            pw = pwd.getpwnam(args.worker_user)
+        except KeyError:
+            raise SystemExit(
+                f"worker startup refused — worker user "
+                f"{args.worker_user!r} does not exist")
+        worker_uid = pw.pw_uid if worker_uid is None else worker_uid
+        worker_gid = pw.pw_gid if worker_gid is None else worker_gid
+    if production:
+        missing_id = []
+        if worker_uid is None:
+            missing_id.append("--worker-uid or --worker-user")
+        if worker_gid is None:
+            missing_id.append("--worker-gid or --worker-user")
+        if missing_id:
+            raise SystemExit(
+                "production startup refused — a separate worker "
+                "identity is mandatory but not configured: set "
+                + ", ".join(missing_id))
+        policy = production_policy(
+            worker_uid=worker_uid, worker_gid=worker_gid,
+            network_isolation=getattr(
+                args, "worker_net_isolation", False))
+        try:
+            iso_report = validate_isolation(policy)
+        except IsolationError as exc:
+            raise SystemExit(
+                f"production startup refused — worker isolation "
+                f"cannot be enforced: {exc}")
+        return (policy, manifest_backend_id,
+                f"production uid={worker_uid} gid={worker_gid} "
+                f"mechanisms={iso_report['mechanisms']}")
+    if worker_uid is not None:
+        policy = WorkerIsolationPolicy(
+            demote_to=(int(worker_uid), int(worker_gid or worker_uid)))
+    else:
+        policy = DEFAULT_ISOLATION
+    return (policy, None,
+            "development"
+            + (f" demote_to={policy.demote_to}"
+               if policy.demote_to else " same-identity"))
+
+
 def main(argv=None) -> int:
     """Run the supervised launch service.
 
@@ -658,6 +718,22 @@ def main(argv=None) -> int:
                          "terminated without stopping the supervisor. "
                          "Default: process under --production, "
                          "inprocess otherwise")
+    ap.add_argument("--worker-uid", type=int, default=None,
+                    help="numeric uid model workers demote to — "
+                         "MANDATORY under --production (SEC-501): the "
+                         "worker must never share the supervisor's "
+                         "OS identity")
+    ap.add_argument("--worker-gid", type=int, default=None,
+                    help="numeric gid for demoted workers (defaults "
+                         "to --worker-uid's primary group or "
+                         "--worker-user's group)")
+    ap.add_argument("--worker-user", default=None,
+                    help="named OS account workers demote to — "
+                         "resolved to uid/gid via the system database")
+    ap.add_argument("--worker-net-isolation", action="store_true",
+                    help="require network denial for workers "
+                         "(Linux network namespace); startup refuses "
+                         "where the host cannot enforce it")
     args = ap.parse_args(argv)
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -689,6 +765,7 @@ def main(argv=None) -> int:
         (storage / ".keys" / "admission.pem").read_bytes())
 
     backend_manifest_doc = None
+    backend_manifest = None
     policy_manifest_doc = None
     backend_modules: tuple = ()
     backend_deps: tuple = ()
@@ -811,15 +888,24 @@ def main(argv=None) -> int:
     # --backend-isolation is given explicitly.
     isolation = args.backend_isolation or (
         "process" if args.production else "inprocess")
+    worker_isolation_report = "inprocess"
     if isolation == "process":
         from minagi.runtime.worker_backend import (
             BackendSpec, WorkerBackend)
+        worker_policy, backend_id, worker_isolation_report = \
+            resolve_worker_policy(
+                args, production=args.production,
+                manifest_backend_id=(
+                    backend_manifest.backend_id
+                    if backend_manifest is not None else None))
         peft_spec = BackendSpec(
             module="minagi.v161.peft_serving",
             qualname="PeftServingBackend",
             kwargs={"budget": budget})
         factories = {"hf-peft": (lambda: WorkerBackend(
             peft_spec,
+            isolation=worker_policy,
+            backend_id=backend_id,
             request_watchdog=(budget.execution_deadline_seconds * 2.0
                               + 15.0)))}
     else:
@@ -849,6 +935,7 @@ def main(argv=None) -> int:
     print(f"[supervised-launch] operator endpoint on {args.socket} "
           f"(roles: {sorted(set(uid_roles.values()))}) "
           f"backend_isolation={isolation} "
+          f"worker_isolation={worker_isolation_report} "
           f"state={report.get('serving_state')}", flush=True)
     try:
         if args.research_socket:

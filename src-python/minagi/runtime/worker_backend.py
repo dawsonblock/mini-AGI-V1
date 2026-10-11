@@ -62,8 +62,11 @@ import traceback
 from dataclasses import dataclass, field
 
 from .worker_isolation import (DEFAULT_ISOLATION, IsolationError,
-                               WorkerIsolationPolicy, build_env,
-                               make_private_tmp, worker_preexec,
+                               WorkerIsolationPolicy,
+                               WorkerProcessController, build_env,
+                               descendants_of, make_private_tmp,
+                               make_worker_scratch, new_worker_unit,
+                               worker_preexec, worker_unit_env,
                                wrap_argv)
 from .worker_protocol import (MAX_PENDING_REQUESTS, OverflowRef,
                               ProtocolRefused, WorkerProtocolError,
@@ -89,9 +92,16 @@ class WorkerUnresponsive(WorkerBackendError):
 
 
 class RemoteBackendError(WorkerBackendError):
-    """The in-worker backend raised and its exception type could not
-    be mapped to a local class; the remote message and traceback are
-    preserved on ``traceback_text``."""
+    """The in-worker backend raised. ``code`` is one of the bounded
+    WORKER_* error codes — worker-controlled module/class names are
+    never resolved into live exception types in the supervisor
+    (v16.4.6 WP3/SEC-503), so a hostile worker cannot select
+    ``SystemExit``/``KeyboardInterrupt`` and alter privileged control
+    flow here."""
+
+    def __init__(self, message, *, code: str = "WORKER_INTERNAL_ERROR"):
+        self.code = code
+        super().__init__(message)
 
 
 class WorkerProtocolViolation(WorkerDied):
@@ -102,28 +112,47 @@ class WorkerProtocolViolation(WorkerDied):
     gone."""
 
 
-_SAFE_EXC_MODULES = ("builtins", "minagi.", "egai.")
+#: Bounded error vocabulary (WP3). The worker reports a CODE; only the
+#: supervisor decides which local handling a code maps to. Unknown
+#: or missing codes collapse to WORKER_INTERNAL_ERROR.
+WORKER_ERROR_CODES = frozenset({
+    "WORKER_LOAD_FAILED", "WORKER_INFERENCE_FAILED", "WORKER_CANCELLED",
+    "WORKER_BUDGET_EXCEEDED", "WORKER_PROTOCOL_VIOLATION",
+    "WORKER_UNAVAILABLE", "WORKER_INTERNAL_ERROR"})
+
+_MAX_REMOTE_TRACEBACK = 4000
 
 
-def _remote_exception_class(module: str, name: str):
-    """Re-raise worker exceptions as their real type when the class is
-    safely resolvable (builtins or project modules) — so a backend-side
-    ``BudgetExceeded`` still arrives as ``BudgetExceeded`` across the
-    wire instead of being flattened into a generic error."""
-    try:
-        if not isinstance(module, str) or not isinstance(name, str):
-            return None
-        if not (module == "builtins" or
-                module.startswith(_SAFE_EXC_MODULES)):
-            return None
-        cls = importlib.import_module(module)
-        for part in name.split("."):
-            cls = getattr(cls, part)
-        if isinstance(cls, type) and issubclass(cls, BaseException):
-            return cls
-    except Exception:  # noqa: BLE001 - mapping is best effort
-        pass
+def _local_error_class(code: str):
+    """The STATIC code -> local exception map. Only ordinary
+    ``Exception`` subclasses may appear here — control-flow classes
+    (``SystemExit``, ``KeyboardInterrupt``, ``GeneratorExit``) can
+    never be selected by worker data."""
+    if code == "WORKER_BUDGET_EXCEEDED":
+        from .inference_policy import BudgetExceeded
+        return BudgetExceeded
     return None
+
+
+_OP_ERROR_CODES = {
+    "load": "WORKER_LOAD_FAILED",
+    "infer": "WORKER_INFERENCE_FAILED",
+    "probe": "WORKER_UNAVAILABLE",
+}
+
+
+def _error_code(error, op: str | None = None) -> str:
+    """Worker side: the exception maps to one bounded CODE. Its real
+    class name travels only as inert text for the detail message."""
+    try:
+        from .inference_policy import BudgetExceeded
+        if isinstance(error, BudgetExceeded):
+            return "WORKER_BUDGET_EXCEEDED"
+    except Exception:  # noqa: BLE001
+        pass
+    if isinstance(error, (ProtocolRefused, WorkerProtocolError)):
+        return "WORKER_PROTOCOL_VIOLATION"
+    return _OP_ERROR_CODES.get(op or "", "WORKER_INTERNAL_ERROR")
 
 
 @dataclass(frozen=True)
@@ -186,7 +215,7 @@ class _WorkerHandle:
     the router and supervisor carry."""
     __slots__ = ("owner", "proc", "reader", "pending", "send_lock",
                  "seq", "dead", "stalled", "unloaded", "private_tmp",
-                 "overflow_dir")
+                 "overflow_dir", "overflow_fd", "tracked_pids", "unit")
 
     def __init__(self, *, owner, proc):
         self.owner = owner
@@ -200,6 +229,9 @@ class _WorkerHandle:
         self.unloaded = False
         self.private_tmp = None
         self.overflow_dir = None
+        self.overflow_fd = None
+        self.tracked_pids = frozenset()
+        self.unit = None
 
     @property
     def pid(self) -> int:
@@ -220,11 +252,22 @@ class WorkerBackend:
                  shutdown_grace: float = 5.0,
                  request_watchdog: float | None = None,
                  env: dict | None = None,
-                 isolation: WorkerIsolationPolicy | None = None):
+                 isolation: WorkerIsolationPolicy | None = None,
+                 backend_id: str | None = None):
         self.spec = spec
-        # Resolve in the parent now: backend_id must answer before the
-        # worker exists, and a broken spec fails at construction.
-        self.backend_id = spec.backend_id()
+        # backend_id: supplied explicitly, it comes from the verified
+        # signed manifest (production — the parent never imports the
+        # backend module itself); otherwise resolve the pinned,
+        # trusted spec in the parent so a broken spec fails at
+        # construction, before the worker exists.
+        if backend_id is not None:
+            if not isinstance(backend_id, str) or not backend_id:
+                raise WorkerBackendError(
+                    "an explicitly supplied backend_id must be a "
+                    "non-empty string")
+            self.backend_id = backend_id
+        else:
+            self.backend_id = spec.backend_id()
         self.executable = str(executable or sys.executable)
         self.start_timeout = float(start_timeout)
         self.probe_timeout = float(probe_timeout)
@@ -232,9 +275,12 @@ class WorkerBackend:
         self.request_watchdog = (None if request_watchdog is None
                                  else float(request_watchdog))
         self.isolation = isolation or DEFAULT_ISOLATION
+        self.controller = WorkerProcessController()
         if env:
             # Backward-compatible surface: explicit env additions are
-            # still refused when they look credential-bearing.
+            # still refused when they look credential-bearing. Every
+            # policy field — including v16.4.6 enforcement flags — is
+            # preserved across the merge.
             merged = dict(self.isolation.env)
             merged.update({str(k): str(v) for k, v in env.items()})
             self.isolation = WorkerIsolationPolicy(
@@ -246,7 +292,15 @@ class WorkerBackend:
                 max_open_files=self.isolation.max_open_files,
                 max_file_bytes=self.isolation.max_file_bytes,
                 demote_to=self.isolation.demote_to,
-                sandbox_profile=self.isolation.sandbox_profile)
+                sandbox_profile=self.isolation.sandbox_profile,
+                require_separate_identity=(
+                    self.isolation.require_separate_identity),
+                require_filesystem_confinement=(
+                    self.isolation.require_filesystem_confinement),
+                require_process_containment=(
+                    self.isolation.require_process_containment),
+                require_network_isolation=(
+                    self.isolation.require_network_isolation))
         self._loaded = False
         self._load_lock = threading.Lock()
         self._handles: list[_WorkerHandle] = []
@@ -338,22 +392,30 @@ class WorkerBackend:
         self._close(h)
 
     def terminate(self, handle) -> None:
-        """The RUN-401 remedy: SIGKILL the worker regardless of what it
-        is doing. Pending requests fail fast with WorkerDied, their
-        leases release, and the OS — not the backend — reclaims the
-        model's resources."""
+        """The RUN-401 remedy: terminate the worker's whole containment
+        unit regardless of what it is doing — v16.4.6 WP2. The worker
+        owns its process group (``start_new_session``); the controller
+        snapshots live descendants FIRST, signals the group, then
+        verifies via the unit marker that no owned process survived.
+        Pending requests fail fast with WorkerDied, their leases
+        release, and the OS — not the backend — reclaims the model's
+        resources."""
         h = self._check(handle)
-        try:
-            if h.proc.poll() is None:
-                h.proc.kill()
-        except OSError:
-            pass
-        self._mark_dead(h, WorkerDied(
-            f"backend worker pid {h.pid} terminated"))
-        try:
-            h.proc.wait(timeout=10)
-        except Exception:  # noqa: BLE001 - reap is best effort
-            pass
+        if h.proc.poll() is None:
+            h.tracked_pids = frozenset(
+                descendants_of(h.pid) | {h.pid})
+        survivors = self.controller.terminate_tree(
+            h.proc, leader_pid=h.pid,
+            tracked=set(h.tracked_pids), unit=h.unit)
+        if survivors:
+            self._mark_dead(h, WorkerDied(
+                f"backend worker pid {h.pid} terminated; descendant "
+                f"processes {sorted(survivors)} could not be confirmed "
+                "dead — containment is not proven"))
+        else:
+            self._mark_dead(h, WorkerDied(
+                f"backend worker pid {h.pid} and its process tree "
+                "terminated"))
         self._close(h)
 
     # --- introspection -------------------------------------------------
@@ -373,12 +435,42 @@ class WorkerBackend:
         return handle
 
     def _spawn(self) -> _WorkerHandle:
-        private_tmp = make_private_tmp()
+        # Worker-owned scratch when the policy demotes (SEC-501): the
+        # demoted uid must still be able to enter its own workspace —
+        # group is the supervisor's so result collection stays
+        # supervisor-readable without world access.
+        if self.isolation.demote_to is not None:
+            private_tmp = make_worker_scratch(
+                self.isolation.demote_to, group_gid=os.getgid())
+        else:
+            private_tmp = make_private_tmp()
         overflow_dir = private_tmp / "overflow"
-        overflow_dir.mkdir(mode=0o700)
+        try:
+            overflow_dir.mkdir(mode=0o750)
+            if self.isolation.demote_to is not None:
+                os.chown(overflow_dir, int(self.isolation.demote_to[0]),
+                         os.getgid())
+            # SEC-504: pin the directory's descriptor NOW, before the
+            # worker can influence the path — later result reads open
+            # the leaf relative to this inode, so renaming the dir or
+            # planting a symlink cannot redirect the read.
+            overflow_fd = os.open(
+                str(overflow_dir),
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0))
+        except OSError as exc:
+            import shutil
+            shutil.rmtree(private_tmp, ignore_errors=True)
+            raise IsolationError(
+                f"could not establish the worker result directory: "
+                f"{exc}") from exc
         pythonpath = os.pathsep.join(p for p in sys.path if p)
         env = build_env(self.isolation, pythonpath=pythonpath,
                         private_tmp=private_tmp)
+        # The containment-unit token — inherited by every descendant,
+        # lets the supervisor prove nothing owned survives teardown.
+        unit = new_worker_unit()
+        env.update(worker_unit_env(unit))
         argv = wrap_argv(
             [self.executable, "-m", "minagi.runtime.worker_backend"],
             self.isolation)
@@ -389,11 +481,16 @@ class WorkerBackend:
                 start_new_session=True,
                 preexec_fn=worker_preexec(self.isolation))
         except (OSError, IsolationError) as exc:
+            os.close(overflow_fd)
+            import shutil
+            shutil.rmtree(private_tmp, ignore_errors=True)
             raise WorkerDied(
                 f"worker interpreter could not start: {exc}") from exc
         h = _WorkerHandle(owner=self, proc=proc)
         h.private_tmp = private_tmp
         h.overflow_dir = overflow_dir
+        h.overflow_fd = overflow_fd
+        h.unit = unit
         reader = threading.Thread(
             target=self._reader, args=(h,),
             name=f"minagi-worker-rx-{proc.pid}", daemon=True)
@@ -474,7 +571,8 @@ class WorkerBackend:
                 try:
                     return read_overflow(
                         h.overflow_dir,
-                        OverflowRef.from_doc(ref))
+                        OverflowRef.from_doc(ref),
+                        dir_fd=h.overflow_fd)
                 except (WorkerProtocolError, ProtocolRefused) as exc:
                     raise WorkerBackendError(
                         f"{what}: overflow result refused: {exc}") \
@@ -483,21 +581,28 @@ class WorkerBackend:
         self._raise_remote(reply.get("payload") or {}, what=what)
 
     def _raise_remote(self, payload: dict, *, what: str):
+        """v16.4.6 WP3/SEC-503: the worker reports an error CODE plus
+        informational strings; only the supervisor's static map
+        decides what local type (if any) represents it. Worker-
+        supplied module/class names are data in the detail text —
+        never resolved into live classes, so nothing the worker
+        sends can instantiate SystemExit or its kin here."""
         msg = str(payload.get("error") or "remote backend error")
-        tb = str(payload.get("traceback") or "")
-        detail = (f"{what} failed in worker: {msg}"
+        tb = str(payload.get("traceback") or "")[:_MAX_REMOTE_TRACEBACK]
+        code = str(payload.get("error_code") or "")
+        if code not in WORKER_ERROR_CODES:
+            code = "WORKER_INTERNAL_ERROR"
+        remote_kind = ".".join(
+            p for p in (str(payload.get("error_module") or "")[:120],
+                        str(payload.get("error_type") or "")[:80]) if p)
+        detail = (f"{what} failed in worker"
+                  + (f" [{remote_kind}]" if remote_kind else "")
+                  + f": {msg}"
                   + (f"\n--- worker traceback ---\n{tb}" if tb else ""))
-        cls = _remote_exception_class(str(payload.get("error_module")),
-                                      str(payload.get("error_type")))
-        exc = None
+        cls = _local_error_class(code)
         if cls is not None:
-            try:
-                exc = cls(msg)
-            except Exception:  # noqa: BLE001 - signature mismatch
-                exc = None
-        if exc is not None:
-            raise exc from RemoteBackendError(detail)
-        raise RemoteBackendError(detail)
+            raise cls(msg) from RemoteBackendError(detail, code=code)
+        raise RemoteBackendError(detail, code=code)
 
     def _reader(self, h: _WorkerHandle) -> None:
         """Demultiplex worker replies. The ONLY thing this thread does
@@ -553,6 +658,12 @@ class WorkerBackend:
                 stream.close()
             except Exception:  # noqa: BLE001
                 pass
+        if h.overflow_fd is not None:
+            try:
+                os.close(h.overflow_fd)
+            except OSError:
+                pass
+            h.overflow_fd = None
         if h.private_tmp is not None:
             import shutil
             shutil.rmtree(h.private_tmp, ignore_errors=True)
@@ -561,17 +672,19 @@ class WorkerBackend:
                 self._handles.remove(h)
 
     def _kill_and_reap(self, h: _WorkerHandle) -> None:
-        try:
-            if h.proc.poll() is None:
-                h.proc.kill()
-        except OSError:
-            pass
-        self._mark_dead(h, WorkerDied(
-            f"backend worker pid {h.pid} killed"))
-        try:
-            h.proc.wait(timeout=10)
-        except Exception:  # noqa: BLE001
-            pass
+        if h.proc.poll() is None:
+            h.tracked_pids = frozenset(
+                descendants_of(h.pid) | {h.pid})
+        survivors = self.controller.terminate_tree(
+            h.proc, leader_pid=h.pid,
+            tracked=set(h.tracked_pids), unit=h.unit)
+        if survivors:
+            self._mark_dead(h, WorkerDied(
+                f"backend worker pid {h.pid} killed; descendants "
+                f"{sorted(survivors)} could not be confirmed dead"))
+        else:
+            self._mark_dead(h, WorkerDied(
+                f"backend worker pid {h.pid} killed"))
         self._close(h)
 
     def _atexit_cleanup(self) -> None:
@@ -604,7 +717,7 @@ class _WorkerLoop:
         self.send_lock = send_lock
         self.overflow_dir = overflow_dir
 
-    def _reply(self, rid, ok, result=None, error=None):
+    def _reply(self, rid, ok, result=None, error=None, op=None):
         payload: dict = {}
         if ok:
             try:
@@ -640,10 +753,11 @@ class _WorkerLoop:
         else:
             blob = encode_response(
                 rid, False, {
-                    "error": str(error),
-                    "error_type": type(error).__name__,
-                    "error_module": type(error).__module__,
-                    "traceback": traceback.format_exc()})
+                    "error": str(error)[:2000],
+                    "error_code": _error_code(error, op),
+                    "error_type": type(error).__name__[:80],
+                    "error_module": type(error).__module__[:120],
+                    "traceback": traceback.format_exc()[-4000:]})
         try:
             with self.send_lock:
                 self.out.write(blob)
@@ -706,14 +820,14 @@ class _WorkerLoop:
                 snapshot_from_descriptor(payload.get("snapshot")))
             self._reply(rid, True, result={"loaded": True})
         except Exception as exc:  # noqa: BLE001 - reported, then child dies
-            self._reply(rid, False, error=exc)
+            self._reply(rid, False, error=exc, op="load")
 
     def _do_probe(self, rid) -> None:
         try:
             self.backend.health_probe(self.handle)
             self._reply(rid, True, result={"healthy": True})
         except Exception as exc:  # noqa: BLE001
-            self._reply(rid, False, error=exc)
+            self._reply(rid, False, error=exc, op="probe")
 
     def _do_infer(self, rid, payload) -> None:
         try:

@@ -60,9 +60,9 @@
   ],
   "metadata": {
     "component": {
-      "name": "mini-AGI-V1-v16.4.4-Verified-Runtime-Closure",
+      "name": "mini-AGI-V1-v16.4.6-Worker-Isolation-and-Process-Closure",
       "type": "application",
-      "version": "16.4.5"
+      "version": "16.4.6"
     }
   },
   "specVersion": "1.5",
