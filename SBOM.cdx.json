@@ -60,9 +60,9 @@
   ],
   "metadata": {
     "component": {
-      "name": "mini-AGI Colab Converged",
+      "name": "mini-AGI-V1-v16.4.7-Runtime-Isolation-Enforcement",
       "type": "application",
-      "version": "16.4.3"
+      "version": "16.4.7"
     }
   },
   "specVersion": "1.5",

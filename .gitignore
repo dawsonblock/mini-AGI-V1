@@ -76,6 +76,15 @@ release-ed25519*.pem
 
 adaptive_mtp.md
 
+# Colab execution evidence: keep JSON artifacts; drop archives, keys, binaries.
+colab-evidence/*.tgz
+colab-evidence/.keys/
+colab-evidence/PACKED
+colab-evidence/*.log
+colab-evidence/authority-state.tgz
+colab-evidence/**/adapters/
+colab-evidence/**/.keys/
+
 # Vendored external benchmark harness (its own git repo, ~1.1 GB)
 third_party/openhands-benchmarks/
 
@@ -90,3 +99,10 @@ IMPORT_PROBE.json
 INTERRUPTION_RECOVERY.json
 QUALIFICATION_RECORD.json
 SCORER_CALIBRATION.json
+
+# v16.4.5: campaign evidence ships as a separately verified artifact
+# (mini-AGI-Campaign3A-Evidence.zip), not inside the governed source tree.
+colab-evidence/
+
+dist-v1645/
+dist-v1646/

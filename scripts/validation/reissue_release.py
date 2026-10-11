@@ -52,6 +52,12 @@ def main() -> int:
     ap.add_argument("--release", default="mini-AGI-v16.1-Colab-Converged-Full-Upgraded")
     ap.add_argument("--key", default=str(Path.home() / ".config/miniagi/release-ed25519.pem"))
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--generate-key", action="store_true",
+                    help="explicitly mint a NEW development signing key when "
+                         "the configured key is absent. Never used for a "
+                         "release — a fresh key cannot satisfy the pinned "
+                         "release fingerprint and must not silently become "
+                         "release authority.")
     args = ap.parse_args()
 
     from cryptography.hazmat.primitives import serialization
@@ -72,7 +78,7 @@ def main() -> int:
     key_path = Path(args.key)
     if key_path.is_file():
         priv = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
-    else:
+    elif args.generate_key:
         priv = Ed25519PrivateKey.generate()
         if not args.dry_run:
             key_path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,6 +87,12 @@ def main() -> int:
                 serialization.PrivateFormat.PKCS8,
                 serialization.NoEncryption()))
             key_path.chmod(0o600)
+    else:
+        raise SystemExit(
+            f"release key not found at {key_path}. Refusing to generate a "
+            "new one silently — a fresh key cannot satisfy the pinned "
+            "release fingerprint and must not become release authority. "
+            "Pass --generate-key explicitly for development signing.")
     assert isinstance(priv, Ed25519PrivateKey)
 
     import hashlib

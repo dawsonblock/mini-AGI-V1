@@ -17,12 +17,35 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src-python"))
 
 from egai.common.canonical import digest  # noqa: E402
+from egai.common.crypto import Ed25519Signer, Ed25519Verifier  # noqa: E402
 from minagi.v161.plasticity import (  # noqa: E402
-    DIAGNOSTIC_EXPERIMENT, AttemptOutcome, AttemptReceipt, FailureEvidence,
-    FailureKind, Mechanism, MechanismDecision, MechanismEstimate,
-    ObjectiveWeights, propose, rank_candidates, select_mechanism)
+    DIAGNOSTIC_EXPERIMENT, AttemptOutcome, AttemptReceipt,
+    FailureEvidence, FailureKind, Mechanism, MechanismDecision,
+    MechanismEstimate, ObjectiveWeights, SignedAttemptReceipt, propose,
+    rank_candidates, select_mechanism)
 
 D = lambda s: digest(s)  # noqa: E731
+
+
+def _evaluator():
+    """A trusted evaluator: signer + a verifier that knows its key."""
+    signer = Ed25519Signer.generate()
+    verifier = Ed25519Verifier()
+    verifier.register(signer.key_id, signer.public_bytes())
+    return signer, verifier
+
+
+def _attempt(signer, ev, mechanism, *, outcome=AttemptOutcome.FAILED.value,
+             attempt_id="a1"):
+    """A signed attempt receipt bound to `ev` for one ladder rung."""
+    return SignedAttemptReceipt.sign(
+        signer=signer, attempt_id=attempt_id,
+        proposal_digest=D("p"), mechanism=mechanism,
+        evidence_digest=ev.digest, task_family_digest=D("family"),
+        candidate_digest=D("cand"), outcome=outcome,
+        observed_gain=0.0, observed_cost=0.1,
+        evaluation_bundle_digest=D("bundle"),
+        evaluator_identity="evaluator-1")
 
 
 def _ev(**kw):
@@ -116,12 +139,17 @@ def test_confidence_floor_excludes():
 
 def test_weights_estimates_require_prior_attempts():
     ev = _ev()  # diagnoses to WEIGHTS
+    signer, verifier = _evaluator()
     estimates = [_est(Mechanism.WEIGHTS.value, 0.5, 0.2)]
-    with pytest.raises(ValueError, match="recorded attempts"):
+    with pytest.raises(ValueError, match="verified attempts"):
         select_mechanism(ev, estimates, W)
-    decision = select_mechanism(ev, estimates, W,
-                                prior_attempts=(D("retrieval"),
-                                                D("skill")))
+    decision = select_mechanism(
+        ev, estimates, W,
+        attempts=(_attempt(signer, ev, Mechanism.RETRIEVAL.value,
+                           attempt_id="a1"),
+                  _attempt(signer, ev, Mechanism.SKILL.value,
+                           attempt_id="a2")),
+        evaluator_verifier=verifier)
     assert decision.chosen == Mechanism.WEIGHTS.value
 
 
@@ -153,14 +181,18 @@ def test_selection_binds_evidence_and_ladder_for_proposals():
     """The controller decision and the ladder-enforcing proposal agree on
     the same evidence, and the attempt receipt chains both by digest."""
     ev = _ev()
+    signer, verifier = _evaluator()
+    attempts = (_attempt(signer, ev, Mechanism.RETRIEVAL.value,
+                       attempt_id="a1"),
+                _attempt(signer, ev, Mechanism.SKILL.value,
+                         attempt_id="a2"))
     proposal = propose(ev, proposal_id="p1",
                        candidate_config_digest=D("cfg"),
                        baseline_digest=D("base"),
-                       prior_attempts=(D("retrieval-attempt"),
-                                       D("skill-attempt")))
+                       prior_attempts=tuple(r.digest for r in attempts))
     decision = select_mechanism(
         ev, [_est(Mechanism.WEIGHTS.value, 0.4, 0.3)], W,
-        prior_attempts=proposal.prior_attempts)
+        attempts=attempts, evaluator_verifier=verifier)
     assert decision.chosen == proposal.mechanism
     receipt = AttemptReceipt(
         attempt_id="a1", proposal_digest=proposal.digest,

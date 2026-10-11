@@ -53,10 +53,10 @@ every release ships a signed manifest verifiable offline.
 
 | Item | State |
 |---|---|
-| Current release | **v16.4.3 — Hardened Runtime** (`v16.4.3`, in flight) · latest published: [**v16.4.2**](https://github.com/dawsonblock/mini-AGI-V1/releases/tag/v16.4.2) |
+| Current release | **v16.4.4 — Verified Runtime Closure** (`v16.4.4-runtime-closure`, in flight) · previous: v16.4.3 |
 | Release integrity | ✅ **PASS** — `scripts/verify_release.py`: signed manifest, Ed25519 signature, attestation/version reconciliation |
 | CI | ✅ **green** — lint (ruff · Flake8 · Pylint error-gate), ubuntu + macOS validation, native CMake/CTest, tag-gated release-integrity |
-| Unified Python suite | ✅ **767 passed, 1 skipped** (`tests-python/`) |
+| Unified Python suite | ✅ **793 passed, 1 skipped** (`tests-python/`) |
 | Native CTest | ✅ 28/28 (ubuntu + macOS CPU/stub builds; CUDA paths unverified offline) |
 | Runtime admission | ✅ full chain — plan → qualification → promotion → manifest → exact bytes — with signed activation receipts and rollback |
 | Evaluator sandbox | ✅ fail-closed — usable / unavailable / misconfigured backends classified explicitly; no unsandboxed fallback |
@@ -67,7 +67,32 @@ every release ships a signed manifest verifiable offline.
 | Campaign 3A — `campaign3a` | ⏳ **PREREGISTERED + EXECUTING** — halved-optimization-pressure arm, sealed digest-bound holdout, resumable per-seed evidence banking |
 | Validated designation | **v16.2** — the v16.3+ promotion gate required Campaign 2 to qualify; it did not |
 
-## What's new in v16.4.3
+## What's new in v16.4.4
+
+**Verified runtime closure.** The activation, rollback, routing,
+audit, budget and recovery paths are now verified end to end: durable
+commit intent precedes any routing publication; deployment generations
+CAS-guard every transition and a failed candidate restores the last
+committed live predecessor (or durably reports UNAVAILABLE); the router
+holds per-activation request leases and unloads only at zero in-flight;
+privileged operations land mandatory signed audit records before their
+side effect; inference obeys enforceable token/concurrency/deadline
+budgets; `--production` refuses to start without signed backend
+identity, measured dependency closure, operative policy epoch and fresh
+revocation evidence; and `RecoveryManager` restores a cold-started
+service through the normal verified path — fresh grant, re-measured
+artifacts, isolated load, health probes — rather than trusting a durable
+pointer as proof of life.
+
+All seven runtime findings (SEC-301..307) are closed — see
+[`RELEASE_CHANGE_MANIFEST.json`](RELEASE_CHANGE_MANIFEST.json).
+Controller correctness (SEC-005/006) remains the v16.4.5 gate; real-model
+Campaign 3 qualification the v16.5.0 gate.
+
+<details>
+<summary><b>v16.4.3 — Hardened Runtime</b></summary>
+
+**Hardened runtime.** Every guarantee the activation architecture
 
 **Hardened runtime.** Every guarantee the activation architecture
 claimed is now enforced at the source: durable single-use admission

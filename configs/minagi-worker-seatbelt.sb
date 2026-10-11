@@ -1,0 +1,37 @@
+(version 1)
+;; Mini-AGI model-worker seatbelt profile — macOS reference.
+;;
+;; Applied via WorkerIsolationPolicy(sandbox_profile=<this file>).
+;; "@SCRATCH@" is rendered at spawn time to the worker's private
+;; scratch directory by wrap_argv().
+;;
+;; What this enforces:
+;;   * process containment — every process-creation primitive
+;;     (fork, vfork, posix_spawn) routes through `process-fork` in
+;;     seatbelt, so a sandboxed worker can never create a descendant
+;;     that could escape termination. On hosts whose kernel refuses
+;;     kqueue NOTE_TRACK this IS the descendant-containment mechanism.
+;;   * network isolation — all outbound network denied.
+;;   * write confinement — file writes only inside the worker scratch
+;;     and device sinks; supervisor material stays untouched.
+;;
+;; Reads remain open: read-boundary enforcement is the separate worker
+;; identity (demote_to) plus filesystem permissions — seatbelt alone
+;; is not the read confinement story. `process-exec` stays allowed:
+;; without fork it cannot create a process, only replace this one's
+;; image, and the interpreter must exec at launch.
+;;
+;; seatbelt is DEPRECATED upstream — operators must qualify their own
+;; tuned profile for the model runtime they deploy. This reference is
+;; a tested baseline on Darwin 25.x, not a completeness promise.
+(deny default)
+(allow process-exec)
+(deny process-fork)
+(deny network*)
+(allow file-read*)
+(allow sysctl-read)
+(allow mach-lookup)
+(allow mach-register)
+(allow ipc-posix-shm-read* ipc-posix-shm-write-data)
+(allow file-write* (literal "/dev/null" "/dev/urandom" "/dev/zero"))
+(allow file-write* (subpath "@SCRATCH@"))
