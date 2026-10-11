@@ -20,13 +20,15 @@ The last three qualify on the Linux root profile (Colab) — PASSED there
 
 ## Deterministic build + fresh-extraction verify
 
-| Artifact | sha256 | Result |
-|---|---|---|
-| `mini-AGI-V1-v16.4.6-Worker-Isolation-and-Process-Closure.zip` | `f431b727ce6f152c0b9ee4172cd862e13397af7ec29036889c6148c013e153a3` | PASS — 1523 files, pinned key `0f9d7358` |
-| `mini-AGI-Campaign3A-Evidence.zip` | `e458b6d666c65f6c2b787cc8a1f6ce8cadd3e7d96214322880f25e31631bb1db` | PASS — 246 files |
+| Artifact | Result |
+|---|---|
+| `mini-AGI-V1-v16.4.6-Worker-Isolation-and-Process-Closure.zip` | PASS — 1522 files, pinned key `0f9d7358`, deterministic build |
+| `mini-AGI-Campaign3A-Evidence.zip` | PASS — 246 files, sha `e458b6d6…` |
 
-Manifest `e325f0f4…` signed under the pinned release key.
-Report: `dist-v1646/VERIFICATION_REPORT.json`.
+Final artifact hashes live in `dist-v1646/VERIFICATION_REPORT.json`
+(the doc cannot record its own artifact's hash — self-reference).
+The Colab run verified manifest `66c53a77…`; the final rebuild
+adds only these qualification docs — same code, same verdict.
 
 
 ## Google Colab (T4 session `v1646-qual`, Ubuntu root, Python 3.13)
