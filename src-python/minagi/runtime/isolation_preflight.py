@@ -97,7 +97,12 @@ def _probe_detach(marker_path: str) -> str:
         except OSError:
             pass
         try:
-            Path(marker_path).write_text(str(os.getpid()))
+            # pid is NAMESPACE-scoped — the host cannot map it. The
+            # kernel-reported cgroup line is the transferable proof:
+            # it names the unit the supervisor will verify.
+            cg = Path("/proc/self/cgroup").read_text().strip()
+            Path(marker_path).write_text(
+                f"{os.getpid()}\n{cg}\n")
         except OSError:
             pass
         time.sleep(2.0)
@@ -140,6 +145,13 @@ def _probe_main(argv) -> int:
             report["detached_child"] = _probe_detach(spec[7:])
     sys.stdout.write(json.dumps(report, sort_keys=True) + "\n")
     sys.stdout.flush()
+    # Hold briefly: the supervisor must find this unit's LIVE cgroup —
+    # an instantly-exiting probe races systemd's registration window.
+    try:
+        hold = float(os.environ.get("MINAGI_PROBE_HOLD") or 2.0)
+    except ValueError:
+        hold = 2.0
+    time.sleep(min(max(hold, 0.0), 10.0))
     return 0
 
 

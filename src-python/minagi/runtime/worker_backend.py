@@ -337,7 +337,14 @@ class WorkerBackend:
                     "this WorkerBackend already loaded a model — one "
                     "proxy supervises one worker; build another for a "
                     "second activation")
-            h = self._spawn()
+            # The admitted snapshot root is mounted read-only inside
+            # the jail at its identical path — the worker re-measures
+            # the staged artifacts where the supervisor staged them.
+            # Non-snapshot inputs still reach the worker so its own
+            # typed refusal survives the wire unchanged.
+            snap_root = getattr(snapshot, "root", None)
+            h = self._spawn(
+                extra_ro=(str(snap_root),) if snap_root else ())
             try:
                 self._rpc(h, {"op": "load",
                               "snapshot": snapshot_descriptor(snapshot)},
@@ -490,7 +497,7 @@ class WorkerBackend:
                 "handles produced by this backend's load()")
         return handle
 
-    def _spawn(self) -> _WorkerHandle:
+    def _spawn(self, *, extra_ro: tuple = ()) -> _WorkerHandle:
         # Launch is the executor's job (v16.4.8): prepare() makes the
         # private workspace + unit token, the supervisor builds the
         # env binding them, then launch() creates the process and its
@@ -517,7 +524,8 @@ class WorkerBackend:
                 env=env, isolation=self.isolation, spec=self.spec,
                 policy_digest=_pdigest(self.isolation),
                 artifact_digests=self.artifact_digests,
-                backend_manifest_digest=self.backend_manifest_digest)
+                backend_manifest_digest=self.backend_manifest_digest,
+                extra_ro=extra_ro)
         except (IsolationError, PermissionError) as exc:
             raise WorkerDied(
                 f"worker could not start under executor "

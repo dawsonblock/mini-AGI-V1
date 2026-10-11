@@ -262,6 +262,10 @@ def resolve_mounts(profile: IsolationProfile, *, runtime_paths,
     seen = set()
 
     def add(src, dst, rw, **kw):
+        if not str(dst).startswith("/"):
+            raise ProfileRefused(
+                f"mount destination {dst!r} is not absolute — the "
+                "jail filesystem cannot name relative targets")
         src = _allowed(src)
         key = (src, dst)
         if key in seen:
@@ -271,10 +275,15 @@ def resolve_mounts(profile: IsolationProfile, *, runtime_paths,
 
     if "approved_runtime" in profile.read_only_resources:
         for path in runtime_paths or ():
-            add(str(path), str(Path(path).resolve()), False)
+            try:
+                if not Path(str(path)).exists():
+                    continue  # advisory closure entry (e.g. zip stubs)
+            except OSError:
+                continue
+            add(str(path), str(path), False)
     if "approved_model_artifacts" in profile.read_only_resources:
         for path in artifact_paths or ():
-            add(str(path), str(Path(path).resolve()), False)
+            add(str(path), str(path), False)
     if "worker_scratch" in profile.writable_resources:
         add(scratch_src, scratch_dst, True,
             nosuid=True, nodev=True, noexec=False)
@@ -282,6 +291,17 @@ def resolve_mounts(profile: IsolationProfile, *, runtime_paths,
     for dev in ("null", "zero", "urandom"):
         add(f"/dev/{dev}", f"/dev/{dev}", True, mandatory=False,
             nosuid=True, nodev=False, noexec=False)
+    # A mount whose destination sits under an already-emitted
+    # same-permission parent is fully covered by that parent's bind —
+    # and its later ro-remount would EINVAL on a locked subtree.
+    # Parents mount first so remaining children stack correctly.
+    covered = {i for i, m in enumerate(mounts)
+               if any(o.dst != m.dst
+                      and m.dst.startswith(o.dst + "/")
+                      and o.rw == m.rw for o in mounts)}
+    mounts = sorted((m for i, m in enumerate(mounts)
+                     if i not in covered),
+                    key=lambda m: (m.dst.count("/"), m.dst))
     return tuple(mounts)
 
 

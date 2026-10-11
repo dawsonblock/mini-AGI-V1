@@ -147,6 +147,7 @@ class WorkerExecutor(Protocol):
                policy_digest: str = "",
                artifact_digests: tuple = (),
                backend_manifest_digest: str = "",
+               extra_ro: tuple = (),
                role: str = "worker") -> LaunchedWorker:
         ...
 
@@ -223,7 +224,11 @@ class DevelopmentWorkerExecutor:
                isolation: WorkerIsolationPolicy, spec=None,
                policy_digest: str = "", artifact_digests: tuple = (),
                backend_manifest_digest: str = "",
+               extra_ro: tuple = (),
                role: str = "worker") -> LaunchedWorker:
+        # extra_ro is a jail-mount contract — the development
+        # executor runs on the host where every path is already
+        # reachable; the parameter exists for signature parity.
         argv0, rendered = wrap_argv(list(worker_argv), isolation,
                                     render_vars={
                                         "SCRATCH": str(dirs.private_tmp)})

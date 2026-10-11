@@ -122,6 +122,7 @@ class NsJailWorkerExecutor:
                policy_digest: str = "",
                artifact_digests: tuple = (),
                backend_manifest_digest: str = "",
+               extra_ro: tuple = (),
                role: str = "worker") -> LaunchedWorker:
         if role not in self.allowed_roles:
             raise ExecutorRefused(f"role {role!r} is not launchable")
@@ -150,7 +151,8 @@ class NsJailWorkerExecutor:
         env["MINAGI_WORKER_UNIT"] = dirs.unit_token
         record = self.broker.launch(
             req, env=env,
-            extra_ro_paths=self._extra_ro(isolation),
+            extra_ro_paths=(self._extra_ro(isolation)
+                            + tuple(str(x) for x in extra_ro)),
             unit_token=dirs.unit_token)
         self._launched[dirs.worker_id] = record
         return LaunchedWorker(

@@ -180,11 +180,19 @@ class SystemdClient:
 
 def cgroup_populated(cgroup_path) -> bool | None:
     """The kernel's own occupancy flag: True when the subtree still
-    holds live processes, False when empty, None when unreadable —
-    per the kernel's cgroup v2 documentation."""
+    holds live processes, False when empty, None when unreadable.
+    cgroup v2 reports occupancy via the ``populated`` field of
+    ``cgroup.events``; ``cgroup.procs`` is the fallback."""
     try:
-        text = (Path(cgroup_path) / "cgroup.populated").read_text()
-        return text.strip() == "1"
+        p = Path(cgroup_path)
+        ev = p / "cgroup.events"
+        if ev.is_file():
+            for line in ev.read_text().splitlines():
+                k, _, v = line.partition(" ")
+                if k.strip() == "populated":
+                    return v.strip() == "1"
+        text = (p / "cgroup.procs").read_text()
+        return bool(text.strip())
     except OSError:
         return None
 
@@ -209,12 +217,19 @@ def runtime_closure_paths() -> tuple:
     def add(p):
         if not p:
             return
+        p = str(p)
+        if not p.startswith("/"):
+            try:
+                p = str(Path(p).resolve())
+            except OSError:
+                return
         try:
-            rp = str(Path(p).resolve())
+            if not Path(p).exists():
+                return
         except OSError:
             return
-        if rp not in binds and Path(rp).exists():
-            binds.append(rp)
+        if p not in binds:
+            binds.append(p)
 
     add(sys.executable)
     for d in ("/usr/lib", "/lib", "/lib64", "/usr/local/lib",
@@ -279,7 +294,7 @@ class WorkerLaunchBroker:
         self.worker_gid = int(worker_gid)
         self.worker_python = str(worker_python or sys.executable)
         self.python_path_entries = tuple(
-            str(p) for p in python_path_entries)
+            str(Path(p).resolve()) for p in python_path_entries if p)
         self.denied_paths = tuple(str(p) for p in denied_paths)
         self.user_manager = bool(user_manager)
         self.systemd = systemd or SystemdClient(
@@ -477,7 +492,8 @@ class WorkerLaunchBroker:
 
         mounts = resolve_mounts(
             profile,
-            runtime_paths=runtime_closure_paths(),
+            runtime_paths=tuple(runtime_closure_paths())
+            + self.python_path_entries,
             artifact_paths=artifact_paths,
             scratch_src=str(scratch), scratch_dst="/work",
             denied_paths=self.denied_paths)

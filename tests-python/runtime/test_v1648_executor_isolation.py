@@ -268,15 +268,18 @@ def test_with_runtime_only_permitted_fields():
 
 def test_resolve_mounts_denies_authority(tmp_path):
     p = load_profile(PROFILE_PATH)
+    libdir = tmp_path / "rtlib"
+    libdir.mkdir()  # runtime paths are advisory — missing ones skip
     mounts = resolve_mounts(
-        p, runtime_paths=("/usr/lib/python3",),
+        p, runtime_paths=(str(libdir), "/nonexistent-python-zip"),
         artifact_paths=("/var/lib/minagi/artifacts/m1",),
         scratch_src=str(tmp_path / "scratch"), scratch_dst="/work",
         denied_paths=("/var/lib/minagi/authority",))
     ro = {m.src for m in mounts if not m.rw}
     rw = [m for m in mounts if m.rw]
     res = lambda p: str(Path(p).resolve())  # noqa: E731
-    assert res("/usr/lib/python3") in ro
+    assert res(str(libdir)) in ro
+    assert res("/nonexistent-python-zip") not in ro
     assert res("/var/lib/minagi/artifacts/m1") in ro
     authority = res("/var/lib/minagi/authority")
     assert not any(m.src == authority
