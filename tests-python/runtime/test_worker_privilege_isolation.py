@@ -7,6 +7,7 @@ them, and optional identity demotion. These tests verify the boundary
 is built — and that real spawned workers actually run under it.
 """
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -120,6 +121,37 @@ def test_sandbox_profile_requires_real_file(tmp_path):
         pytest.skip("sandbox-exec absent on this host")
     with pytest.raises(IsolationError):
         wrap_argv(["/bin/true"], policy)
+
+
+def test_wrap_argv_renders_scratch_placeholder(tmp_path):
+    """A profile carrying @SCRATCH@ renders to a supervisor-owned temp
+    file — never the worker's own path — with the token resolved."""
+    profile = tmp_path / "p.sb"
+    profile.write_text(
+        "(version 1)\n(deny default)\n"
+        "(allow file-write* (subpath \"@SCRATCH@\"))\n")
+    policy = WorkerIsolationPolicy(sandbox_profile=str(profile))
+    if not supported()["sandbox_exec"]:
+        pytest.skip("sandbox-exec absent on this host")
+    argv, rendered = wrap_argv(
+        ["/bin/true"], policy, render_vars={"SCRATCH": "/w/scratch"})
+    assert rendered is not None and rendered != str(profile)
+    text = Path(rendered).read_text()
+    assert "/w/scratch" in text and "@SCRATCH@" not in text
+    assert oct(os.stat(rendered).st_mode & 0o777) == "0o600"
+    assert argv[:3] == [shutil.which("sandbox-exec"), "-f", rendered]
+    os.unlink(rendered)
+
+
+def test_wrap_argv_refuses_unrendered_placeholder(tmp_path):
+    profile = tmp_path / "p.sb"
+    profile.write_text("(version 1)\n(deny default)\n"
+                       "(allow file-write* (subpath \"@SCRATCH@\"))\n")
+    policy = WorkerIsolationPolicy(sandbox_profile=str(profile))
+    if not supported()["sandbox_exec"]:
+        pytest.skip("sandbox-exec absent on this host")
+    with pytest.raises(IsolationError):
+        wrap_argv(["/bin/true"], policy)  # no render_vars supplied
 
 
 # ---------- real spawned worker posture --------------------------------------

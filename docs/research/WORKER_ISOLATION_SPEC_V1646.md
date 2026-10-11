@@ -81,10 +81,21 @@ demoted worker has its own uid.
 - `start_new_session=True` (group ownership) was already in place —
   v16.4.6 is what actually uses it.
 
-Known limits, documented not hidden: a child that `exec`s with a
-scrubbed environment escapes the marker scan; platforms without
-`/proc` (macOS) cannot scan environ and rely on tracked ancestry +
-group kill; Linux cgroups remain the stronger mechanism and are the
+Follow-on hardening (same branch): a `KqueueDescendantTracker`
+follows forks event-driven where the kernel honours `NOTE_TRACK` —
+membership is fixed at fork time, before a descendant can detach,
+reparent, or scrub its environment. Measured limit: Darwin 25.x
+refuses `NOTE_TRACK` registration with `EOPNOTSUPP`, and
+`kqueue_tracking_supported()` probes a real registration rather than
+trusting constants. On macOS the shipped seatbelt profile
+(`configs/minagi-worker-seatbelt.sb`) is the containment mechanism:
+`deny process-fork` prevents descendants outright, and
+`validate_isolation` accepts it (or `/proc`, or kqueue) — refusing
+startup when none exists.
+
+Remaining known limits, documented not hidden: a child that `exec`s
+with a scrubbed environment escapes the marker scan on all
+platforms; cgroups remain the stronger Linux mechanism and are the
 recommended production substrate.
 
 ## IPC exception safety (WP3)
@@ -132,7 +143,7 @@ explicitly labeled (`development same-identity`).
 | Platform | Separate identity | Process containment | Overflow fd | Network ns |
 |---|---|---|---|---|
 | Linux (Colab root) | enforced — demote to uid 65534 | group + marker scan (/proc) | yes | available via `unshare` |
-| macOS dev | unavailable (no setuid privilege) → production REFUSES | group + tracked ancestry (no environ scan) | yes | unavailable → policy refuses |
+| macOS dev | unavailable (no setuid privilege) → production REFUSES | seatbelt `deny process-fork` (shipped profile) or kqueue where honoured; neither → REFUSES | yes | seatbelt `deny network*` |
 
 Colab is an experimental platform, not a production-isolation
 authority — qualification there proves the mechanisms work, not that

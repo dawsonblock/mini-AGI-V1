@@ -36,9 +36,12 @@ is deprecated and opt-in only).
 from __future__ import annotations
 
 import os
+import re
+import select
 import shutil
 import stat
 import tempfile
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -89,8 +92,12 @@ class WorkerIsolationPolicy:
                       parent to hold the privilege to setuid; never
                       applied silently
     sandbox_profile   optional macOS ``sandbox-exec`` profile path —
-                      DEPRECATED mechanism, opt-in, qualified only when
-                      the operator supplies a profile they have tested
+                      deprecated upstream but functional; on hosts
+                      whose kernel refuses kqueue NOTE_TRACK a profile
+                      that denies ``process-fork`` is THE descendant-
+                      containment mechanism. ``@SCRATCH@`` renders to
+                      the worker's private scratch at spawn. Only
+                      counted toward required containment when set
 
     v16.4.6 enforcement requirements — when a ``require_*`` flag is set,
     :func:`validate_isolation` refuses the policy unless the host can
@@ -154,6 +161,7 @@ def supported() -> dict:
         and shutil.which("unshare") is not None
         and Path("/proc/self/ns/net").is_file())
     caps["kill_group"] = hasattr(os, "killpg")
+    caps["kqueue_tracking"] = kqueue_tracking_supported()
     return caps
 
 
@@ -235,9 +243,21 @@ def validate_isolation(policy: WorkerIsolationPolicy, *,
                 "supervisor-owned file")
         need(True, "filesystem_confinement", True,
              "unreachable (separate identity enforced above)")
+    # Group control alone is not containment — a detached descendant
+    # escapes a group signal. Real containment needs a tracking
+    # mechanism that survives reparenting (/proc ancestry+marker on
+    # Linux, kqueue NOTE_TRACK where the kernel still honours it) or
+    # a seatbelt profile that makes descendant creation impossible
+    # (macOS: sandbox-exec with deny process-fork).
+    sandbox_containment = (caps["sandbox_exec"]
+                           and bool(policy.sandbox_profile))
     need(policy.require_process_containment, "process_containment",
-         caps["process_group"] and caps["kill_group"],
-         "no process-group/session control")
+         caps["process_group"] and caps["kill_group"]
+         and (caps["proc_fs"] or caps["kqueue_tracking"]
+              or sandbox_containment),
+         "no descendant-containment mechanism on this host (need /proc "
+         "scan, kqueue NOTE_TRACK, or a sandbox_profile that denies "
+         "process-fork)")
     need(policy.require_network_isolation, "network_isolation",
          caps["network_namespace"],
          "no network-namespace mechanism on this host")
@@ -359,12 +379,20 @@ def worker_preexec(policy: WorkerIsolationPolicy):
     return apply
 
 
-def wrap_argv(argv: list, policy: WorkerIsolationPolicy) -> list:
+def wrap_argv(argv: list, policy: WorkerIsolationPolicy, *,
+              render_vars: dict | None = None) -> list:
     """Optional ``sandbox-exec`` wrapper (macOS only, opt-in). The
     profile must be supplied by the operator — this code does not
-    pretend a default profile exists."""
+    pretend a default profile exists. ``@NAME@`` placeholders in the
+    profile are rendered from ``render_vars`` (e.g. ``@SCRATCH@`` to
+    the worker's private scratch path) into a supervisor-owned temp
+    file — seatbelt reads the profile once at exec, so a rendered
+    copy in a 0600 supervisor file keeps the worker from ever naming
+    its own confinement rules. Returns ``(argv, rendered_profile)`` —
+    the second element is the temp path to unlink on cleanup, or the
+    original profile path when no rendering was needed."""
     if not policy.sandbox_profile:
-        return list(argv)
+        return list(argv), None
     exe = shutil.which("sandbox-exec")
     if exe is None:
         raise IsolationError(
@@ -373,7 +401,23 @@ def wrap_argv(argv: list, policy: WorkerIsolationPolicy) -> list:
     if not profile.is_file() or profile.is_symlink():
         raise IsolationError(
             f"sandbox profile {profile} is not a regular file")
-    return [exe, "-f", str(profile), *argv]
+    rendered = str(profile)
+    text = profile.read_text(encoding="utf-8")
+    if "@" in text:
+        for key, value in dict(render_vars or {}).items():
+            text = text.replace(f"@{key}@", str(value))
+        if re.search(r"@[A-Z_][A-Z_0-9]+@", text):
+            raise IsolationError(
+                "sandbox profile still contains unrendered "
+                "@PLACEHOLDER@ tokens")
+        fd, rendered = tempfile.mkstemp(
+            prefix="minagi-worker-profile-", suffix=".sb")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.chmod(rendered, 0o600)
+    else:
+        rendered = None
+    return [exe, "-f", rendered or str(profile), *argv], rendered
 
 
 def tmp_is_private(path: Path, *, worker_uid: int | None = None) -> bool:
@@ -476,6 +520,152 @@ def descendants_of(root_pid: int) -> set:
     return owned
 
 
+_KQ_NAMES = {
+    "filter_proc": ("EVFILT_PROC", "KQ_FILTER_PROC"),
+    "add": ("EV_ADD", "KQ_EV_ADD"),
+    "note_track": ("NOTE_TRACK", "KQ_NOTE_TRACK"),
+    "note_fork": ("NOTE_FORK", "KQ_NOTE_FORK"),
+    "note_exit": ("NOTE_EXIT", "KQ_NOTE_EXIT"),
+}
+
+
+def _kq_const(name: str):
+    for cand in _KQ_NAMES[name]:
+        value = getattr(select, cand, None)
+        if value is not None:
+            return value
+    return None
+
+
+def kqueue_tracking_supported() -> bool:
+    """True when this host can follow worker forks event-driven —
+    macOS/BSD EVFILT_PROC+NOTE_TRACK via select.kqueue. Constants are
+    not proof: modern macOS keeps the API surface but the kernel
+    answers NOTE_TRACK registration with EOPNOTSUPP, so probe a real
+    registration on self and check for EV_ERROR."""
+    if not (hasattr(select, "kqueue")
+            and all(_kq_const(n) is not None for n in _KQ_NAMES)):
+        return False
+    ev_error = getattr(select, "EV_ERROR",
+                       getattr(select, "KQ_EV_ERROR", 0))
+    try:
+        kq = select.kqueue()
+        try:
+            result = kq.control(
+                [select.kevent(os.getpid(), _kq_const("filter_proc"),
+                               _kq_const("add"), _kq_const("note_track"),
+                               0, 0)], 1, 0.5)
+        finally:
+            kq.close()
+    except OSError:
+        return False
+    for ev in result or ():
+        if ev.flags & ev_error:
+            return False
+    return True
+
+
+class KqueueDescendantTracker:
+    """Event-driven descendant tracking for one worker leader.
+
+    Registering NOTE_TRACK on the leader delivers a NOTE_FORK (with the
+    child's pid in ``ev.data``) for every fork inside the unit, and we
+    re-register NOTE_TRACK on each child — so membership is fixed at
+    fork time, before a descendant can setsid(), get reparented to
+    launchd, or exec with a scrubbed environment. Those escapes defeat
+    the ppid graph and the environ-marker scan; they cannot defeat a
+    fork event the kernel reported. Residual gap: a descendant that
+    forks in the microseconds between its own fork event and our
+    registration can be missed — bounded, documented, and strictly
+    stronger than the polling fallbacks it complements.
+    """
+
+    _MAX_TRACKED = 4096
+    _DRAIN_TIMEOUT = 0.25
+
+    def __init__(self, root_pid: int):
+        self._root = int(root_pid)
+        self._kq = select.kqueue()
+        self._lock = threading.Lock()
+        self._live: set[int] = set()
+        self._root_dead = False
+        self._closed = False
+        self._register(self._root)
+        self._thread = threading.Thread(
+            target=self._drain,
+            name=f"minagi-kq-track-{self._root}", daemon=True)
+        self._thread.start()
+
+    @classmethod
+    def attach(cls, root_pid: int):
+        """A tracker following root_pid's descendants, or None when the
+        host has no kqueue process filter."""
+        if not kqueue_tracking_supported():
+            return None
+        try:
+            return cls(root_pid)
+        except OSError:
+            return None
+
+    def _register(self, pid: int) -> None:
+        try:
+            self._kq.control(
+                [select.kevent(int(pid), _kq_const("filter_proc"),
+                               _kq_const("add"), _kq_const("note_track"),
+                               0, 0)], 0, 0)
+        except OSError:
+            # The target already exited — nothing to track.
+            pass
+
+    def _drain(self) -> None:
+        while True:
+            try:
+                events = self._kq.control(None, 64, self._DRAIN_TIMEOUT)
+            except (OSError, ValueError):
+                return
+            if self._closed:
+                return
+            root_dead = self._root_dead
+            for ev in events:
+                if ev.fflags & _kq_const("note_fork"):
+                    child = int(ev.data)
+                    if child > 0:
+                        with self._lock:
+                            if len(self._live) < self._MAX_TRACKED:
+                                self._live.add(child)
+                        self._register(child)
+                if ev.fflags & _kq_const("note_exit"):
+                    ident = int(ev.ident)
+                    if ident == self._root:
+                        root_dead = True
+                    else:
+                        with self._lock:
+                            self._live.discard(ident)
+            self._root_dead = root_dead
+            if root_dead:
+                with self._lock:
+                    empty = not self._live
+                if empty:
+                    return
+
+    def live_pids(self) -> set:
+        """Descendant pids believed live — callers still probe each
+        pid (os.kill(pid, 0)) before acting on it."""
+        with self._lock:
+            return set(self._live)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+        try:
+            self._kq.close()
+        except OSError:
+            pass
+        self._thread.join(timeout=1.0)
+
+
 def _marker_holders(unit: str) -> set:
     """Live pids whose initial environment carries the worker unit
     marker — the containment set independent of process groups.
@@ -535,10 +725,16 @@ class WorkerProcessController:
         except (ProcessLookupError, PermissionError):
             return False
 
-    def _owned(self, tracked: set, unit: str | None) -> set:
+    def _owned(self, tracked: set, unit: str | None,
+               extra_tracked=None) -> set:
         """Processes still owned by the unit: tracked descendants that
-        remain alive plus anything still carrying the unit marker."""
+        remain alive plus anything still carrying the unit marker.
+        ``extra_tracked`` is a live accessor (e.g. the kqueue tracker)
+        consulted at call time so forks discovered mid-termination are
+        included in the sweep."""
         live = set()
+        if extra_tracked is not None:
+            tracked = set(tracked) | set(extra_tracked())
         for pid in tracked:
             try:
                 os.kill(pid, 0)
@@ -551,12 +747,15 @@ class WorkerProcessController:
 
     def terminate_tree(self, proc, *, leader_pid: int | None = None,
                        tracked: set | None = None,
-                       unit: str | None = None) -> set:
+                       unit: str | None = None,
+                       extra_tracked=None) -> set:
         """Stop routing -> escalate -> reap -> verify. ``proc`` is the
         leader's Popen handle; ``tracked`` is an optional ancestry
         snapshot taken while the leader lived; ``unit`` is the env
-        marker token identifying the containment set. Returns the set
-        of pids that could NOT be confirmed dead (empty on success)."""
+        marker token identifying the containment set; ``extra_tracked``
+        is an optional live pid accessor (kqueue tracker) consulted at
+        each ownership check. Returns the set of pids that could NOT
+        be confirmed dead (empty on success)."""
         import signal
         import time
         pid = int(leader_pid if leader_pid is not None else proc.pid or 0)
@@ -576,7 +775,7 @@ class WorkerProcessController:
                 os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
-        survivors = self._owned(tracked, unit)
+        survivors = self._owned(tracked, unit, extra_tracked)
         if survivors:
             for spid in survivors:
                 try:
@@ -585,26 +784,29 @@ class WorkerProcessController:
                     pass
             import time as _t
             _t.sleep(0.05)
-            survivors = self._owned(tracked, unit)
+            survivors = self._owned(tracked, unit, extra_tracked)
         return survivors
 
     def verify_terminated(self, leader_pid: int,
                           tracked: set | None = None,
-                          unit: str | None = None) -> set:
+                          unit: str | None = None,
+                          extra_tracked=None) -> set:
         """The acceptance check: zero processes owned by the unit.
         Returns the surviving pid set — must be empty."""
         tracked = set(tracked or ())
         tracked.discard(int(leader_pid))
-        return self._owned(tracked, unit)
+        return self._owned(tracked, unit, extra_tracked)
 
     def cleanup_resources(self, private_tmp) -> None:
         if private_tmp is not None:
             shutil.rmtree(private_tmp, ignore_errors=True)
 
 
-__all__ = ["DEFAULT_ISOLATION", "IsolationError", "SAFE_ENV_PASSTHROUGH",
+__all__ = ["DEFAULT_ISOLATION", "IsolationError",
+           "KqueueDescendantTracker", "SAFE_ENV_PASSTHROUGH",
            "WORKER_UNIT_ENV", "WorkerIsolationPolicy",
            "WorkerProcessController", "build_env", "descendants_of",
+           "kqueue_tracking_supported",
            "make_private_tmp", "make_worker_scratch",
            "production_policy", "supported", "tmp_is_private",
            "new_worker_unit", "validate_isolation", "worker_preexec",

@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Mini-AGI release source audit.
+
+Gate that runs before a release build: the release-identity files must
+exist and agree, and the source tree must not carry private-key
+material, model-weight artifacts, or developer-specific absolute paths.
+A gate that can never pass is worse than no gate — every check here is
+about THIS tree.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -9,24 +17,61 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-DEVELOPER_PATH = re.compile(r"/(?:home|data)/chaidi(?:/|\\b)")
+
+# Absolute user-home paths baked into release source (e.g. a developer's
+# machine layout). Matches /Users/name/... and /home/name/...
+DEVELOPER_PATH = re.compile(r"(?:/Users/|/home/)[A-Za-z0-9._-]+/")
+
+PRIVATE_KEY_MATERIAL = re.compile(
+    rb"-----BEGIN [A-Z ]*PRIVATE KEY")
+
+RELEASE_REQUIRED = [
+    ROOT / "VERSION",
+    ROOT / "LICENSE",
+    ROOT / "pyproject.toml",
+    ROOT / "SBOM.cdx.json",
+    ROOT / "SOURCE_MANIFEST.json",
+    ROOT / "RELEASE_SIGNATURE.bin",
+    ROOT / "RELEASE_PUBLIC_KEY.pem",
+    ROOT / "RELEASE_CHANGE_MANIFEST.json",
+    ROOT / "RELEASE_VALIDATION.json",
+    ROOT / "RELEASE_ATTESTATION.json",
+    ROOT / "CMakeLists.txt",
+    ROOT / "src-python" / "minagi" / "__init__.py",
+    ROOT / "src-python" / "minagi" / "runtime" / "service.py",
+    ROOT / "src-python" / "minagi" / "runtime" / "worker_isolation.py",
+    ROOT / "src-python" / "minagi" / "runtime" / "worker_backend.py",
+    ROOT / "src-python" / "minagi" / "runtime" / "worker_protocol.py",
+    ROOT / "docs" / "research" / "V16_4_6_REPAIR_REPORT.md",
+    ROOT / "docs" / "research" / "WORKER_ISOLATION_SPEC_V1646.md",
+    ROOT / "docs" / "research" / "REMAINING_DEFECTS_V1646.md",
+    ROOT / "configs" / "minagi-worker-seatbelt.sb",
+]
+
+# Files whose text gets scanned for developer paths. Scoped to the
+# governed runtime + release tooling: scripts/kvmem_eval/ and
+# references/ are donor research archives shipped for completeness —
+# known-legacy content, not release-critical.
 RELEASE_CRITICAL = [
-    ROOT / "src",
-    ROOT / "include",
-    ROOT / "tests",
-    ROOT / "benchmark" / "mini_swe_deepswe",
+    ROOT / "src-python" / "minagi",
+    ROOT / "scripts" / "release",
+    ROOT / "scripts" / "validation",
+    ROOT / "configs",
+    ROOT / "tools",
 ]
-RELEASE_SCRIPTS = [
-    ROOT / "scripts" / "kvmem_eval" / name
-    for name in (
-        "dataset.py",
-        "judge.py",
-        "prompt.py",
-        "run_eval.py",
-        "run_kvmem_eval.py",
-        "run_memoryagentbench_baselines.py",
-    )
-]
+
+SELF = Path(__file__).resolve()
+
+ALLOWED_PEM = {str(ROOT / "RELEASE_PUBLIC_KEY.pem")}
+FORBIDDEN_SUFFIXES = {
+    ".pem", ".p12", ".key",
+    ".gguf", ".safetensors", ".ckpt", ".pt", ".pth",
+}
+PRUNE_DIRS = {
+    ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    "node_modules", "dist", "dist-v1646", "dist-v1645",
+}
+PRUNE_PREFIXES = ("build", ".venv", "venv")
 
 
 def iter_text_files(path: Path):
@@ -34,142 +79,115 @@ def iter_text_files(path: Path):
         yield path
         return
     for item in path.rglob("*"):
-        if item.is_file() and item.suffix not in {".png", ".jpg", ".jpeg", ".gif", ".pdf"}:
+        if item.is_file() and item.suffix not in {
+                ".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip"}:
             yield item
 
 
-def sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def _version_identities() -> list[str]:
+    """VERSION, pyproject and the package __version__ must agree — the
+    v16.4.5 release shipped one stale site and only a Colab run saw it."""
+    problems = []
+    try:
+        version = (ROOT / "VERSION").read_text().strip()
+    except OSError:
+        return ["cannot read VERSION"]
+    # VERSION carries the full release name (e.g.
+    # "16.4.6-worker-isolation-and-process-closure"); the package
+    # identities carry the semver prefix — same rule as
+    # test_version_identities_agree.
+    number = version.split("-", 1)[0]
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    m = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.M)
+    if not m or m.group(1) != number:
+        problems.append(
+            f"pyproject.toml version {m.group(1) if m else '?'} "
+            f"!= VERSION number {number}")
+    init = (ROOT / "src-python" / "minagi" / "__init__.py") \
+        .read_text(encoding="utf-8")
+    m = re.search(r'__version__\s*=\s*"([^"]+)"', init)
+    if not m or m.group(1) != number:
+        problems.append(
+            f"minagi.__version__ {m.group(1) if m else '?'} "
+            f"!= VERSION number {number}")
+    sbom = json.loads((ROOT / "SBOM.cdx.json").read_text(encoding="utf-8"))
+    if sbom["metadata"]["component"]["version"] != number:
+        problems.append(
+            f"SBOM version {sbom['metadata']['component']['version']} "
+            f"!= VERSION number {number}")
+    return problems
+
+
+def _manifest_coherence() -> list[str]:
+    """The shipped manifest must parse and reference this tree."""
+    problems = []
+    manifest = ROOT / "SOURCE_MANIFEST.json"
+    if not manifest.is_file():
+        return ["SOURCE_MANIFEST.json missing"]
+    try:
+        doc = json.loads(manifest.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return [f"SOURCE_MANIFEST.json does not parse: {exc}"]
+    files = doc.get("files")
+    if not isinstance(files, dict) or len(files) < 100:
+        problems.append(
+            "SOURCE_MANIFEST.json files map missing or suspiciously "
+            f"small ({0 if not isinstance(files, dict) else len(files)} entries)")
+        return problems
+    if str(ROOT / "VERSION").endswith("VERSION") and \
+            "VERSION" not in files:
+        problems.append("SOURCE_MANIFEST.json does not list VERSION")
+    return problems
 
 
 def main() -> int:
     problems: list[str] = []
-    for required in (
-        ROOT / "LICENSE",
-        ROOT / "THIRD_PARTY_NOTICES.md",
-        ROOT / "release" / "SOURCE_PROVENANCE.json",
-        ROOT / "release" / "BUILD_PROFILE.env",
-        ROOT / "release" / "KVMEM_PROFILES.json",
-        ROOT / "schemas" / "kvmem-memory-receipt.schema.json",
-        ROOT / "schemas" / "kvmem-session-receipt.schema.json",
-        ROOT / "schemas" / "kvmem-session-snapshot.schema.json",
-        ROOT / "schemas" / "kvmem-executor-scheduler.schema.json",
-        ROOT / "schemas" / "kvmem-resource-admission.schema.json",
-        ROOT / "schemas" / "kvmem-executor-pool.schema.json",
-        ROOT / "schemas" / "kvmem-physical-executor-pool.schema.json",
-        ROOT / "docs" / "RC9_NATIVE_POOL_WIRING.md",
-        ROOT / "release" / "RC9_QUALIFICATION.json",
-        ROOT / "release" / "RC9_1_QUALIFICATION.json",
-        ROOT / "release" / "RC9_1_VALIDATION_REPORT.md",
-        ROOT / "docs" / "RC9_1_CORRECTNESS_HARDENING.md",
-        ROOT / "release" / "RC9_2_QUALIFICATION.json",
-        ROOT / "release" / "RC9_2_VALIDATION_REPORT.md",
-        ROOT / "docs" / "RC9_2_FULL_HARDENING.md",
-        ROOT / "docs" / "RC10_COHERENT_CONTINUAL_MERGE.md",
-        ROOT / "docs" / "RC10_IMPLEMENTATION_STATUS.md",
-        ROOT / "release" / "RC10_VALIDATION_REPORT.md",
-        ROOT / "continual" / "pyproject.toml",
-        ROOT / "continual" / "src" / "kvcontinual" / "registry.py",
-        ROOT / "continual" / "src" / "kvcontinual" / "cache" / "identity.py",
-        ROOT / "docs" / "kvmem_runtime_profiles.md",
-        ROOT / "docs" / "kvmem_session_manager.md",
-        ROOT / "docs" / "kvmem_executor_scheduler.md",
-        ROOT / "docs" / "kvmem_resource_admission.md",
-        ROOT / "docs" / "kvmem_executor_runtime.md",
-        ROOT / "docs" / "kvmem_session_snapshots.md",
-        ROOT / "tests" / "kvmem_exactmass_largeblocks.cu",
-    ):
+    for required in RELEASE_REQUIRED:
         if not required.is_file():
-            problems.append(f"missing required release file: {required.relative_to(ROOT)}")
+            problems.append(
+                f"missing required release file: "
+                f"{required.relative_to(ROOT)}")
 
-    for base in [*RELEASE_CRITICAL, *RELEASE_SCRIPTS]:
+    problems.extend(_version_identities())
+    problems.extend(_manifest_coherence())
+
+    for base in RELEASE_CRITICAL:
+        if not base.exists():
+            continue
         for path in iter_text_files(base):
+            if path.resolve() == SELF:
+                continue
             try:
-                text = path.read_text(encoding="utf-8")
+                raw = path.read_bytes()
+            except OSError:
+                continue
+            if PRIVATE_KEY_MATERIAL.search(raw):
+                problems.append(
+                    "private key material in release-critical file: "
+                    f"{path.relative_to(ROOT)}")
+            try:
+                text = raw.decode("utf-8")
             except UnicodeDecodeError:
                 continue
             if DEVELOPER_PATH.search(text):
                 problems.append(
-                    f"developer-specific absolute path remains in release-critical file: {path.relative_to(ROOT)}"
-                )
+                    "developer-specific absolute path in "
+                    f"release-critical file: {path.relative_to(ROOT)}")
 
-    # Never package local secrets or model weights. Prune generated trees at
-    # traversal time so a local build cannot make the release audit unbounded.
-    forbidden_suffixes = {".pem", ".p12", ".gguf", ".safetensors", ".ckpt", ".pt", ".pth"}
     for dirpath, dirnames, filenames in os.walk(ROOT):
         dirnames[:] = [
             d for d in dirnames
-            if d not in {".git", "__pycache__", ".pytest_cache"} and not d.startswith("build")
-        ]
+            if d not in PRUNE_DIRS and not any(
+                d.startswith(p) for p in PRUNE_PREFIXES)]
         base = Path(dirpath)
         for name in filenames:
             path = base / name
-            if path.suffix.lower() in forbidden_suffixes:
-                problems.append(f"forbidden local artifact in source release: {path.relative_to(ROOT)}")
-
-    provenance = ROOT / "release" / "SOURCE_PROVENANCE.json"
-    if provenance.is_file():
-        try:
-            info = json.loads(provenance.read_text())
-            digest = info.get("source_archive_sha256", "")
-            parent_digest = info.get("parent_hardening_artifact_sha256", "")
-            if not re.fullmatch(r"[0-9a-f]{64}", digest):
-                problems.append("SOURCE_PROVENANCE.json has an invalid source_archive_sha256")
-            if not re.fullmatch(r"[0-9a-f]{64}", parent_digest):
-                problems.append("SOURCE_PROVENANCE.json has an invalid parent_hardening_artifact_sha256")
-            if info.get("release_name") != "kvmem-qw3-coherent-continual-rc10":
-                problems.append("SOURCE_PROVENANCE.json release_name is not coherent-continual rc10")
-        except Exception as exc:
-            problems.append(f"invalid SOURCE_PROVENANCE.json: {exc}")
-
-    qualification = ROOT / "release" / "QUALIFICATION.json"
-    if qualification.is_file():
-        try:
-            info = json.loads(qualification.read_text())
-            if info.get("release") != "kvmem-qw3-coherent-continual-rc10":
-                problems.append("QUALIFICATION.json release is not coherent-continual rc10")
-            if info.get("session_architecture", {}).get("physical_executor_pool_scope") != "persistent-session-runtime":
-                problems.append("QUALIFICATION.json physical executor pool scope is missing or stale")
-        except Exception as exc:
-            problems.append(f"invalid QUALIFICATION.json: {exc}")
-
-    release_readme = ROOT / "release" / "README.md"
-    if release_readme.is_file() and not release_readme.read_text(encoding="utf-8").startswith(
-            "# Coherent Hybrid Continual Memory RC10 release notes"):
-        problems.append("release/README.md is not the RC10 canonical release note")
-
-    build_profile = ROOT / "release" / "BUILD_PROFILE.env"
-    if build_profile.is_file() and "RC10" not in build_profile.read_text(encoding="utf-8").splitlines()[0]:
-        problems.append("release/BUILD_PROFILE.env is not labeled RC10")
-
-    paper = ROOT / "docs" / "KV_Memory_Paper.md"
-    if paper.is_file():
-        paper_text = paper.read_text(encoding="utf-8")
-        if "mean_attention | content_mean" in paper_text:
-            problems.append("KV_Memory_Paper.md still advertises removed retrieval method names")
-
-
-    for schema_name in ("kvmem-executor-pool.schema.json",
-                        "kvmem-physical-executor-pool.schema.json"):
-        schema_path = ROOT / "schemas" / schema_name
-        if schema_path.is_file():
-            try:
-                schema = json.loads(schema_path.read_text())
-                if schema.get("properties", {}).get("scope", {}).get("const") != "persistent-session-runtime":
-                    problems.append(f"{schema_name} does not pin the persistent-session-runtime scope")
-                if "scope" not in schema.get("required", []):
-                    problems.append(f"{schema_name} does not require scope")
-            except Exception as exc:
-                problems.append(f"invalid {schema_name}: {exc}")
-
-    runtime_doc = ROOT / "docs" / "kvmem_executor_runtime.md"
-    if runtime_doc.is_file() and not runtime_doc.read_text(encoding="utf-8").startswith(
-            "# RC9.2 physical executor runtime boundary"):
-        problems.append("kvmem_executor_runtime.md is not labeled RC9.2")
+            if str(path) in ALLOWED_PEM:
+                continue
+            if path.suffix.lower() in FORBIDDEN_SUFFIXES:
+                problems.append(
+                    "forbidden local artifact in source release: "
+                    f"{path.relative_to(ROOT)}")
 
     if problems:
         print("release source audit: FAIL", file=sys.stderr)

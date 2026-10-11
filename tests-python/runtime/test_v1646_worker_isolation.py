@@ -7,6 +7,7 @@ honestly on unprivileged hosts — they qualify on the Linux/Colab
 root profile, never silently.
 """
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -21,7 +22,7 @@ from minagi.runtime.worker_isolation import (  # noqa: E402
     IsolationError, WorkerIsolationPolicy, WorkerProcessController,
     descendants_of, make_worker_scratch, new_worker_unit,
     production_policy, supported, tmp_is_private, validate_isolation,
-    worker_unit_env)
+    worker_unit_env, wrap_argv)
 from minagi.runtime.worker_protocol import (  # noqa: E402
     MAX_OVERFLOW_BYTES, OverflowRef, ProtocolRefused,
     WorkerProtocolError, read_overflow, write_overflow)
@@ -522,3 +523,124 @@ def test_worker_backend_preserves_enforcement_flags_on_env_merge():
     assert merged.isolation.require_separate_identity
     assert merged.isolation.require_process_containment
     assert merged.isolation.demote_to == (65534, 65534)
+
+
+# ---------- v16.4.6 follow-on: kqueue tracking + seatbelt containment --------
+
+def test_kqueue_tracker_follows_detached_descendant():
+    """On hosts whose kernel honours NOTE_TRACK, the tracker records a
+    descendant that setsid+reparents+scrubs its environment — the exact
+    escape class the ppid graph and env marker cannot see. Skips where
+    the kernel refuses registration (Darwin >= 25 returns EOPNOTSUPP;
+    the seatbelt profile is the mechanism there)."""
+    from minagi.runtime.worker_isolation import (
+        KqueueDescendantTracker, kqueue_tracking_supported)
+    if not kqueue_tracking_supported():
+        pytest.skip("kernel refuses NOTE_TRACK on this host")
+    code = (
+        "import os,time\n"
+        "pid=os.fork()\n"
+        "if pid==0:\n"
+        "    os.setsid(); p2=os.fork()\n"
+        "    if p2>0: os._exit(0)\n"
+        "    os.execve('/bin/sleep',['sleep','30'],{'PATH':'/bin'})\n"
+        "time.sleep(30)\n")
+    proc = subprocess.Popen([sys.executable, "-c", code],
+                            start_new_session=True,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+    tracker = KqueueDescendantTracker.attach(proc.pid)
+    assert tracker is not None
+    try:
+        deadline = time.monotonic() + 5.0
+        while not tracker.live_pids() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        live = tracker.live_pids()
+        assert live, "tracker never saw the detached descendant"
+        assert live - descendants_of(proc.pid), \
+            "descendant should be invisible to ancestry but tracked"
+        for pid in live:
+            try:
+                os.kill(pid, 9)
+            except OSError:
+                pass
+    finally:
+        proc.kill()
+        proc.wait()
+        tracker.close()
+
+
+def test_validate_containment_needs_a_real_mechanism(monkeypatch):
+    """process_containment refuses on a host with group control but no
+    /proc, no kqueue, and no sandbox profile — never silently claimed."""
+    import minagi.runtime.worker_isolation as wi
+    caps = wi.supported()
+    caps["proc_fs"] = False
+    caps["kqueue_tracking"] = False
+    caps["sandbox_exec"] = False
+    monkeypatch.setattr(wi, "supported", lambda: caps)
+    with pytest.raises(IsolationError):
+        validate_isolation(WorkerIsolationPolicy(
+            require_process_containment=True))
+
+
+def test_validate_containment_accepts_sandbox_profile(monkeypatch):
+    """A seatbelt profile + sandbox-exec counts as descendant
+    containment even without /proc or kqueue — fork denial prevents
+    descendants outright."""
+    import minagi.runtime.worker_isolation as wi
+    caps = wi.supported()
+    caps["proc_fs"] = False
+    caps["kqueue_tracking"] = False
+    caps["sandbox_exec"] = True
+    monkeypatch.setattr(wi, "supported", lambda: caps)
+    profile = Path(__file__).resolve().parents[2] / \
+        "configs" / "minagi-worker-seatbelt.sb"
+    rep = validate_isolation(WorkerIsolationPolicy(
+        require_process_containment=True,
+        sandbox_profile=str(profile)))
+    assert "process_containment" in rep["mechanisms"]
+
+
+def test_seatbelt_profile_denies_fork_network_and_writes(tmp_path):
+    """The shipped reference profile is exercised for real: under it a
+    worker cannot fork, posix_spawn, open a socket, or write outside
+    its scratch — but the interpreter runs."""
+    if not supported()["sandbox_exec"]:
+        pytest.skip("sandbox-exec absent on this host")
+    profile = Path(__file__).resolve().parents[2] / \
+        "configs" / "minagi-worker-seatbelt.sb"
+    scratch = tmp_path / "wscratch"
+    scratch.mkdir()
+    policy = WorkerIsolationPolicy(sandbox_profile=str(profile))
+    argv, rendered = wrap_argv(
+        [sys.executable, "-c",
+         "import os,sys\n"
+         "ok=[]\n"
+         "try: os.fork(); ok.append('fork')\n"
+         "except OSError: pass\n"
+         "import subprocess\n"
+         "try: subprocess.run(['/bin/true']); ok.append('spawn')\n"
+         "except OSError: pass\n"
+         "import socket\n"
+         "try: socket.create_connection(('8.8.8.8',53),1); ok.append('net')\n"
+         "except OSError: pass\n"
+         f"try: open('{tmp_path}/esc.txt','w'); ok.append('wesc')\n"
+         "except OSError: pass\n"
+         f"open('{scratch}/in.txt','w'); ok.append('wscratch')\n"
+         "print('LEAKS:',ok)\n"],
+        policy, render_vars={"SCRATCH": str(scratch)})
+    try:
+        out = subprocess.run(argv, capture_output=True, text=True,
+                             timeout=60)
+        assert "LEAKS" in out.stdout, \
+            f"sandboxed worker did not run: {out.stderr[:400]}"
+        leaks = eval(out.stdout.split("LEAKS:")[1].strip())
+        assert "wscratch" in leaks
+        assert not ({'fork', 'spawn', 'net', 'wesc'} & set(leaks)), \
+            f"sandbox leaked: {leaks} stderr={out.stderr[:300]}"
+        assert not (tmp_path / "esc.txt").exists()
+        assert (scratch / "in.txt").exists()
+    finally:
+        if rendered:
+            os.unlink(rendered)
