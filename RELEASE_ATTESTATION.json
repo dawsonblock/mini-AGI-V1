@@ -54,7 +54,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "f9c93ae91b0247f39bbb2c903de7374fde638edbb8ed935677d575aba454599b",
+ "manifest_sha256": "ad371f84b95f04302f732946671ec261147d0d96c99f3677c1fc9809e804fadf",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -268,9 +268,14 @@
    "manifest_sha256": "f9c93ae91b0247f39bbb2c903de7374fde638edbb8ed935677d575aba454599b",
    "reason": "v16.4.6 worker isolation and process closure: separate worker OS identity enforced for production, verified process-tree termination, bounded worker error codes (no dynamic exception classes), descriptor-pinned overflow reads, production startup wiring with manifest backend_id. 946 passed, 4 skipped.",
    "utc": "2026-10-11T02:57:02.314311Z"
+  },
+  {
+   "manifest_sha256": "ad371f84b95f04302f732946671ec261147d0d96c99f3677c1fc9809e804fadf",
+   "reason": "v16.4.6 manifest re-issued after build-script rename (verify_final_package names the v16.4.6 artifact)",
+   "utc": "2026-10-11T02:57:56.931992Z"
   }
  ],
- "reissued_utc": "2026-10-11T02:57:02.314311Z",
+ "reissued_utc": "2026-10-11T02:57:56.931992Z",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
