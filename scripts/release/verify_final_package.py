@@ -185,8 +185,8 @@ def main() -> int:
                       if p.is_file() and not p.is_symlink())
     manifest = {"schema_version": 1, "hash_algorithm": "sha256",
                 "release": "mini-AGI-Campaign3A-Evidence",
-                "files": {p.relative_to(ev_root).as_posix(): _sha(p)
-                          for p in ev_files}}
+                "files": {f"{EVIDENCE_ROOT}/{p.relative_to(ev_root).as_posix()}":
+                          _sha(p) for p in ev_files}}
     provenance = {
         "schema": "mini-agi-evidence-provenance-v1",
         "campaign": "3A",
