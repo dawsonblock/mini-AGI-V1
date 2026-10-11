@@ -361,7 +361,7 @@
   "threat_model": "docs/research/THREAT_MODEL_V1645.md"
  },
  "signature_algorithm": "Ed25519",
- "status": "v16.4.6 worker isolation and process closure: SEC-501..504 and VAL-501 closed; G1-G6+G8; 946 passed, 4 skipped",
+ "status": "v16.4.6 worker isolation and process closure: SEC-501..504 and VAL-501 closed; G1-G6+G8 met; G7 real-model matrix -> v16.4.7; G9 not claimed; 946 passed, 4 skipped",
  "worker_isolation_v1646": {
   "defects_closed": [
    "SEC-501",

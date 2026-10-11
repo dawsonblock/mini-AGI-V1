@@ -440,13 +440,16 @@ def test_demoted_worker_cannot_read_supervisor_files(tmp_path):
     # files must be readable by the worker identity (production stages
     # them under a group/world-readable artifact root). `protected`
     # deliberately stays 0700.
-    snap = _snapshot(tmp_path)
-    tmp_path.chmod(0o755)
-    for p in (tmp_path / "snap").rglob("*"):
+    import tempfile
+    snap_root = Path(tempfile.mkdtemp(prefix="minagi-v1646-snap-"))
+    snap_root.chmod(0o755)
+    snap = _snapshot(snap_root)
+    for p in (snap_root / "snap").rglob("*"):
         p.chmod(0o755 if p.is_dir() else 0o644)
-    for p in (tmp_path / "ad").rglob("*"):
+    for p in (snap_root / "snap", snap_root / "ad"):
+        p.chmod(0o755)
+    for p in (snap_root / "ad").rglob("*"):
         p.chmod(0o755 if p.is_dir() else 0o644)
-    (tmp_path / "ad").chmod(0o755)
     h = backend.load(snap)
     report = backend.infer(h, {
         "paths": [str(key), str(db)],
