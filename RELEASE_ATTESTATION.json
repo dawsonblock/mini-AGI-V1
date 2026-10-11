@@ -37,6 +37,12 @@
   "results_tip": "2f75ffb82df9ab1c914747814bda93c4b72116d7",
   "seeds_positive": "5/5"
  },
+ "colab_t4_qualification": {
+  "files_verified": 1517,
+  "python_tests": "891 passed, 20 skipped (platform-unavailable), 0 failed",
+  "real_model_e2e": "PASS on T4 via PeftServingBackend",
+  "status": "PASS"
+ },
  "colab_validation": {
   "cuda": "13.0",
   "date_utc": "2026-10-06",
@@ -48,7 +54,7 @@
  },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "93c844c5127b054167dfe7e21765ef4cf081326665e7aa96c555fb1802e64bdf",
+ "manifest_sha256": "9153d0f3f24988a1c7473e28385604c5899d7d4e086f2ed3ce8554bdcd6b78d7",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
@@ -252,9 +258,14 @@
    "manifest_sha256": "93c844c5127b054167dfe7e21765ef4cf081326665e7aa96c555fb1802e64bdf",
    "reason": "package __version__/SBOM bumped to 16.4.5 (version-identity test caught post-bump drift on Colab)",
    "utc": "2026-10-11T00:06:12.294105Z"
+  },
+  {
+   "manifest_sha256": "9153d0f3f24988a1c7473e28385604c5899d7d4e086f2ed3ce8554bdcd6b78d7",
+   "reason": "Colab T4 qualification recorded (release verify PASS; 891/20/0; real-model e2e PASS)",
+   "utc": "2026-10-11T00:22:41.749960Z"
   }
  ],
- "reissued_utc": "2026-10-11T00:06:12.294105Z",
+ "reissued_utc": "2026-10-11T00:22:41.749960Z",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
