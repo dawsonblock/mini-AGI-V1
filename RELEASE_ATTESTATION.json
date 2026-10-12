@@ -68,7 +68,7 @@
     "qualification": "macOS suite green; Linux boundary run pending",
     "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
   },
-  "manifest_sha256": "a4facee7ccb15f35dc4c80ca1eb690d126b81fbaec799ab397a1cb9b61689be6",
+  "manifest_sha256": "41e16a041f8f137d9dbe22e854118f4f9c4448637b2d76ed90e1d697dfcc1f4e",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "999 passed, 14 skipped, 0 failed (macOS)",
@@ -344,9 +344,14 @@
       "utc": "2026-10-12T20:01:49Z",
       "manifest_sha256": "a4facee7ccb15f35dc4c80ca1eb690d126b81fbaec799ab397a1cb9b61689be6",
       "reason": "v16.4.9 independent-audit repairs SEC-801..805 + strict-preflight qualification rerun PASS (distinct worker uid 65534, 7/7 adversarial)"
+    },
+    {
+      "utc": "2026-10-12T20:47:30Z",
+      "manifest_sha256": "41e16a041f8f137d9dbe22e854118f4f9c4448637b2d76ed90e1d697dfcc1f4e",
+      "reason": "v16.4.9 final: G10 real-model lifecycle qualified inside the jail + rlimit_as resource-boundary fix"
     }
   ],
-  "reissued_utc": "2026-10-12T20:01:49Z",
+  "reissued_utc": "2026-10-12T20:47:30Z",
   "reissues": [
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
