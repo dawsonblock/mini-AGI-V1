@@ -23,15 +23,14 @@ from __future__ import annotations
 
 import os
 import secrets
-from pathlib import Path
 
 from .isolation_profile import IsolationProfile
 from .worker_executor import (ExecutorRefused, LaunchedWorker,
                               TerminationReport, WorkerDirs)
-from .worker_isolation import WorkerIsolationPolicy, make_private_tmp
+from .worker_isolation import WorkerIsolationPolicy
 from .worker_launch_broker import (BrokerError, BrokerRefused,
                                    LaunchWorkerRequest,
-                                   SystemdClient, WorkerLaunchBroker)
+                                   WorkerLaunchBroker)
 
 
 class NsJailWorkerExecutor:

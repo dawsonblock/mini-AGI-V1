@@ -31,7 +31,6 @@ exit; teardown is ``systemctl stop`` verified by
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 import secrets
@@ -42,8 +41,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from .isolation_profile import (IsolationProfile, MountSpec,
-                                ProfileRefused, resolve_mounts)
+from .isolation_profile import MountSpec, resolve_mounts
 from .nsjail_config import config_digest, render_config
 
 
