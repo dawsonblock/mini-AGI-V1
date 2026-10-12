@@ -1,0 +1,11 @@
+{
+  "release": "mini-AGI-V1-v16.4.10-Containment-and-Authority-Closure",
+  "zip_sha256": "5487c472f0c4ab2efd5ff3c058918d84531ee9759817632996c49cfa15b8f258",
+  "manifest_sha256": "dc89f32cca5ec1bcaf6a73039032dd7eda3b37db8271a71f314391552b6ee8d3",
+  "files_verified": 1553,
+  "key_fingerprint": "sha256:0f9d735812c99a583574a0157697f37b8b3373d34ab05d659638a88c0f5cb0eb",
+  "zip_crc": "PASS (unzip -t: no errors)",
+  "verify_release": "PASS on clean extraction",
+  "built_utc": "2026-10-12",
+  "note": "bare-metal/GPU qualification outstanding — see docs/security/LINUX_HOST_QUALIFICATION.md"
+}
