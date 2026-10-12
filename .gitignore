@@ -106,3 +106,6 @@ colab-evidence/
 
 dist-v1645/
 dist-v1646/
+
+# derived hash listing — regenerable, not governed source
+release/

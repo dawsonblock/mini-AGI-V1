@@ -1,199 +1,152 @@
 {
- "audit_mapping": {
-  "cold_restoration_reactivates_revoked_promotion": "SEC-402 (closed)",
-  "controller_accepts_unsupported_prerequisite_evidence": "SEC-005 (closed)",
-  "controller_can_recommend_negative_utility": "SEC-006 (closed)",
-  "governed_file_manifest_mismatches_and_unmanifested_evidence": "SEC-403 (closed)",
-  "multiprocessing_test_not_importable_under_spawn": "SEC-404 (closed)",
-  "real_model_learning_and_serving_qualification_incomplete": "SEC-007 (open, v16.4.6 platform qualification target)",
-  "supervisor_deserializes_worker_pickle": "SEC-401 (closed)",
-  "worker_shares_supervisor_os_identity": {
-   "status": "closed-v16.4.6",
-   "severity": "P0",
-   "repair": "SEC-501",
-   "evidence": "demoted-worker access-probe tests + fail-closed production policy"
+  "audit_mapping": {
+    "issue_register": "docs/security/ISSUE_REGISTER_V1648.md",
+    "repair_report": "docs/security/V16_4_8_REPAIR_REPORT.md",
+    "threat_model": "docs/security/WORKER_THREAT_MODEL.md"
   },
-  "worker_termination_leaves_subprocesses": {
-   "status": "closed-v16.4.6",
-   "severity": "P1",
-   "repair": "SEC-502",
-   "evidence": "zero-survivor process-tree tests incl. detached/SIGTERM-ignoring descendants"
+  "base_version": "16.4.7",
+  "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.6/16.4.7 (repairs SEC-301..SEC-504, VAL-501 remain in effect)",
+  "evidence": {
+    "gate_status": "G1-G4 + G10 verified on real Linux boundary (containered systemd 252 + cgroup v2 + NsJail, uid 65534 worker); G5-G9 verified by tests/envelope",
+    "linux_boundary": "test_v1648_linux_nsjail.py 7/7 PASS + test_v1649_real_model_nsjail.py 2/2 PASS (real GPT2+LoRA load/infer/cancel/switch inside the jail); strict preflight qualified=true; net:LISTENER connect-denied; rlimit_as cap found and replaced by cgroup MemoryMax",
+    "nsjail_binary": "pinned commit 4ff54a6e0d5b65a0e1633d6e2fd1425ba6c882ce; sha256:a9408ab22219cb71e9e6d8ff571a594983d098df0acf1e4447494cfa0c1b3af8",
+    "python_tests": "full suite 1007 passed / 16 skipped / 0 failed (macOS); Linux container: 7/7 adversarial + 2/2 real-model"
   },
-  "worker_error_can_raise_systemexit_in_supervisor": {
-   "status": "closed-v16.4.6",
-   "severity": "P1",
-   "repair": "SEC-503",
-   "evidence": "bounded error codes; dynamic exception resolution removed"
+  "file_changes": [
+    {
+      "change": "SEC-701 CapEff honesty, SEC-705 Darwin-gated seatbelt, _unprivileged_userns, policy_digest",
+      "path": "src-python/minagi/runtime/worker_isolation.py"
+    },
+    {
+      "change": "new: frozen minagi-isolation-profile-v1 contract, strict from_doc, with_runtime whitelist, resolve_mounts with denied_paths",
+      "path": "src-python/minagi/runtime/isolation_profile.py"
+    },
+    {
+      "change": "new: deterministic nsjail textproto generator + config_digest",
+      "path": "src-python/minagi/runtime/nsjail_config.py"
+    },
+    {
+      "change": "new: WorkerExecutor protocol, LaunchedWorker, TerminationReport, DevelopmentWorkerExecutor",
+      "path": "src-python/minagi/runtime/worker_executor.py"
+    },
+    {
+      "change": "new: restricted launch broker \u2014 digest validation, nonce replay refusal, workspace, exact systemd-run argv, cgroup resolution, verified teardown",
+      "path": "src-python/minagi/runtime/worker_launch_broker.py"
+    },
+    {
+      "change": "new: production executor binding profile digest + manifest/artifact digests to the launch",
+      "path": "src-python/minagi/runtime/nsjail_executor.py"
+    },
+    {
+      "change": "new: real-enforcement probe (in-jail identity, namespaces, fs, net, detached child) + grader",
+      "path": "src-python/minagi/runtime/isolation_preflight.py"
+    },
+    {
+      "change": "launch/teardown delegated to the executor; digest binding forwarded; _teardown preserves synthetic-handle tests",
+      "path": "src-python/minagi/runtime/worker_backend.py"
+    },
+    {
+      "change": "--worker-executor/--isolation-profile/--nsjail-*/--worker-state-root/--worker-user-manager; production requires nsjail, refuses insecure fallbacks",
+      "path": "src-python/minagi/runtime/service.py"
+    },
+    {
+      "change": "documented as development-executor path only",
+      "path": "src-python/minagi/runtime/worker_launcher.py"
+    },
+    {
+      "change": "new: frozen production isolation profile",
+      "path": "configs/isolation/linux-production-offline-v1.json"
+    },
+    {
+      "change": "new: 42 regression tests (SEC-701/703/705, profile, config, broker, executor, gating, preflight)",
+      "path": "tests-python/runtime/test_v1648_executor_isolation.py"
+    },
+    {
+      "change": "new: 7 Linux-gated real-boundary tests (G1-G4)",
+      "path": "tests-python/runtime/test_v1648_linux_nsjail.py"
+    },
+    {
+      "change": "new: host_check.sh, build_nsjail.sh (pinned), run_nsjail_qualification.sh",
+      "path": "scripts/qualification/"
+    },
+    {
+      "change": "new: repair report, threat model, nsjail config, host qualification, adversarial results, real-model lifecycle, remaining defects, issue register",
+      "path": "docs/security/"
+    },
+    {
+      "change": "qualification: as-spelled mount dsts, non-absolute dst refused, nonexistent runtime srcs skipped, covered same-permission child mounts dropped, parents first",
+      "path": "src-python/minagi/runtime/isolation_profile.py"
+    },
+    {
+      "change": "qualification: cgroup v2 occupancy reads cgroup.events.populated (cgroup.procs fallback); python_path_entries normalized + actually mounted",
+      "path": "src-python/minagi/runtime/worker_launch_broker.py"
+    },
+    {
+      "change": "qualification: probe hold window for live-cgroup verification; detached child reports /proc/self/cgroup",
+      "path": "src-python/minagi/runtime/isolation_preflight.py"
+    },
+    {
+      "change": "load() passes admitted snapshot root via executor.launch(extra_ro) into the jail mount set",
+      "path": "src-python/minagi/runtime/worker_backend.py"
+    },
+    {
+      "change": "launch() gains extra_ro kwarg; dev executor ignores it (host-readable by design)",
+      "path": "src-python/minagi/runtime/worker_executor.py"
+    },
+    {
+      "change": "extra_ro merged into broker-screened ro mounts",
+      "path": "src-python/minagi/runtime/nsjail_executor.py"
+    },
+    {
+      "change": "recorded: containered-Linux qualification PASS + defects found/fixed",
+      "path": "docs/security/LINUX_HOST_QUALIFICATION.md"
+    },
+    {
+      "change": "v16.4.9: SEC-801 cgroup.events strict occupancy; SEC-803 launch refusal without verified cgroup + _abort_launch; stderr log capture; checked stop/kill rc; atomic nonce O_EXCL; strict authority digests; workspace 0711 traversal",
+      "path": "src-python/minagi/runtime/worker_launch_broker.py"
+    },
+    {
+      "change": "v16.4.9: SEC-802 ancestor-mount denial (src containing denied path refused); memory_mb docstring corrected (cgroup MemoryMax, not rlimit_as)",
+      "path": "src-python/minagi/runtime/isolation_profile.py"
+    },
+    {
+      "change": "v16.4.9: rlimit_as_type INF (virtual-AS cap wrongly starves mmap-based model runtimes; MemoryMax is the authority); TOKENIZERS_PARALLELISM et al env allowlist",
+      "path": "src-python/minagi/runtime/nsjail_config.py"
+    },
+    {
+      "change": "v16.4.9: SEC-804 strict grading \u2014 every mandatory property requires measured evidence; net:LISTENER positive control",
+      "path": "src-python/minagi/runtime/isolation_preflight.py"
+    },
+    {
+      "change": "v16.4.9: real budget digest bound; worker launches require manifest digest (no zero fallback)",
+      "path": "src-python/minagi/runtime/nsjail_executor.py"
+    },
+    {
+      "change": "v16.4.9: G10 real HF/PEFT lifecycle inside the jail (Linux-gated)",
+      "path": "tests-python/runtime/test_v1649_real_model_nsjail.py"
+    },
+    {
+      "change": "v16.4.9: SEC-801..805 regression tests; FakeSystemd cgroup.events; zombie-aware teardown waits",
+      "path": "tests-python/runtime/test_v1648_executor_isolation.py"
+    }
+  ],
+  "release": "mini-AGI-V1-v16.4.9-Containment-Verification-and-Runtime-Qualification",
+  "remaining_defects": {
+    "ipc_transport": "systemd-run --pipe (not a dedicated unix socket) \u2014 recorded decision",
+    "qualification": "Linux run not yet executed \u2014 G1-G4, G10 unclaimed",
+    "seccomp": "nsjail built-in default policy; kafel policy is deployment-specific future work"
   },
-  "overflow_result_toctou": {
-   "status": "closed-v16.4.6",
-   "severity": "P1",
-   "repair": "SEC-504",
-   "evidence": "pinned dir fd + O_NOFOLLOW + same-descriptor validate/read"
+  "repairs": {
+    "SEC-701": "capability detection reads /proc/self/status CapEff; root no longer short-circuits",
+    "SEC-702": "custom pivot_root launcher replaced by NsJail on the production path",
+    "SEC-703": "frozen IsolationProfile + with_runtime whitelist + policy_digest bound to launch",
+    "SEC-704": "kernel-owned containment: systemd KillMode=control-group; cgroup.populated==0 is the emptiness claim",
+    "SEC-705": "sandbox-exec credited only on Darwin; refused elsewhere",
+    "SEC-706": "broker-computed bind mounts (runtime ro / artifacts ro / scratch rw at /work) with denied-path screening",
+    "SEC-707": "release metadata regenerated from final source (manifest re-signed, attestation+validation reconciled)"
   },
-  "production_startup_uses_permissive_isolation": {
-   "status": "closed-v16.4.6",
-   "severity": "P1",
-   "repair": "VAL-501",
-   "evidence": "resolve_worker_policy fail-closed + manifest backend_id"
-  }
- },
- "base_version": "16.4.5",
- "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.5 (repairs SEC-301..SEC-404 remain in effect)",
- "evidence": {
-  "test_suite": "946 passed, 4 skipped (macOS dev host)",
-  "skips": "Linux-only RLIMIT_AS; 2 root-required demotion tests; /proc marker-scan \u2014 all runnable on the Linux root profile",
-  "qualification": "local suite + adversarial suite; Linux/Colab root qualification recorded in TEST_RESULTS_V1646.md"
- },
- "file_changes": [
-  {
-   "path": "src-python/minagi/runtime/worker_isolation.py",
-   "change": "require_* enforcement fields, production_policy, validate_isolation, make_worker_scratch, WorkerProcessController + descendants_of + env-marker scan, tmp_is_private(worker_uid)"
-  },
-  {
-   "path": "src-python/minagi/runtime/worker_backend.py",
-   "change": "process-tree terminate via controller + unit token, worker-owned scratch, pinned overflow dir fd, error_code replies (no dynamic exception classes), backend_id override from manifest"
-  },
-  {
-   "path": "src-python/minagi/runtime/worker_protocol.py",
-   "change": "read_overflow descriptor-based (dir_fd, O_NOFOLLOW leaf, fstat+bounded read+sha256 on the same fd)"
-  },
-  {
-   "path": "src-python/minagi/runtime/service.py",
-   "change": "--worker-uid/--worker-gid/--worker-user/--worker-net-isolation flags; resolve_worker_policy() fail-closed production wiring; backend_id from verified manifest"
-  },
-  {
-   "path": "tests-python/helpers/evil_backends.py",
-   "change": "AccessProbeBackend (read/write/connect probes) + SpawnBackend (children/grandchildren/setsid/SIGTERM-ignore)"
-  },
-  {
-   "path": "tests-python/runtime/test_v1646_worker_isolation.py",
-   "change": "new adversarial suite (36 tests) covering SEC-501..504 + production enforcement"
-  },
-  {
-   "path": "tests-python/runtime/test_worker_privilege_isolation.py",
-   "change": "preexec contract updated (env-carried unit token replaces preexec stamping)"
-  },
-  {
-   "path": "docs/research/WORKER_ISOLATION_SPEC_V1646.md",
-   "change": "new"
-  },
-  {
-   "path": "docs/research/V16_4_6_REPAIR_REPORT.md",
-   "change": "new"
-  },
-  {
-   "path": "docs/research/REMAINING_DEFECTS_V1646.md",
-   "change": "new"
-  },
-  {
-   "path": "VERSION",
-   "change": "16.4.6-worker-isolation-and-process-closure"
-  },
-  {
-   "path": "src-python/minagi/__init__.py",
-   "change": "__version__ 16.4.6"
-  },
-  {
-   "path": "pyproject.toml",
-   "change": "version 16.4.6"
-  },
-  {
-   "path": "SBOM.cdx.json",
-   "change": "component name/version 16.4.6"
-  }
- ],
- "release": "mini-AGI-V1-v16.4.6-Worker-Isolation-and-Process-Closure",
- "remaining_defects": [
-  {
-   "id": "PLAT-601",
-   "note": "macOS: no /proc environ scan; detached+exec-scrubbed descendants are outside the marker set (tracked ancestry + group kill still apply). Linux cgroups recommended for production."
-  },
-  {
-   "id": "PLAT-602",
-   "note": "network isolation requires a namespace mechanism (Linux); --worker-net-isolation refuses on hosts without one"
-  },
-  {
-   "id": "G7-601",
-   "note": "full GPU real-model matrix under the demoted worker identity -> v16.4.7"
-  },
-  {
-   "id": "PLAT-603",
-   "note": "Windows restricted token + Job Object design specified, not implemented"
-  }
- ],
- "repairs": [
-  {
-   "id": "SEC-501",
-   "severity": "P0",
-   "defect": "model workers shared the supervisor's OS identity and could access every supervisor-readable file (signing keys, authority DB)",
-   "files": [
-    "src-python/minagi/runtime/worker_isolation.py",
-    "src-python/minagi/runtime/worker_backend.py",
-    "src-python/minagi/runtime/service.py"
-   ],
-   "behavior": "WorkerIsolationPolicy gains require_separate_identity/require_filesystem_confinement/require_process_containment/require_network_isolation; production_policy()+validate_isolation() fail closed; worker scratch re-owned to demoted uid (0750, supervisor gid); service.py requires --worker-uid/--worker-gid under --production and reports enforced mechanisms",
-   "tests": [
-    "tests-python/runtime/test_v1646_worker_isolation.py",
-    "tests-python/runtime/test_worker_privilege_isolation.py"
-   ]
-  },
-  {
-   "id": "SEC-502",
-   "severity": "P1",
-   "defect": "terminating a worker killed only the leader pid, leaving its subprocesses running",
-   "files": [
-    "src-python/minagi/runtime/worker_isolation.py",
-    "src-python/minagi/runtime/worker_backend.py"
-   ],
-   "behavior": "WorkerProcessController: ancestry snapshot -> verified group SIGTERM -> SIGKILL -> tracked-pid and env-marker survivor sweep -> verify_terminated empty; random MINAGI_WORKER_UNIT token identifies the containment set through setsid()",
-   "tests": [
-    "tests-python/runtime/test_v1646_worker_isolation.py"
-   ]
-  },
-  {
-   "id": "SEC-503",
-   "severity": "P1",
-   "defect": "worker-controlled error metadata resolved arbitrary BaseException classes (SystemExit, KeyboardInterrupt) in the supervisor",
-   "files": [
-    "src-python/minagi/runtime/worker_backend.py"
-   ],
-   "behavior": "dynamic exception-class resolution removed; bounded error_code vocabulary; static map converts only WORKER_BUDGET_EXCEEDED->BudgetExceeded; everything else -> RemoteBackendError(code); traceback bounded at 4KiB",
-   "tests": [
-    "tests-python/runtime/test_v1646_worker_isolation.py"
-   ]
-  },
-  {
-   "id": "SEC-504",
-   "severity": "P1",
-   "defect": "read_overflow validated a path then read it separately \u2014 a replacement/symlink TOCTOU window",
-   "files": [
-    "src-python/minagi/runtime/worker_protocol.py",
-    "src-python/minagi/runtime/worker_backend.py"
-   ],
-   "behavior": "descriptor-based read: overflow dir fd pinned at spawn (O_DIRECTORY|O_NOFOLLOW), leaf O_NOFOLLOW relative to it, fstat+size+sha256+strict-JSON all on the same descriptor",
-   "tests": [
-    "tests-python/runtime/test_v1646_worker_isolation.py",
-    "tests-python/runtime/test_worker_protocol.py"
-   ]
-  },
-  {
-   "id": "VAL-501",
-   "severity": "P1",
-   "defect": "production service constructed WorkerBackend under permissive DEFAULT_ISOLATION; backend_id resolved by importing backend code in the privileged parent",
-   "files": [
-    "src-python/minagi/runtime/service.py",
-    "src-python/minagi/runtime/worker_backend.py"
-   ],
-   "behavior": "resolve_worker_policy() fails closed under --production (separate identity mandatory, host must enforce every required control); backend_id supplied from the verified signed manifest so the parent never imports backend code for identity; dev mode explicitly labeled",
-   "tests": [
-    "tests-python/runtime/test_v1646_worker_isolation.py"
-   ]
-  }
- ],
- "schema": "mini-agi-v16.4.6-change-manifest-v1",
- "source_archive": "mini-AGI-V1-v16.4.4-Verified-Runtime-Closure.zip",
- "source_archive_sha256": "ad5993bd1e1e56f4f60c822cc95934b36710a8425d9978f905f095c101a0e7d5",
- "summary": "Worker trust-boundary closure: production workers now require a separate OS identity with enforced filesystem confinement and process containment (fail-closed startup, cross-uid scratch ownership); worker termination is verified process-tree teardown with an env-carried containment token; worker error data can no longer select control-flow exceptions in the supervisor (bounded error codes replace dynamic class resolution); overflow results are read through a pinned directory descriptor with O_NOFOLLOW so path swaps and replacement races cannot redirect integrity checks. Production startup wires the profile in and takes backend_id from the verified manifest.",
- "version": "16.4.6"
+  "schema": "mini-agi-v16.4.9-change-manifest-v1",
+  "source_archive": "dist-v1646/mini-AGI-V1-v16.4.7-Runtime-Isolation-Enforcement.zip",
+  "summary": "Independent-audit corrective release: SEC-801 cgroup occupancy (cgroup.events, None is never proof of empty), SEC-802 ancestor mounts over denied paths refused, SEC-803 launch requires verified cgroup, SEC-804 preflight requires measured evidence for every mandatory property, SEC-805 authority digests validated + atomic nonce reservation. Stderr log file (no pipe starvation), stop/kill rc captured, distinct worker-uid qualification default.",
+  "version": "16.4.9"
 }

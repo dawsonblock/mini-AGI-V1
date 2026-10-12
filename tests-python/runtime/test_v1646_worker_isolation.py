@@ -260,12 +260,25 @@ def test_write_overflow_bound_enforced(tmp_path):
 
 # ============================== WP2 — process containment =================
 
+def _pid_state(pid):
+    """Linux /proc state letter — 'Z' means terminated-but-unreaped."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    return stat.rpartition(")")[2].strip()[:1] or None
+
+
 def _wait_dead(pid, timeout=5.0):
+    """Terminated means GONE or ZOMBIE — kill(pid,0) still succeeds on
+    a zombie whose supervisor-side parent hasn't reaped it yet."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             os.kill(pid, 0)
         except (ProcessLookupError, PermissionError):
+            return True
+        if _pid_state(pid) == "Z":
             return True
         time.sleep(0.02)
     return False

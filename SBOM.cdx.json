@@ -60,9 +60,9 @@
   ],
   "metadata": {
     "component": {
-      "name": "mini-AGI-V1-v16.4.7-Runtime-Isolation-Enforcement",
+      "name": "mini-AGI-V1-v16.4.9-Containment-Verification-and-Runtime-Qualification",
       "type": "application",
-      "version": "16.4.7"
+      "version": "16.4.9"
     }
   },
   "specVersion": "1.5",
