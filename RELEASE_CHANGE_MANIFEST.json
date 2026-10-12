@@ -4,13 +4,13 @@
     "repair_report": "docs/security/V16_4_8_REPAIR_REPORT.md",
     "threat_model": "docs/security/WORKER_THREAT_MODEL.md"
   },
-  "base_version": "16.4.7",
+  "base_version": "16.4.9",
   "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.6/16.4.7 (repairs SEC-301..SEC-504, VAL-501 remain in effect)",
   "evidence": {
     "gate_status": "G1-G4 + G10 verified on real Linux boundary (containered systemd 252 + cgroup v2 + NsJail, uid 65534 worker); G5-G9 verified by tests/envelope",
     "linux_boundary": "test_v1648_linux_nsjail.py 7/7 PASS + test_v1649_real_model_nsjail.py 2/2 PASS (real GPT2+LoRA load/infer/cancel/switch inside the jail); strict preflight qualified=true; net:LISTENER connect-denied; rlimit_as cap found and replaced by cgroup MemoryMax",
     "nsjail_binary": "pinned commit 4ff54a6e0d5b65a0e1633d6e2fd1425ba6c882ce; sha256:a9408ab22219cb71e9e6d8ff571a594983d098df0acf1e4447494cfa0c1b3af8",
-    "python_tests": "full suite 1007 passed / 16 skipped / 0 failed (macOS); Linux container: 7/7 adversarial + 2/2 real-model"
+    "python_tests": "1067 passed / 18 skipped (local macOS); 62 v16.4.10 + 50 isolation/G10 in privileged Linux container; QUALIFICATION: PASS"
   },
   "file_changes": [
     {
@@ -130,23 +130,25 @@
       "path": "tests-python/runtime/test_v1648_executor_isolation.py"
     }
   ],
-  "release": "mini-AGI-V1-v16.4.9-Containment-Verification-and-Runtime-Qualification",
+  "release": "mini-AGI-V1-v16.4.10-Containment-and-Authority-Closure",
   "remaining_defects": {
     "ipc_transport": "systemd-run --pipe (not a dedicated unix socket) \u2014 recorded decision",
-    "qualification": "Linux run not yet executed \u2014 G1-G4, G10 unclaimed",
-    "seccomp": "nsjail built-in default policy; kafel policy is deployment-specific future work"
+    "bare_metal_qualification": "qualified in privileged Linux container; intended bare-metal/cloud host still owes its own run",
+    "gpu": "GPU/CUDA and production-scale models unqualified",
+    "seccomp": "nsjail default policy; kafel policy is deployment-specific future work"
   },
   "repairs": {
-    "SEC-701": "capability detection reads /proc/self/status CapEff; root no longer short-circuits",
-    "SEC-702": "custom pivot_root launcher replaced by NsJail on the production path",
-    "SEC-703": "frozen IsolationProfile + with_runtime whitelist + policy_digest bound to launch",
-    "SEC-704": "kernel-owned containment: systemd KillMode=control-group; cgroup.populated==0 is the emptiness claim",
-    "SEC-705": "sandbox-exec credited only on Darwin; refused elsewhere",
-    "SEC-706": "broker-computed bind mounts (runtime ro / artifacts ro / scratch rw at /work) with denied-path screening",
-    "SEC-707": "release metadata regenerated from final source (manifest re-signed, attestation+validation reconciled)"
+    "SEC-901": "cgroup_populated: strict key=value parser; only explicit 'populated 0' is empty, everything else is UNKNOWN; cgroup.procs fallback removed",
+    "SEC-902": "shared ContainmentState (RUNNING/EMPTY/REMOVED_VERIFIED/UNKNOWN) used by broker status, executor status and teardown; populated 1 overrides inactive unit/exited client; InvocationID-bound teardown prevents unit-name reuse",
+    "SEC-903": "worker ids w-<hex32> broker-generated via secrets; prepare() refuses caller-supplied ids; workspace creation descriptor-relative under pinned state root, stale dirs and symlink tricks refused",
+    "SEC-904": "validate_host: 'or os.geteuid()==0' removed; capability_preflight (CapEff/unprivileged userns) vs enforcement_qualification (real probe) separated",
+    "SEC-905": "AuthorizedLaunchRecord signed by runtime authority; broker independently verifies envelope, signer authorization, expiry, revocation epoch floor, exact backend-manifest/profile/budget bindings, resolver-backed approved records; signed nonce = atomic single-use reservation",
+    "SEC-906": "production startup runs real run_preflight through the executor and persists a host-bound qualification record (boot/kernel/nsjail digest/profile digest/result)",
+    "VAL-901": "mid-generation cancellation proven: cancel arrives during live decode inside the jail; metrics.cancelled + terminated worker",
+    "VAL-902": "signed A->B activation through supervisor+router+NsJail executor with per-launch authorization; rollback to A; cold restart with revoked B cannot restore"
   },
-  "schema": "mini-agi-v16.4.9-change-manifest-v1",
+  "schema": "mini-agi-v16.4.10-change-manifest-v1",
   "source_archive": "dist-v1646/mini-AGI-V1-v16.4.7-Runtime-Isolation-Enforcement.zip",
-  "summary": "Independent-audit corrective release: SEC-801 cgroup occupancy (cgroup.events, None is never proof of empty), SEC-802 ancestor mounts over denied paths refused, SEC-803 launch requires verified cgroup, SEC-804 preflight requires measured evidence for every mandatory property, SEC-805 authority digests validated + atomic nonce reservation. Stderr log file (no pipe starvation), stop/kill rc captured, distinct worker-uid qualification default.",
-  "version": "16.4.9"
+  "summary": "Independent-audit corrective release: SEC-901 strict cgroup.events parsing (fail-closed, no procs fallback), SEC-902 shared ContainmentState evaluator (populated 1 can never certify empty), SEC-903 opaque broker-generated worker ids (w-hex32) + traversal-safe root-constrained workspaces, SEC-904 root-UID privilege fallback removed, SEC-905 signed AuthorizedLaunchRecord independently bound to exact manifest/profile/budget/artifact/nonces at the broker, SEC-906 mandatory real preflight probe at production startup. VAL-901 mid-generation cancellation and VAL-902 signed A->B activation/rollback/cold-recovery/revocation qualified inside the jail.",
+  "version": "16.4.10"
 }

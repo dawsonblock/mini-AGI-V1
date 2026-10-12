@@ -212,6 +212,8 @@ def _cap_eff(bit: int) -> bool:
     uid 0 no longer short-circuits to True, because a "root" inside a
     restricted container holds only the bounded cap set the runtime
     granted. False on platforms without a capability model."""
+    if _sysname() != "Linux":
+        return False
     try:
         for line in Path("/proc/self/status").read_text().splitlines():
             if line.startswith("CapEff:"):

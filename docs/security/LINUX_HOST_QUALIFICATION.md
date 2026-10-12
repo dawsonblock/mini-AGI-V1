@@ -1,4 +1,4 @@
-# Linux Host Qualification (v16.4.8)
+# Linux Host Qualification (v16.4.10)
 
 ## Status: QUALIFIED in a privileged Linux container (nested)
 
@@ -10,6 +10,27 @@ caveat is nesting (the VM is itself containered). A bare-metal or
 cloud VM re-run with `MINAGI_WORKER_UID` set to a non-root identity
 remains recommended for final sign-off; nothing about the boundary is
 macOS-only anymore.
+
+## v16.4.10 re-qualification (2026-10-12, same environment)
+
+Re-run under the hardened v16.4.10 source:
+
+- `run_nsjail_qualification.sh` — **QUALIFICATION: PASS** (host check,
+  strict preflight `qualified: true`, 7/7 adversarial, 2/2 G10
+  real-model lifecycle).
+- v16.4.10 regression suites inside the container: **62/62 pass** —
+  cgroup evidence, executor status, worker identity, host
+  capabilities, broker authority, production preflight, plus the two
+  real-model tests below.
+- VAL-901 `test_mid_generation_cancel_interrupts_decode` — a real
+  6-layer GPT-2+LoRA decode (max_new_tokens=400) cancelled in flight;
+  `metrics.cancelled` true; worker termination verified-empty.
+- VAL-902 `test_signed_activation_rollback_recovery` — full signed
+  authority chain through ServingSupervisor + ServingRouter + NsJail
+  executor with per-launch `AuthorizedLaunchRecord`: A commits and
+  serves, B commits and serves, supervisor rollback restores A, cold
+  restart with B's promotion revoked cannot restore B.
+- v16.4.8 adversarial suite: 7/7 PASS under new code.
 
 ## Recorded evidence (2026-10-11)
 

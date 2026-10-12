@@ -207,7 +207,7 @@ def test_g4_detached_descendant_stays_owned(tmp_path):
     the unit's cgroup — visible in cgroup.procs from the host —
     and termination empties the unit (cgroup.populated == 0)."""
     ex = _executor(tmp_path)
-    dirs = ex.prepare(worker_id="g4", isolation=DEFAULT_ISOLATION)
+    dirs = ex.prepare(worker_id=None, isolation=DEFAULT_ISOLATION)
     env = {"MINAGI_PROBE_ARGS": json.dumps(
         ["detach:/work/marker.pid"])}
     launched = ex.launch(

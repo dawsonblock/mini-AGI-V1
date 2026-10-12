@@ -61,7 +61,10 @@ class NsJailWorkerExecutor:
                      artifact_resolver=None, user_manager=False,
                      systemd=None, worker_python=None,
                      python_path_entries=(), denied_paths=(),
-                     nonce_dir=None) -> "NsJailWorkerExecutor":
+                     nonce_dir=None, authority_registry=None,
+                     record_resolver=None,
+                     require_authorization=None) \
+            -> "NsJailWorkerExecutor":
         broker = WorkerLaunchBroker(
             worker_state_root=worker_state_root,
             approved_profiles={profile.digest(): profile},
@@ -71,7 +74,10 @@ class NsJailWorkerExecutor:
             worker_python=worker_python,
             python_path_entries=python_path_entries,
             denied_paths=denied_paths, user_manager=user_manager,
-            systemd=systemd, nonce_dir=nonce_dir)
+            systemd=systemd, nonce_dir=nonce_dir,
+            authority_registry=authority_registry,
+            record_resolver=record_resolver,
+            require_authorization=require_authorization)
         return cls(broker=broker, profile=profile)
 
     # --- host contract -------------------------------------------------
@@ -86,12 +92,19 @@ class NsJailWorkerExecutor:
         checks["unprivileged_userns"] = _unprivileged_userns()
         checks["euid"] = os.geteuid()
         checks["executor"] = self.name
+        # SEC-904: uid 0 alone is NOT capability evidence — a root
+        # shell in a cap-restricted container cannot create the
+        # required namespaces. Only measured capability flags or an
+        # enabled unprivileged-userns path make the preflight pass;
+        # production readiness itself is established ONLY by the
+        # enforcement qualification (run_preflight) — see service.py.
         ok = checks["ok"] and (
             self.broker.user_manager
             or checks["cap_sys_admin"]
-            or checks["unprivileged_userns"]
-            or os.geteuid() == 0)
+            or checks["unprivileged_userns"])
         checks["ok"] = bool(ok)
+        checks["qualification_level"] = \
+            "capability_preflight"  # NOT enforcement proof
         checks["profile_digest"] = self.profile_digest
         return checks
 
@@ -108,8 +121,16 @@ class NsJailWorkerExecutor:
                 isolation: WorkerIsolationPolicy) -> WorkerDirs:
         """Workspace is broker-owned: ``<root>/<worker_id>/scratch``.
         The private_tmp/overflow contract mirrors the development
-        executor so the protocol's overflow channel is unchanged."""
-        wid = worker_id or f"w{secrets.token_hex(6)}"
+        executor so the protocol's overflow channel is unchanged.
+        SEC-903: worker ids are opaque broker-generated values; a
+        caller may not name the workspace — supplying one is refused,
+        not ignored."""
+        if worker_id is not None:
+            raise ExecutorRefused(
+                "worker ids are broker-generated — callers may not "
+                "name workspaces or units (SEC-903)")
+        from .worker_launch_broker import new_worker_id
+        wid = new_worker_id()
         ws, scratch, overflow, fd = self.broker.create_workspace(wid)
         return WorkerDirs(
             private_tmp=scratch, overflow_dir=overflow,
@@ -123,7 +144,8 @@ class NsJailWorkerExecutor:
                artifact_digests: tuple = (),
                backend_manifest_digest: str = "",
                extra_ro: tuple = (),
-               role: str = "worker") -> LaunchedWorker:
+               role: str = "worker",
+               authorization: dict | None = None) -> LaunchedWorker:
         if role not in self.allowed_roles:
             raise ExecutorRefused(f"role {role!r} is not launchable")
         # The jail's exec_bin is FIXED by the broker (pinned
@@ -135,7 +157,12 @@ class NsJailWorkerExecutor:
             raise ExecutorRefused(
                 f"nsjail executor refuses argv {list(worker_argv)!r} — "
                 "the jail executes only the pinned worker entry")
-        nonce = secrets.token_hex(16)
+        # SEC-905: when the launch carries an authorization, its
+        # signed nonce IS the request nonce — the broker's atomic
+        # reservation then makes the authorization single-use.
+        nonce = (str((authorization or {}).get("value", {})
+                     .get("nonce", ""))
+                 or secrets.token_hex(16))
         if role == "worker" and not backend_manifest_digest:
             raise ExecutorRefused(
                 "worker launches require a signed backend-manifest "
@@ -148,7 +175,8 @@ class NsJailWorkerExecutor:
             approved_artifact_digests=tuple(artifact_digests),
             approved_isolation_profile_digest=self.profile_digest,
             execution_budget_digest=self._budget_digest(),
-            request_nonce=nonce, role=role)
+            request_nonce=nonce, role=role,
+            authorization=dict(authorization or {}))
         # the unit token travels in the jail env — defense in depth
         # under the authoritative cgroup boundary
         env = dict(env)
@@ -206,13 +234,17 @@ class NsJailWorkerExecutor:
 
     def containment_status(self, launched: LaunchedWorker) -> dict:
         st = self.broker.status(launched.record)
+        # SEC-902: the shared evaluator's verdict — an inactive unit
+        # or exited client never overrides positive occupancy.
+        state = st.get("containment", "unknown")
         return {"mechanism": "systemd-cgroupv2",
-                "alive": st["active"] or st["client_alive"],
+                "alive": state == "running",
                 "unit": st["unit"],
                 "cgroup_path": st["cgroup_path"],
                 "cgroup_populated": st["cgroup_populated"],
-                "verified_empty": (st["cgroup_populated"] is False)
-                or (not st["active"] and not st["client_alive"])}
+                "containment": state,
+                "verified_empty": state in ("empty",
+                                            "removed_verified")}
 
     def release(self, launched: LaunchedWorker) -> None:
         self._launched.pop(launched.worker_id, None)

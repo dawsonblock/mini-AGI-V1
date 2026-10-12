@@ -148,7 +148,8 @@ class WorkerExecutor(Protocol):
                artifact_digests: tuple = (),
                backend_manifest_digest: str = "",
                extra_ro: tuple = (),
-               role: str = "worker") -> LaunchedWorker:
+               role: str = "worker",
+               authorization: dict | None = None) -> LaunchedWorker:
         ...
 
     def status(self, launched: LaunchedWorker) -> dict:
@@ -225,7 +226,8 @@ class DevelopmentWorkerExecutor:
                policy_digest: str = "", artifact_digests: tuple = (),
                backend_manifest_digest: str = "",
                extra_ro: tuple = (),
-               role: str = "worker") -> LaunchedWorker:
+               role: str = "worker",
+               authorization: dict | None = None) -> LaunchedWorker:
         # extra_ro is a jail-mount contract — the development
         # executor runs on the host where every path is already
         # reachable; the parameter exists for signature parity.

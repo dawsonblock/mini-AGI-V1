@@ -1,6 +1,23 @@
-# Remaining Defects / Open Items — v16.4.9
+# Remaining Defects / Open Items — v16.4.10
 
-## Audit-reproduced defects — FIXED (SEC-801..805)
+## v16.4.10 audit defects — FIXED (SEC-901..906, VAL-901/902)
+
+- SEC-901 strict cgroup.events parsing — UNKNOWN is never EMPTY; no
+  cgroup.procs fallback
+- SEC-902 shared ContainmentState — populated 1 cannot be overridden
+  by inactive unit/exited client; InvocationID-bound teardown
+- SEC-903 broker-generated w-<hex32> ids; caller ids refused;
+  root-constrained descriptor-relative workspaces
+- SEC-904 euid==0 shortcut removed; capability preflight vs
+  enforcement qualification separated
+- SEC-905 AuthorizedLaunchRecord: signed, expiry+epoch-bound,
+  resolver-backed, single-use nonce, exact-digest bindings
+- SEC-906 mandatory real preflight probe at production startup with a
+  persisted host-bound qualification record
+- VAL-901 true mid-generation cancellation; VAL-902 signed
+  A->B/rollback/cold-recovery/revocation inside the jail
+
+## v16.4.9 audit defects — FIXED (SEC-801..805)
 
 The external audit of v16.4.8 reproduced five defects; all are
 repaired and re-qualified on this branch (see ISSUE_REGISTER_V1648.md

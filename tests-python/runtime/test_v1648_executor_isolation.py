@@ -34,7 +34,8 @@ from minagi.runtime.worker_backend import (  # noqa: E402
 from minagi.runtime.worker_isolation import (  # noqa: E402
     DEFAULT_ISOLATION, IsolationError, WorkerIsolationPolicy,
     policy_digest, production_policy)
-from minagi.runtime.worker_launch_broker import (  # noqa: E402
+from minagi.runtime.worker_launch_broker import (
+    new_worker_id,   # noqa: E402
     BrokerError, BrokerRefused, LaunchWorkerRequest,
     WorkerLaunchBroker)
 from minagi.runtime.nsjail_executor import (  # noqa: E402
@@ -433,7 +434,7 @@ def _broker(tmp_path):
 
 def _req(profile, **kw):
     base = dict(
-        worker_id="w1",
+        worker_id=new_worker_id(),
         signed_backend_manifest_digest="sha256:" + "a" * 64,
         approved_artifact_digests=("sha256:" + "b" * 64,),
         approved_isolation_profile_digest=profile.digest(),
@@ -445,8 +446,9 @@ def _req(profile, **kw):
 
 def test_broker_launch_builds_exact_nsjail_unit(tmp_path):
     broker, sd, profile = _broker(tmp_path)
-    rec = broker.launch(_req(profile))
-    assert rec.unit_name == "miniagi-worker-w1.service"
+    req = _req(profile)
+    rec = broker.launch(req)
+    assert rec.unit_name == f"miniagi-worker-{req.worker_id}.service"
     call = sd.calls[0]
     assert call[0] == "run_service"
     props = list(call[2])
@@ -538,7 +540,7 @@ def test_nsjail_executor_refuses_digest_mismatch(tmp_path):
 
 def test_nsjail_executor_launch_and_terminate(tmp_path):
     ex, sd, profile = _nsjail_executor(tmp_path)
-    dirs = ex.prepare(worker_id="w2", isolation=DEFAULT_ISOLATION)
+    dirs = ex.prepare(worker_id=None, isolation=DEFAULT_ISOLATION)
     launched = ex.launch(
         dirs,
         worker_argv=[sys.executable, "-m",
@@ -546,7 +548,7 @@ def test_nsjail_executor_launch_and_terminate(tmp_path):
         env={"PYTHONPATH": str(ROOT / "src-python")},
         isolation=DEFAULT_ISOLATION,
         backend_manifest_digest="sha256:" + "b" * 64)
-    assert launched.unit_name == "miniagi-worker-w2.service"
+    assert launched.unit_name == f"miniagi-worker-{dirs.worker_id}.service"
     assert sd.is_active(launched.unit_name)
     assert launched.digests["policy"] == profile.digest()
     rep = ex.terminate(launched, deadline_seconds=10.0)
@@ -557,7 +559,7 @@ def test_nsjail_executor_launch_and_terminate(tmp_path):
 
 def test_nsjail_executor_refuses_foreign_worker_argv(tmp_path):
     ex, sd, _ = _nsjail_executor(tmp_path)
-    dirs = ex.prepare(worker_id="w3", isolation=DEFAULT_ISOLATION)
+    dirs = ex.prepare(worker_id=None, isolation=DEFAULT_ISOLATION)
     with pytest.raises(ExecutorRefused):
         ex.launch(dirs, worker_argv=[sys.executable, "-c", "id"],
                   env={}, isolation=DEFAULT_ISOLATION)

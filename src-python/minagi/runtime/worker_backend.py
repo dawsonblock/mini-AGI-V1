@@ -267,7 +267,9 @@ class WorkerBackend:
                  backend_id: str | None = None,
                  executor: WorkerExecutor | None = None,
                  backend_manifest_digest: str = "",
-                 artifact_digests: tuple = ()):
+                 artifact_digests: tuple = (),
+                 launch_authorization: dict | None = None,
+                 authorization_supplier=None):
         self.spec = spec
         # backend_id: supplied explicitly, it comes from the verified
         # signed manifest (production — the parent never imports the
@@ -305,6 +307,15 @@ class WorkerBackend:
         # the worker's run identity is provably the approved one.
         self.backend_manifest_digest = str(backend_manifest_digest)
         self.artifact_digests = tuple(artifact_digests)
+        # v16.4.10 (SEC-905): the signed AuthorizedLaunchRecord the
+        # supervisor obtained from the runtime authority — the launch
+        # broker re-verifies it independently before process creation.
+        self.launch_authorization = dict(
+            launch_authorization or {})
+        # supplier form: fresh authorization (fresh nonce) per spawn —
+        # a static record would be single-use and could never serve a
+        # relaunch legitimately.
+        self._authorization_supplier = authorization_supplier
         # The launch boundary is the executor's — the backend owns
         # protocol and lifecycle, the executor owns process creation,
         # containment and teardown. Default is the development
@@ -525,7 +536,12 @@ class WorkerBackend:
                 policy_digest=_pdigest(self.isolation),
                 artifact_digests=self.artifact_digests,
                 backend_manifest_digest=self.backend_manifest_digest,
-                extra_ro=extra_ro)
+                extra_ro=extra_ro,
+                authorization=(
+                    self.launch_authorization or None)
+                or (self._authorization_supplier()
+                    if self._authorization_supplier is not None
+                    else None))
         except (IsolationError, PermissionError) as exc:
             raise WorkerDied(
                 f"worker could not start under executor "

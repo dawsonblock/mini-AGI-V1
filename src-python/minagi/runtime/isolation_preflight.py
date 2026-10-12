@@ -213,8 +213,10 @@ def run_preflight(executor, *, isolation, probe_args=(),
         else:
             expanded.append(spec)
     probe_args = expanded
-    dirs = executor.prepare(worker_id=worker_id or "preflight",
-                            isolation=isolation)
+    # SEC-903: the broker generates workspace ids — even this trusted
+    # internal caller may not name one; the probe's identity is the
+    # generated id on `dirs.worker_id`.
+    dirs = executor.prepare(worker_id=None, isolation=isolation)
     env = (build_env_fn(dirs) if build_env_fn else {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "PYTHONPATH": os.pathsep.join(p for p in sys.path if p),
