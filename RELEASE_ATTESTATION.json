@@ -68,7 +68,7 @@
     "qualification": "macOS suite green; Linux boundary run pending",
     "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
   },
-  "manifest_sha256": "2618b2dac366c82790b026e34dac094917c7000c4845186307eba9a7c527ed15",
+  "manifest_sha256": "a4facee7ccb15f35dc4c80ca1eb690d126b81fbaec799ab397a1cb9b61689be6",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "999 passed, 14 skipped, 0 failed (macOS)",
@@ -339,9 +339,14 @@
       "manifest_sha256": "2618b2dac366c82790b026e34dac094917c7000c4845186307eba9a7c527ed15",
       "reason": "v16.4.8 qualification fixes: containered-Linux boundary PASS (7/7); closure/mount/cgroup/probe defects repaired",
       "utc": "2026-10-11T09:37:03Z"
+    },
+    {
+      "utc": "2026-10-12T20:01:49Z",
+      "manifest_sha256": "a4facee7ccb15f35dc4c80ca1eb690d126b81fbaec799ab397a1cb9b61689be6",
+      "reason": "v16.4.9 independent-audit repairs SEC-801..805 + strict-preflight qualification rerun PASS (distinct worker uid 65534, 7/7 adversarial)"
     }
   ],
-  "reissued_utc": "2026-10-11T09:37:03Z",
+  "reissued_utc": "2026-10-12T20:01:49Z",
   "reissues": [
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -373,7 +378,7 @@
       "release": "mini-AGI-V1-v16.4.8-Linux-Isolation-and-Security-Closure"
     }
   ],
-  "release": "mini-AGI-V1-v16.4.9-Linux-Isolation-and-Security-Closure",
+  "release": "mini-AGI-V1-v16.4.9-Containment-Verification-and-Runtime-Qualification",
   "runtime_closure_v1644": {
     "change_manifest": "RELEASE_CHANGE_MANIFEST.json",
     "defects_closed": [
