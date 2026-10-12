@@ -250,12 +250,19 @@ def resolve_mounts(profile: IsolationProfile, *, runtime_paths,
 
     def _allowed(src: str) -> str:
         resolved = str(Path(src).resolve())
+        base = resolved.rstrip("/")
         for deny in denied:
             if resolved == deny or resolved.startswith(deny + "/"):
                 raise ProfileRefused(
                     f"mount source {resolved!r} lies under a denied "
                     f"authority path {deny!r} — the worker can never "
                     "see supervisor authority material")
+            if deny.startswith(base + "/"):
+                raise ProfileRefused(
+                    f"mount source {resolved!r} CONTAINS denied "
+                    f"authority path {deny!r} — an ancestor bind "
+                    "would expose it; assemble a runtime tree that "
+                    "excludes the protected descendant")
         return resolved
 
     mounts: list[MountSpec] = []

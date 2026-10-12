@@ -76,3 +76,35 @@ macOS-only anymore.
 - [ ] Bare-metal/cloud-host run with a non-root `MINAGI_WORKER_UID`
 - [ ] Real model lifecycle (G10): model/adapter/tokenizer digests,
       load→infer→cancel→rollback→restart under the jail
+
+## v16.4.9 rerun — strict preflight + distinct worker identity
+
+After the independent audit (SEC-801..805) the qualification was
+re-run against the repaired code in the same container (systemd 252
+PID1, cgroup v2 unified, aarch64, NsJail `4ff54a6` /
+`sha256:a9408ab2` — rebuilt reproducibly to the same digest).
+
+Worker identity: supervisor root → **worker uid/gid 65534** (the
+script now refuses a same-uid worker identity; non-root supervisors
+must set `MINAGI_WORKER_UID` explicitly). This run caught and fixed
+one more real defect: the workspace tree root needed `0711` so the
+userns-mapped worker uid can traverse to its bind-mounted scratch —
+with `0700` the in-jail mount of `/work` failed EACCES.
+
+Strict-preflight result — `qualified: true` with every mandatory
+check passing:
+
+- `worker_euid`/`worker_egid` = 65534, `distinct_worker_identity` true
+- `no_caps` — `capeff 0000000000000000` inside the jail
+- `ns:mnt/net/pid/user/ipc/uts` all distinct from host (`ns:cgroup`
+  intentionally not required — containment is cgroup *delegation*,
+  not a cgroup namespace; membership is proven by
+  `containment_verified`)
+- `deny:/etc/shadow`, `deny:/root` → `missing` (never mounted)
+- `read:/proc/self/status` → `read-ok` (positive control — the deny
+  results aren't an empty-FS artifact)
+- `net:127.0.0.1:9` → `connect-denied`
+- `detached_child` → `forked`, `containment_verified` true
+- probe pid=1 / ppid=0 — fully namespaced init
+
+Adversarial suite: **7/7 PASS** (`test_v1648_linux_nsjail.py`).

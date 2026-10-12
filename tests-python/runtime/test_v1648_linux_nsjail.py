@@ -107,6 +107,7 @@ def _snapshot(tmp_path, tag="m"):
 
 
 def _backend(spec, ex, **kw):
+    kw.setdefault("backend_manifest_digest", "sha256:" + "d" * 64)
     return WorkerBackend(
         BackendSpec(module=spec[0], qualname=spec[1], kwargs={}),
         backend_id="hf-peft", executor=ex,

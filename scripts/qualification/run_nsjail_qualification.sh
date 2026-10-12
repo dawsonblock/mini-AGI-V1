@@ -29,17 +29,32 @@ binary = os.environ["MINAGI_NSJAIL"]
 digest = os.environ.get("MINAGI_NSJAIL_DIGEST") or (
     "sha256:" + hashlib.sha256(open(binary,"rb").read()).hexdigest())
 euid = os.geteuid()
+# The worker identity MUST differ from the supervisor's — a same-uid
+# boundary is no boundary. Root supervisors default to 65534 (nobody);
+# non-root supervisors must set MINAGI_WORKER_UID explicitly.
+wuid = os.environ.get("MINAGI_WORKER_UID")
+if not wuid:
+    if euid == 0:
+        wuid = "65534"
+    else:
+        raise SystemExit("MINAGI_WORKER_UID is required — it must name "
+                         "a dedicated uid distinct from the supervisor")
+wgid = os.environ.get("MINAGI_WORKER_GID") or wuid
+if int(wuid) == euid:
+    raise SystemExit("MINAGI_WORKER_UID must differ from the "
+                     "supervisor uid")
 ex = NsJailWorkerExecutor.from_profile(
     load_profile("configs/isolation/linux-production-offline-v1.json"),
     worker_state_root="/var/lib/minagi/workers",
     nsjail_path=binary, nsjail_digest=digest,
-    worker_uid=int(os.environ.get("MINAGI_WORKER_UID") or euid),
-    worker_gid=int(os.environ.get("MINAGI_WORKER_GID") or os.getegid()),
+    worker_uid=int(wuid), worker_gid=int(wgid),
     user_manager=euid != 0,
     python_path_entries=tuple(p for p in sys.path if p))
 report = run_preflight(ex, isolation=DEFAULT_ISOLATION, timeout=180.0,
-                       probe_args=["read:/etc/shadow", "read:/root",
-                                   "net:127.0.0.1:9"])
+                       probe_args=["deny:/etc/shadow", "deny:/root",
+                                   "read:/proc/self/status",
+                                   "net:127.0.0.1:9",
+                                   "detach:/work/detached.marker"])
 import json; print(json.dumps(report, indent=2, sort_keys=True))
 sys.exit(0 if report["qualified"] else 1)
 PY

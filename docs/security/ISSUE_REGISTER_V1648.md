@@ -13,6 +13,27 @@ Enforcement · target v16.4.8 Linux Isolation and Security Closure.
 | SEC-706 | Incorrect bind-mount targets — custom launcher mounted at wrong dst | FIXED (source; needs Linux run) | `resolve_mounts` computes broker-owned binds (runtime closure ro, artifacts ro at identical paths, scratch rw at `/work`, `/dev/{null,zero,urandom}`); `denied_paths` refuse authority mounts | `test_resolve_mounts_denies_authority`, `test_render_config_required_fields`, `test_g1_authority_dir_never_mounted` (Linux) |
 | SEC-707 | Inconsistent release metadata | FIXED | `SOURCE_MANIFEST.json` regenerated over final tracked tree (1544 files) and re-signed with the pinned key; attestation/validation/change-manifest/SBOM/version reconciled to 16.4.8 | `verify_release.py --root` PASS on `git archive` extraction AND on the built ZIP (`836a65c4…`, manifest `7e46786a…`) — G9 |
 
+## v16.4.9 — independent-audit repairs (SEC-801..805)
+
+External audit of the shipped v16.4.8 ZIP reproduced the following;
+all are fixed on this branch and re-qualified.
+
+| ID | Defect (audit-reproduced) | Status | Fix | Tests |
+|----|---------------------------|--------|-----|-------|
+| SEC-801 | `terminate()` treated *unreadable* occupancy (`cgroup_populated` → `None`) as verified-empty; `cgroup.populated` never existed on cgroup v2 | FIXED | `cgroup_populated` parses `cgroup.events` populated field (`cgroup.procs` fallback); verification accepts ONLY explicit `populated 0`, or cgroup dir gone + unit inactive; `None` spins to deadline → unverified | `test_sec801_unreadable_occupancy_never_certifies_empty`, `test_sec801_populated_one_never_certifies_empty` |
+| SEC-802 | `resolve_mounts` screened src-under-denied only — an ANCESTOR mount of a denied dir exposed it | FIXED | `_allowed` also refuses src that *contains* any denied path; broker `extra_ro` screening is bidirectional | `test_sec802_ancestor_mount_over_denied_path_refused`, `test_sec802_extra_ro_ancestor_refused` |
+| SEC-803 | `launch()` refused a missing cgroup only when the client had exited — an alive-but-uncontained unit returned a valid record | FIXED | `record.cgroup_path is None` at the deadline ALWAYS refuses: unit stopped, client reaped, handles closed, workspace removed, record dropped (`_abort_launch`) | `test_sec803_launch_refuses_when_cgroup_never_appears` |
+| SEC-804 | Preflight grader skipped absent evidence — a synthetic probe with readable `/etc/shadow` and host-identical namespaces could qualify | FIXED | `_grade` requires measured evidence for every mandatory property: capeff==0 (missing=fail), worker euid/egid match expected, identity distinct from supervisor, mnt/net/pid/user namespace ids differ from host, `deny:` paths unreachable, `read:` positive controls reachable | `test_sec804_grader_requires_evidence` |
+| SEC-805 | `_validate_request` accepted `NOT-SIGNED-OR-DIGEST`; budget digest unchecked; nonce was check-then-write | FIXED | worker role REQUIRES `sha256:` digests for signed backend manifest + execution budget (probe role: format-checked when present); executor binds a real budget digest derived from the frozen profile and refuses worker launches with no manifest digest; nonce reservation is one atomic `O_CREAT\|O_EXCL` | `test_sec805_worker_requires_authority_digests`, `test_sec805_nonce_replay_refused_second_time` |
+
+Additional audit items fixed: unit stderr now lands in a bounded
+workspace log (`unit-stderr.log`) instead of an undrained pipe that
+could stall the client lifecycle; `systemd stop`/`kill` return codes
+are captured in the terminate report; `status()` re-resolves a
+collected cgroup dir; the qualification script requires a worker uid
+distinct from the supervisor (root → 65534 default, non-root →
+explicit `MINAGI_WORKER_UID`).
+
 ## Exit-gate status
 
 | Gate | Claim | Evidence |

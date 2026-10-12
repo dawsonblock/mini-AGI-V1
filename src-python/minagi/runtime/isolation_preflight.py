@@ -157,7 +157,7 @@ def _probe_main(argv) -> int:
 
 def run_preflight(executor, *, isolation, probe_args=(),
                   worker_id=None, timeout: float = 60.0,
-                  build_env_fn=None) -> dict:
+                  build_env_fn=None, expect=None) -> dict:
     """Launch the probe through the production executor and grade
     the boundary it actually ran inside.
 
@@ -172,6 +172,21 @@ def run_preflight(executor, *, isolation, probe_args=(),
     from .worker_isolation import WorkerIsolationPolicy
 
     isolation = isolation or WorkerIsolationPolicy()
+    probe_args = list(probe_args)
+    # The supervisor's own namespace ids are the host's — captured
+    # BEFORE the launch so the grader can require the worker to have
+    # landed in genuinely different namespaces.
+    host_ns = _ns_ids()
+    # Expected identity: the executor knows the worker uid/gid it
+    # maps into the jail; the supervisor's own euid defines the
+    # boundary the worker must be distinct from.
+    expect = dict(expect or {})
+    broker = getattr(executor, "broker", None)
+    if broker is not None:
+        expect.setdefault("euid", broker.worker_uid)
+        expect.setdefault("egid", broker.worker_gid)
+        expect.setdefault("identity_distinct", True)
+    expect.setdefault("supervisor_euid", os.geteuid())
     dirs = executor.prepare(worker_id=worker_id or "preflight",
                             isolation=isolation)
     env = (build_env_fn(dirs) if build_env_fn else {
@@ -221,7 +236,9 @@ def run_preflight(executor, *, isolation, probe_args=(),
                        if launched is not None else None)
         if launched is not None:
             executor.release(launched)
-    checks = _grade(probe if isinstance(probe, dict) else {})
+    checks = _grade(probe if isinstance(probe, dict) else {},
+                    expect=expect, host_ns=host_ns,
+                    probe_args=probe_args)
     checks["containment_verified"] = bool(
         containment and containment.verified)
     qualified = all(v for k, v in checks.items())
@@ -231,22 +248,80 @@ def run_preflight(executor, *, isolation, probe_args=(),
                             if containment else None)}
 
 
-def _grade(probe: dict) -> dict:
-    """Turn probe facts into pass/fail checks — the caller's declared
-    expectations meet the worker's measured reality here. Raw fs
-    outcomes stay in report["probe"]["fs"] for the caller's own
-    allowed/denied assertions."""
+# Namespaces a real boundary MUST give the worker — if the host can
+# name them, the probe's must differ. Missing probe entries fail.
+_REQUIRED_NS = ("mnt", "net", "pid", "user")
+
+
+def _grade(probe: dict, *, expect: dict, host_ns: dict,
+           probe_args) -> dict:
+    """The caller's declared expectations meet the worker's measured
+    reality. EVERY mandatory check must be present and passing —
+    absent evidence (a missing capeff, an unreported namespace, a
+    probe spec the worker never answered) is a FAILED check, never an
+    implicit pass."""
     checks = {}
-    checks["scratch_writable"] = probe.get("scratch_write") == "write-ok"
+    checks["scratch_writable"] = (
+        probe.get("scratch_write") == "write-ok")
+
+    # capabilities — a missing report is not "zero caps"
+    try:
+        checks["no_caps"] = int(probe["capeff"], 16) == 0
+    except (KeyError, TypeError, ValueError):
+        checks["no_caps"] = False
+
+    # identity — the in-jail ids must be exactly the approved worker
+    # ids and distinct from the supervisor's
+    if expect.get("euid") is not None:
+        checks["worker_euid"] = probe.get("euid") == expect["euid"]
+    if expect.get("egid") is not None:
+        checks["worker_egid"] = probe.get("egid") == expect["egid"]
+    if expect.get("identity_distinct"):
+        checks["distinct_worker_identity"] = (
+            probe.get("euid") is not None
+            and probe.get("euid") != expect.get("supervisor_euid"))
+
+    # namespaces — measured ids must differ from the host's own
+    pns = probe.get("namespaces") or {}
+    host_ns = host_ns or {}
+    for name in _REQUIRED_NS:
+        h = host_ns.get(name)
+        if h is None:
+            continue  # the host cannot name it — nothing to compare
+        checks[f"ns:{name}"] = bool(pns.get(name)) and pns.get(name) != h
+    # cgroup is absent by design: NsJail delegates a cgroup subtree
+    # rather than unsharing a cgroup namespace, so the probe's cgroup
+    # ns legitimately equals the host's. Containment proof there is
+    # the unit's cgroup membership (containment_verified), not the ns
+    # inode.
+    for name in ("ipc", "uts"):
+        h = host_ns.get(name)
+        w = pns.get(name)
+        if h is not None and w is not None:
+            checks[f"ns:{name}"] = w != h
+
+    # probe specs — each spec carries its OWN acceptance rule:
+    #   deny:<path>   the worker must find it unreachable
+    #   read:<path>   positive control — must actually be readable
+    #   write:<dir>   must be writable
+    #   net:<a:p>     the connection must be refused
+    #   detach:<p>    the fork must have happened
+    fs = probe.get("fs") or {}
     net = probe.get("net") or {}
-    for addr, outcome in net.items():
-        # every probed address must be unreachable under network=deny
-        checks[f"net:{addr}"] = outcome == "connect-denied"
-    if probe.get("capeff") is not None:
-        try:
-            checks["no_caps"] = int(probe["capeff"] or "0", 16) == 0
-        except ValueError:
-            checks["no_caps"] = False
+    for spec in probe_args or ():
+        kind, _, target = str(spec).partition(":")
+        if kind == "deny":
+            checks[f"deny:{target}"] = fs.get(target) in (
+                "denied", "missing")
+        elif kind == "read":
+            checks[f"read:{target}"] = fs.get(target) == "read-ok"
+        elif kind == "write":
+            checks[f"write:{target}"] = fs.get(target) == "write-ok"
+        elif kind == "net":
+            checks[f"net:{target}"] = net.get(target) == "connect-denied"
+        elif kind == "detach":
+            checks["detached_child_forked"] = (
+                probe.get("detached_child") == "forked")
     return checks
 
 

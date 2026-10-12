@@ -1,2 +1,2 @@
 """mini-AGI research governance over the RC11.7 execution substrate."""
-__version__ = "16.4.8"
+__version__ = "16.4.9"

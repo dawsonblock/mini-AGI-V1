@@ -103,6 +103,8 @@ class LaunchRecord:
     digests: dict = field(default_factory=dict)
     started_at: float = 0.0
     user_manager: bool = False
+    stderr_log: object = None           # unit diagnostic log path
+    stderr_fh: object = None            # open handle, broker-owned
 
 
 class SystemdClient:
@@ -128,7 +130,7 @@ class SystemdClient:
                               timeout=timeout)
 
     def run_service(self, unit_name: str, properties, argv,
-                    *, cwd: str | None = None):
+                    *, cwd: str | None = None, stderr=None):
         """Spawn the transient unit with a piped protocol channel:
         ``--pipe`` wires the unit's stdin/stdout/stderr to this
         process's pipes; ``--wait`` propagates exit status;
@@ -140,10 +142,12 @@ class SystemdClient:
         for prop in properties:
             cmd += ["-p", str(prop)]
         cmd += ["--", *[str(a) for a in argv]]
+        # stderr goes to a caller-supplied sink (a bounded log file)
+        # — an undrained PIPE can fill and stall the unit lifecycle.
         return subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, cwd=cwd,
-            start_new_session=True)
+            stderr=stderr if stderr is not None else subprocess.PIPE,
+            cwd=cwd, start_new_session=True)
 
     def show(self, unit_name: str, prop: str) -> str:
         try:
@@ -160,12 +164,12 @@ class SystemdClient:
             return False
         return (out.stdout or "").strip() == "active"
 
-    def stop(self, unit_name: str) -> None:
-        self._ctl("stop", unit_name)
+    def stop(self, unit_name: str):
+        return self._ctl("stop", unit_name)
 
-    def kill(self, unit_name: str, sig: str = "SIGKILL") -> None:
-        self._ctl("kill", unit_name, f"--signal={sig}",
-                  "--kill-whom=all")
+    def kill(self, unit_name: str, sig: str = "SIGKILL"):
+        return self._ctl("kill", unit_name, f"--signal={sig}",
+                         "--kill-whom=all")
 
     def cgroup_path(self, unit_name: str) -> Path | None:
         """Resolve the unit's cgroup via its ControlGroup property —
@@ -364,26 +368,43 @@ class WorkerLaunchBroker:
                     str(req.approved_isolation_profile_digest)):
                 raise BrokerRefused(
                     "isolation profile digest is not sha256:<hex>")
-        if self._nonce_seen(req.request_nonce):
-            raise BrokerRefused(
-                "request_nonce already used — replay refused")
-        self._nonce_mark(req.request_nonce)
+        # The broker enforces the COMPLETE authority contract itself —
+        # a worker launch must carry well-formed digests for the signed
+        # backend manifest AND the approved execution budget. A probe
+        # carries no model authority, so these may be empty there but
+        # are still format-checked when present.
+        for name in ("signed_backend_manifest_digest",
+                     "execution_budget_digest"):
+            value = str(getattr(req, name) or "")
+            if req.role == "worker" and not _DIGEST_RE.match(value):
+                raise BrokerRefused(
+                    f"{name} {value!r} is not sha256:<hex> — a worker "
+                    "launch must be bound to verified authority "
+                    "records, not placeholders")
+            if req.role == "probe" and value                     and not _DIGEST_RE.match(value):
+                raise BrokerRefused(
+                    f"{name} {value!r} is not sha256:<hex>")
+        self._nonce_reserve(req.request_nonce)
 
-    def _nonce_seen(self, nonce: str) -> bool:
+    def _nonce_reserve(self, nonce: str) -> None:
+        """Single-use reservation as ONE kernel-atomic operation:
+        O_CREAT|O_EXCL either creates the marker (fresh nonce, caller
+        wins) or fails EEXIST (replay). A check-then-write pair could
+        admit two concurrent launches on the same nonce."""
         try:
             self.nonce_dir.mkdir(mode=0o700, parents=True,
                                  exist_ok=True)
-            return (self.nonce_dir
-                    / f"{hashlib.sha256(nonce.encode()).hexdigest()}"
-                    ).exists()
-        except OSError:
-            return True  # cannot prove freshness -> treat as replay
-
-    def _nonce_mark(self, nonce: str) -> None:
-        try:
-            (self.nonce_dir
-             / f"{hashlib.sha256(nonce.encode()).hexdigest()}"
-             ).write_text(str(time.time()))
+            marker = (self.nonce_dir
+                      / f"{hashlib.sha256(nonce.encode()).hexdigest()}")
+            fd = os.open(str(marker),
+                         os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            try:
+                os.write(fd, str(time.time()).encode())
+            finally:
+                os.close(fd)
+        except FileExistsError:
+            raise BrokerRefused(
+                "request_nonce already used — replay refused") from None
         except OSError as exc:
             raise BrokerRefused(
                 f"nonce store unwritable — replay cannot be "
@@ -429,10 +450,23 @@ class WorkerLaunchBroker:
             raise BrokerRefused(f"worker_id {worker_id!r} unsafe")
         try:
             self.worker_state_root.mkdir(
-                mode=0o700, parents=True, exist_ok=True)
+                mode=0o711, parents=True, exist_ok=True)
+            # 0711, not 0700: the userns-mapped worker uid must be able
+            # to TRAVERSE (o+x) the tree to reach its bind-mounted
+            # scratch — a denied traversal makes nsjail's mount of the
+            # scratch source fail with EACCES. Listing stays denied.
+            try:
+                os.chmod(self.worker_state_root, 0o711)
+            except OSError:
+                pass
             ws = self.worker_state_root / str(worker_id)
+            ws.mkdir(mode=0o711, exist_ok=True)
+            try:
+                os.chmod(ws, 0o711)
+            except OSError:
+                pass
             scratch = ws / "scratch"
-            scratch.mkdir(mode=0o750, parents=True, exist_ok=True)
+            scratch.mkdir(mode=0o750, exist_ok=True)
             overflow = scratch / "overflow"
             overflow.mkdir(mode=0o750, exist_ok=True)
             try:
@@ -502,11 +536,14 @@ class WorkerLaunchBroker:
         extra = []
         for p in extra_ro_paths:
             rp = str(Path(p).resolve())
+            base = rp.rstrip("/")
             for deny in self.denied_paths:
-                deny = str(deny)
-                if rp == deny or rp.startswith(deny + "/"):
+                dr = str(Path(str(deny)).resolve())
+                if rp == dr or rp.startswith(dr + "/") \
+                        or dr.startswith(base + "/"):
                     raise BrokerRefused(
-                        f"extra ro path {rp!r} under denied {deny!r}")
+                        f"extra ro path {rp!r} overlaps denied "
+                        f"{dr!r} — refused")
             extra.append(MountSpec(src=rp, dst=rp, rw=False))
         mounts = tuple(mounts) + tuple(extra)
 
@@ -540,14 +577,17 @@ class WorkerLaunchBroker:
                 f"MemoryMax={int(profile.memory_mb) << 20}")
         properties.append(
             f"SyslogIdentifier={unit_name[:-len('.service')]}")
+        stderr_log = ws / "unit-stderr.log"
+        stderr_fh = open(stderr_log, "wb")
         proc = self.systemd.run_service(
             unit_name, properties,
             [self.nsjail_path, "--config", str(cfg_path)],
-            cwd=str(scratch))
+            cwd=str(scratch), stderr=stderr_fh)
         record = LaunchRecord(
             worker_id=req.worker_id, unit_name=unit_name, proc=proc,
             workspace=ws, scratch=scratch, overflow_dir=overflow,
             overflow_fd=overflow_fd, config_path=cfg_path,
+            stderr_log=stderr_log, stderr_fh=stderr_fh,
             cgroup_path=None, unit_token=token, role=req.role,
             digests={
                 "policy": str(req.approved_isolation_profile_digest),
@@ -569,21 +609,73 @@ class WorkerLaunchBroker:
             if proc.poll() is not None:
                 break
             time.sleep(0.05)
-        if proc.poll() is not None and record.cgroup_path is None:
-            stderr = b""
-            try:
-                stderr = proc.stderr.read() or b""
-            except OSError:
-                pass
+        if record.cgroup_path is None:
+            # No verified kernel containment — the launch FAILS. A
+            # live client process is not evidence of confinement.
+            detail = self._abort_launch(record)
             raise BrokerError(
                 f"worker unit {unit_name} never reached a live cgroup "
-                f"— launch refused, not degraded: "
-                f"{stderr.decode(errors='replace')[:400]}")
+                f"— launch refused, not degraded: {detail}")
         return record
+
+    def _abort_launch(self, rec: LaunchRecord) -> str:
+        """Tear down a launch that never proved containment: stop the
+        unit, reap the client, close every handle, drop the workspace,
+        and leave nothing running or registered."""
+        try:
+            self.systemd.stop(rec.unit_name)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            rec.proc.wait(timeout=5.0)
+        except Exception:  # noqa: BLE001
+            for act in (lambda: self.systemd.kill(
+                            rec.unit_name, "SIGKILL"),
+                        rec.proc.kill):
+                try:
+                    act()
+                except Exception:  # noqa: BLE001
+                    pass
+            try:
+                rec.proc.wait(timeout=2.0)
+            except Exception:  # noqa: BLE001
+                pass
+        tail = ""
+        try:
+            if rec.stderr_fh is not None:
+                rec.stderr_fh.close()
+                rec.stderr_fh = None
+            if rec.stderr_log is not None \
+                    and Path(rec.stderr_log).is_file():
+                tail = Path(rec.stderr_log).read_bytes(
+                    )[-400:].decode(errors="replace")
+        except OSError:
+            pass
+        for stream in (rec.proc.stdin, rec.proc.stdout,
+                       getattr(rec.proc, "stderr", None)):
+            try:
+                if stream is not None:
+                    stream.close()
+            except OSError:
+                pass
+        if rec.overflow_fd is not None:
+            try:
+                os.close(rec.overflow_fd)
+            except OSError:
+                pass
+            rec.overflow_fd = None
+        self._records.pop(rec.worker_id, None)
+        shutil.rmtree(rec.workspace, ignore_errors=True)
+        return tail or "no unit diagnostics captured"
 
     # --- lifecycle ---------------------------------------------------------
     def status(self, record_or_id) -> dict:
         rec = self._record(record_or_id)
+        if rec.cgroup_path is not None \
+                and not Path(rec.cgroup_path).is_dir():
+            rec.cgroup_path = None  # collected by systemd
+        if rec.cgroup_path is None:
+            rec.cgroup_path = self.systemd.cgroup_path(rec.unit_name)
         populated = (cgroup_populated(rec.cgroup_path)
                      if rec.cgroup_path else None)
         return {"worker_id": rec.worker_id, "unit": rec.unit_name,
@@ -602,42 +694,62 @@ class WorkerLaunchBroker:
         plus the client exited. /proc scanning is never the claim."""
         rec = self._record(record_or_id)
         deadline = time.monotonic() + float(deadline_seconds)
-        self.systemd.stop(rec.unit_name)
+        stop_rc = getattr(self.systemd.stop(rec.unit_name),
+                          "returncode", None)
         while time.monotonic() < deadline:
             if rec.proc.poll() is not None:
                 break
             time.sleep(0.05)
+        kill_rc = None
         if rec.proc.poll() is None:
-            self.systemd.kill(rec.unit_name, "SIGKILL")
+            kill_rc = getattr(
+                self.systemd.kill(rec.unit_name, "SIGKILL"),
+                "returncode", None)
             try:
                 rec.proc.wait(timeout=max(1.0, deadline_seconds / 2))
             except Exception:  # noqa: BLE001
                 pass
-        # verification: populated==0 OR the cgroup itself is gone
+        # verification: ONLY an explicit populated-0, or the cgroup
+        # dir gone while the unit itself reports inactive. Missing,
+        # malformed or unreadable occupancy evidence is NEVER proof
+        # of an empty cgroup — it spins to the deadline and reports
+        # unverified.
         verified = False
         populated = None
         while time.monotonic() < deadline:
             if rec.cgroup_path is None:
                 rec.cgroup_path = self.systemd.cgroup_path(
                     rec.unit_name)
+            if rec.cgroup_path is not None \
+                    and not Path(rec.cgroup_path).is_dir():
+                rec.cgroup_path = None  # collected mid-teardown
             if rec.cgroup_path is None:
-                verified = not self.systemd.is_active(rec.unit_name)
-                if verified:
+                if not self.systemd.is_active(rec.unit_name):
+                    verified = True   # unit gone + cgroup removed
                     break
             else:
                 populated = cgroup_populated(rec.cgroup_path)
-                if populated is False or populated is None:
-                    verified = True
+                if populated is False:
+                    verified = True   # kernel: populated 0
                     break
+                # True -> still occupied; None -> unreadable. Neither
+                # is evidence of emptiness — keep waiting.
             time.sleep(0.05)
         return {"worker_id": rec.worker_id, "unit": rec.unit_name,
                 "verified_empty": bool(verified),
                 "cgroup_populated": populated,
+                "stop_rc": stop_rc, "kill_rc": kill_rc,
                 "client_exit": rec.proc.poll(),
                 "mechanism": "systemd-cgroupv2"}
 
     def release(self, record_or_id) -> None:
         rec = self._record(record_or_id)
+        if rec.stderr_fh is not None:
+            try:
+                rec.stderr_fh.close()
+            except OSError:
+                pass
+            rec.stderr_fh = None
         if rec.overflow_fd is not None:
             try:
                 os.close(rec.overflow_fd)

@@ -136,14 +136,18 @@ class NsJailWorkerExecutor:
                 f"nsjail executor refuses argv {list(worker_argv)!r} — "
                 "the jail executes only the pinned worker entry")
         nonce = secrets.token_hex(16)
+        if role == "worker" and not backend_manifest_digest:
+            raise ExecutorRefused(
+                "worker launches require a signed backend-manifest "
+                "digest — the broker independently refuses requests "
+                "without verified authority bindings")
         req = LaunchWorkerRequest(
             worker_id=dirs.worker_id,
-            signed_backend_manifest_digest=(
-                backend_manifest_digest
-                or "sha256:" + "0" * 64),
+            signed_backend_manifest_digest=str(
+                backend_manifest_digest or ""),
             approved_artifact_digests=tuple(artifact_digests),
             approved_isolation_profile_digest=self.profile_digest,
-            execution_budget_digest="",
+            execution_budget_digest=self._budget_digest(),
             request_nonce=nonce, role=role)
         # the unit token travels in the jail env — defense in depth
         # under the authoritative cgroup boundary
@@ -164,6 +168,16 @@ class NsJailWorkerExecutor:
             cgroup=None, tracker=None, executor=self.name,
             record=record,
             digests=dict(record.digests))
+
+    def _budget_digest(self) -> str:
+        """Digest of the execution budget this launch runs under —
+        derived from the approved profile's runtime-tunable fields so
+        the broker binds budget authority to the same frozen record."""
+        from egai.common.canonical import digest
+        doc = self.profile.to_doc()
+        return digest({k: doc.get(k) for k in (
+            "memory_mb", "cpu_seconds", "wall_time_seconds",
+            "unit_memory_max", "unit_tasks_max", "max_file_mb")})
 
     def _extra_ro(self, isolation: WorkerIsolationPolicy) -> tuple:
         """The admitted snapshot dirs the WORKER must read — supplied

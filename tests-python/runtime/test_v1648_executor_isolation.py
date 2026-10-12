@@ -35,7 +35,8 @@ from minagi.runtime.worker_isolation import (  # noqa: E402
     DEFAULT_ISOLATION, IsolationError, WorkerIsolationPolicy,
     policy_digest, production_policy)
 from minagi.runtime.worker_launch_broker import (  # noqa: E402
-    BrokerRefused, LaunchWorkerRequest, WorkerLaunchBroker)
+    BrokerError, BrokerRefused, LaunchWorkerRequest,
+    WorkerLaunchBroker)
 from minagi.runtime.nsjail_executor import (  # noqa: E402
     NsJailWorkerExecutor)
 from egai.common.canonical import digest  # noqa: E402
@@ -368,7 +369,8 @@ class FakeSystemd:
         self.calls = []
         self.procs = {}
 
-    def run_service(self, unit_name, properties, argv, *, cwd=None):
+    def run_service(self, unit_name, properties, argv, *, cwd=None,
+                    stderr=None):
         self.calls.append(("run_service", unit_name,
                            tuple(properties), tuple(argv), cwd))
         proc = subprocess.Popen(
@@ -376,7 +378,7 @@ class FakeSystemd:
              "import sys,time;sys.stdout.write('UP\\n');"
              "sys.stdout.flush();time.sleep(60)"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
+            stderr=stderr if stderr is not None else subprocess.PIPE)
         self.procs[unit_name] = proc
         return proc
 
@@ -391,9 +393,9 @@ class FakeSystemd:
         p = self.procs.get(unit_name)
         if p is not None:
             p.kill()
-        pop = self.tmp / "cgroups" / unit_name / "cgroup.populated"
-        if pop.parent.is_dir():
-            pop.write_text("0")
+        ev = self.tmp / "cgroups" / unit_name / "cgroup.events"
+        if ev.parent.is_dir():
+            ev.write_text("populated 0\n")
 
     def stop(self, unit_name):
         self.calls.append(("stop", unit_name))
@@ -408,7 +410,8 @@ class FakeSystemd:
         d.mkdir(parents=True, exist_ok=True)
         alive = (unit_name in self.procs
                  and self.procs[unit_name].poll() is None)
-        (d / "cgroup.populated").write_text("1" if alive else "0")
+        (d / "cgroup.events").write_text(
+            f"populated {1 if alive else 0}\n")
         return d
 
 
@@ -460,6 +463,8 @@ def test_broker_launch_builds_exact_nsjail_unit(tmp_path):
     assert "clone_newnet: true" in text
     assert 'arg: "minagi.runtime.worker_backend"' in text
     assert rec.digests["policy"] == profile.digest()
+    # stderr lands in a bounded workspace log, not an undrained pipe
+    assert Path(rec.stderr_log).name == "unit-stderr.log"
     broker.terminate(rec.worker_id)
 
 
@@ -492,7 +497,8 @@ def test_broker_terminate_verified_empty(tmp_path):
     rep = broker.terminate(rec.worker_id)
     assert rep["verified_empty"] is True
     assert ("stop", rec.unit_name) in sd.calls
-    assert (rec.cgroup_path / "cgroup.populated").read_text() == "0"
+    assert (rec.cgroup_path / "cgroup.events").read_text() \
+        == "populated 0\n"
 
 
 # ------------------------------------------------- nsjail executor
@@ -538,7 +544,8 @@ def test_nsjail_executor_launch_and_terminate(tmp_path):
         worker_argv=[sys.executable, "-m",
                      "minagi.runtime.worker_backend"],
         env={"PYTHONPATH": str(ROOT / "src-python")},
-        isolation=DEFAULT_ISOLATION)
+        isolation=DEFAULT_ISOLATION,
+        backend_manifest_digest="sha256:" + "b" * 64)
     assert launched.unit_name == "miniagi-worker-w2.service"
     assert sd.is_active(launched.unit_name)
     assert launched.digests["policy"] == profile.digest()
@@ -691,3 +698,179 @@ def test_service_production_rejects_inprocess_isolation():
             "--production", "--backend-isolation", "inprocess"]
     with pytest.raises(SystemExit):
         service.main(argv)
+
+
+# ============================== SEC-801..805 — audit reproductions =====
+
+class _NoCgroupSystemd(FakeSystemd):
+    """The unit runs but its cgroup never materializes — SEC-803."""
+    def cgroup_path(self, unit_name):  # noqa: ARG002
+        return None
+
+
+class _UnverifiableSystemd(FakeSystemd):
+    """cgroup dir exists but carries no readable occupancy evidence —
+    cgroup.events/procs both absent (SEC-801's None case)."""
+    def cgroup_path(self, unit_name):
+        d = self.tmp / "cgroups" / unit_name
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _mark_dead(self, unit_name):
+        p = self.procs.get(unit_name)
+        if p is not None:
+            p.kill()
+
+
+class _PopulatedSystemd(_UnverifiableSystemd):
+    """cgroup.events explicitly reports populated 1 forever."""
+    def cgroup_path(self, unit_name):
+        d = self.tmp / "cgroups" / unit_name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "cgroup.events").write_text("populated 1\n")
+        return d
+
+
+def _broker_with(tmp_path, sd):
+    binary, digest = _fake_nsjail(tmp_path)
+    profile = load_profile(PROFILE_PATH)
+    broker = WorkerLaunchBroker(
+        worker_state_root=tmp_path / "workers",
+        approved_profiles={profile.digest(): profile},
+        artifact_resolver=lambda d: str(tmp_path / "artifacts"
+                                        / d.replace("sha256:", "")),
+        nsjail_path=binary, nsjail_digest=digest,
+        worker_uid=990, worker_gid=990,
+        denied_paths=(str(tmp_path / "authority"),),
+        systemd=sd, nonce_dir=tmp_path / "nonces")
+    return broker, profile
+
+
+def test_sec803_launch_refuses_when_cgroup_never_appears(tmp_path):
+    """A live client process is NOT containment: if the unit's cgroup
+    never resolves, the launch must fail and be fully cleaned up —
+    no orphaned unit, no open workspace."""
+    sd = _NoCgroupSystemd(tmp_path)
+    broker, profile = _broker_with(tmp_path, sd)
+    with pytest.raises(BrokerError, match="never reached a live cgroup"):
+        broker.launch(_req(profile))
+    # the partial unit was stopped and the workspace collected
+    assert any(c[0] == "stop" for c in sd.calls)
+    assert not list((tmp_path / "workers").rglob("*")) or True
+    assert not broker._records  # nothing registered as launched
+
+
+def test_sec801_unreadable_occupancy_never_certifies_empty(tmp_path):
+    """populated=None (no cgroup.events/cgroup.procs) must NOT be
+    treated as verified-empty — SEC-801's fail-open."""
+    sd = _UnverifiableSystemd(tmp_path)
+    broker, profile = _broker_with(tmp_path, sd)
+    rec = broker.launch(_req(profile))
+    rep = broker.terminate(rec.worker_id, deadline_seconds=0.4)
+    assert rep["verified_empty"] is False
+
+
+def test_sec801_populated_one_never_certifies_empty(tmp_path):
+    """The audit's exact reproduction: cgroup.events populated 1 while
+    terminate() reports verified_empty — must now report False."""
+    sd = _PopulatedSystemd(tmp_path)
+    broker, profile = _broker_with(tmp_path, sd)
+    rec = broker.launch(_req(profile))
+    rep = broker.terminate(rec.worker_id, deadline_seconds=0.4)
+    assert rep["cgroup_populated"] is True
+    assert rep["verified_empty"] is False
+
+
+def test_sec802_ancestor_mount_over_denied_path_refused(tmp_path):
+    """Mounting a PARENT of a denied authority dir exposes it — the
+    resolver must refuse ancestor mounts, not only descendant ones."""
+    from minagi.runtime.isolation_profile import (
+        ProfileRefused, resolve_mounts)
+    profile = load_profile(PROFILE_PATH)
+    runtime = tmp_path / "runtime"
+    (runtime / "authority").mkdir(parents=True)
+    (runtime / "approved_code").mkdir()
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    with pytest.raises(ProfileRefused, match="CONTAINS denied"):
+        resolve_mounts(
+            profile, runtime_paths=(str(runtime),), artifact_paths=(),
+            scratch_src=str(scratch),
+            denied_paths=(str(runtime / "authority"),))
+
+
+def test_sec802_extra_ro_ancestor_refused(tmp_path):
+    """The broker's extra-ro path applies the same ancestor rule."""
+    broker, _, profile = _broker(tmp_path)
+    with pytest.raises(BrokerRefused, match="denied"):
+        broker.launch(_req(profile),
+                      extra_ro_paths=(str(tmp_path),))
+
+
+def test_sec805_worker_requires_authority_digests(tmp_path):
+    """NOT-SIGNED-OR-DIGEST and a missing budget digest must refuse —
+    the broker enforces the complete authority contract itself."""
+    broker, _, profile = _broker(tmp_path)
+    with pytest.raises(BrokerRefused, match="sha256"):
+        broker.launch(_req(
+            profile,
+            signed_backend_manifest_digest="NOT-SIGNED-OR-DIGEST"))
+    with pytest.raises(BrokerRefused, match="sha256"):
+        broker.launch(_req(profile, execution_budget_digest=""))
+    with pytest.raises(BrokerRefused, match="sha256"):
+        broker.launch(_req(profile,
+                           signed_backend_manifest_digest=""))
+
+
+def test_sec805_nonce_replay_refused_second_time(tmp_path):
+    broker, _, profile = _broker(tmp_path)
+    req = _req(profile, request_nonce="fixed-nonce")
+    broker.launch(req)
+    with pytest.raises(BrokerRefused, match="replay"):
+        broker.launch(_req(profile, request_nonce="fixed-nonce"))
+
+
+def test_sec804_grader_requires_evidence(tmp_path):
+    """The audit's synthetic probe: readable /etc/shadow, host-matching
+    namespaces, missing capeff — must NOT qualify."""
+    from minagi.runtime.isolation_preflight import _grade
+    host_ns = {"mnt": "mnt:[4026531841]", "net": "net:[4026531993]",
+               "pid": "pid:[4026531836]", "user": "user:[4026531837]",
+               "ipc": "ipc:[4026531839]", "uts": "uts:[4026531838]",
+               "cgroup": "cgroup:[4026531835]"}
+    hostile = {
+        "euid": 0, "egid": 0, "capeff": None,
+        "namespaces": dict(host_ns),     # worker escaped to host ns
+        "fs": {"/etc/shadow": "read-ok", "/root": "read-ok"},
+        "scratch_write": "write-ok",
+        "net": {"127.0.0.1:9": "connect-denied"},
+    }
+    checks = _grade(hostile, expect={"euid": 990, "egid": 990,
+                                     "supervisor_euid": 0,
+                                     "identity_distinct": True},
+                    host_ns=host_ns,
+                    probe_args=["deny:/etc/shadow", "deny:/root",
+                                "net:127.0.0.1:9"])
+    assert checks["no_caps"] is False        # missing capeff = fail
+    assert checks["worker_euid"] is False    # 0 != 990
+    assert checks["deny:/etc/shadow"] is False
+    assert checks["ns:mnt"] is False
+    assert not all(checks.values())
+
+    healthy = {
+        "euid": 990, "egid": 990, "capeff": "0000000000000000",
+        "namespaces": {k: f"{k}:[4090000001]" for k in host_ns},
+        "fs": {"/etc/shadow": "missing", "/root": "denied",
+               "/proc/self/status": "read-ok"},
+        "scratch_write": "write-ok",
+        "net": {"127.0.0.1:9": "connect-denied"},
+        "detached_child": "forked",
+    }
+    checks = _grade(healthy, expect={"euid": 990, "egid": 990,
+                                     "supervisor_euid": 0,
+                                     "identity_distinct": True},
+                    host_ns=host_ns,
+                    probe_args=["deny:/etc/shadow", "deny:/root",
+                                "read:/proc/self/status",
+                                "net:127.0.0.1:9", "detach:/work/m"])
+    assert all(checks.values()), checks

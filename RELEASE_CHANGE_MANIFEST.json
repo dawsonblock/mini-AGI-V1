@@ -30,7 +30,7 @@
       "path": "src-python/minagi/runtime/worker_executor.py"
     },
     {
-      "change": "new: restricted launch broker — digest validation, nonce replay refusal, workspace, exact systemd-run argv, cgroup resolution, verified teardown",
+      "change": "new: restricted launch broker \u2014 digest validation, nonce replay refusal, workspace, exact systemd-run argv, cgroup resolution, verified teardown",
       "path": "src-python/minagi/runtime/worker_launch_broker.py"
     },
     {
@@ -102,10 +102,10 @@
       "path": "docs/security/LINUX_HOST_QUALIFICATION.md"
     }
   ],
-  "release": "mini-AGI-V1-v16.4.8-Linux-Isolation-and-Security-Closure",
+  "release": "mini-AGI-V1-v16.4.9-Containment-Verification-and-Runtime-Qualification",
   "remaining_defects": {
-    "ipc_transport": "systemd-run --pipe (not a dedicated unix socket) — recorded decision",
-    "qualification": "Linux run not yet executed — G1-G4, G10 unclaimed",
+    "ipc_transport": "systemd-run --pipe (not a dedicated unix socket) \u2014 recorded decision",
+    "qualification": "Linux run not yet executed \u2014 G1-G4, G10 unclaimed",
     "seccomp": "nsjail built-in default policy; kafel policy is deployment-specific future work"
   },
   "repairs": {
@@ -117,8 +117,8 @@
     "SEC-706": "broker-computed bind mounts (runtime ro / artifacts ro / scratch rw at /work) with denied-path screening",
     "SEC-707": "release metadata regenerated from final source (manifest re-signed, attestation+validation reconciled)"
   },
-  "schema": "mini-agi-v16.4.8-change-manifest-v1",
+  "schema": "mini-agi-v16.4.9-change-manifest-v1",
   "source_archive": "dist-v1646/mini-AGI-V1-v16.4.7-Runtime-Isolation-Enforcement.zip",
-  "summary": "Worker isolation closure: the production boundary is a restricted launch broker (digest-bound requests, replay nonces, fixed argv, env allowlist, denied-path mount screening) that runs a pinned NsJail binary inside a managed systemd cgroup-v2 unit — custom pivot_root/mount-propagation/process-discovery code is off the production path. Capability detection reads CapEff (uid 0 no longer implies CAP_SYS_ADMIN); the frozen isolation profile's digest is bound to every launch; seatbelt is Darwin-only; production startup requires the nsjail executor and refuses every insecure fallback.",
-  "version": "16.4.8"
+  "summary": "Independent-audit corrective release: SEC-801 cgroup occupancy (cgroup.events, None is never proof of empty), SEC-802 ancestor mounts over denied paths refused, SEC-803 launch requires verified cgroup, SEC-804 preflight requires measured evidence for every mandatory property, SEC-805 authority digests validated + atomic nonce reservation. Stderr log file (no pipe starvation), stop/kill rc captured, distinct worker-uid qualification default.",
+  "version": "16.4.9"
 }
