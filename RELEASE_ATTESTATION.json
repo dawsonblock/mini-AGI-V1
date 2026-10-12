@@ -423,7 +423,7 @@
     "threat_model": "docs/research/THREAT_MODEL_V1645.md"
   },
   "signature_algorithm": "Ed25519",
-  "status": "v16.4.9 containment verification and runtime qualification: SEC-701..707 repaired; independent-audit SEC-801..805 repaired (cgroup.events occupancy, ancestor-mount denial, mandatory cgroup-verified launch, strict evidence-requiring preflight, authority-digest validation + atomic nonces); G5-G9 verified; G1-G4 VERIFIED on real Linux kernel (Debian bookworm systemd container, systemd 252 PID1, cgroup v2 unified, aarch64, NsJail pinned 4ff54a6 sha256:a9408ab2) \u2014 host_check PASS, strict preflight qualified=true with distinct worker uid 65534, 7/7 adversarial tests pass; G10 real-model lifecycle remains pending bare-metal/cloud host",
+  "status": "v16.4.9 containment verification and runtime qualification: SEC-701..707 repaired; independent-audit SEC-801..805 repaired (cgroup.events occupancy, ancestor-mount denial, mandatory cgroup-verified launch, strict evidence-requiring preflight, authority-digest validation + atomic nonces); rlimit_as virtual-AS cap found by real-model qualification and replaced by cgroup MemoryMax authority (profile memory_mb=8192); G5-G9 verified; G1-G4 + G10 VERIFIED on real Linux kernel (Debian bookworm systemd container, systemd 252 PID1, cgroup v2 unified, aarch64, NsJail pinned 4ff54a6 sha256:a9408ab2) \u2014 host_check PASS, strict preflight qualified=true with distinct worker uid 65534, live-listener net:LISTENER connect-denied, 7/7 adversarial, 2/2 real-model lifecycle (load/infer/cancel/fresh-jail switch) PASS; GPU and production-scale models remain for target hardware",
   "worker_isolation_v1646": {
     "defects_closed": [
       "SEC-501",

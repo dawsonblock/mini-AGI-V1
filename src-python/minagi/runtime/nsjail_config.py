@@ -57,6 +57,13 @@ def _idmap_block(kind: str, inside, outside, count: int = 1) -> str:
     ]
 
 
+_BENIGN_MARKER_NAMES = frozenset({
+    # standard performance/verbosity knobs — credential-shaped
+    # substring but carry no secret material
+    "TOKENIZERS_PARALLELISM", "TORCH_LOGS", "TRANSFORMERS_VERBOSITY",
+    "OPENBLAS_NUM_THREADS"})
+
+
 def render_config(profile: IsolationProfile, *,
                   exec_argv, env: dict | None = None,
                   mounts: tuple[MountSpec, ...] = (),
@@ -83,7 +90,8 @@ def render_config(profile: IsolationProfile, *,
     env = dict(env or {})
     for key in env:
         if any(m in key.upper() for m in
-               ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")):
+               ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")) \
+                and key.upper() not in _BENIGN_MARKER_NAMES:
             raise ConfigError(
                 f"envar {key!r} looks credential-bearing — secrets are "
                 "never configured into the jail")
@@ -117,9 +125,10 @@ def render_config(profile: IsolationProfile, *,
     A("skip_setsid: false")
     A("disable_no_new_privs: "
       + _bool(profile.allow_privilege_escalation))
-    if profile.memory_mb is not None:
-        A(f"rlimit_as: {int(profile.memory_mb)}")
-        A("rlimit_as_type: VALUE")
+    # rlimit_as is deliberately not a VALUE bound: virtual-AS accounting
+    # counts mmap'd regions (weights, arenas), so it wrongly starves real
+    # model runtimes. cgroup MemoryMax is the authoritative memory bound.
+    A("rlimit_as_type: INF")
     A("rlimit_core: 0")
     A("rlimit_core_type: VALUE")
     if profile.cpu_seconds is not None:

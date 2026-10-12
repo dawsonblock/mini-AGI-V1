@@ -74,8 +74,22 @@ macOS-only anymore.
 ## Still open
 
 - [ ] Bare-metal/cloud-host run with a non-root `MINAGI_WORKER_UID`
-- [ ] Real model lifecycle (G10): model/adapter/tokenizer digests,
-      load→infer→cancel→rollback→restart under the jail
+- [x] Real model lifecycle (G10): real HF/PEFT load→infer→cancel→
+      switch under the jail — DONE in this container (see
+      REAL_MODEL_LIFECYCLE.md). GPU and production-scale models
+      remain for target hardware.
+
+## v16.4.9 second rerun — real model + resource-boundary fix
+
+G10 caught a latent defect: NsJail's `rlimit_as` default (4096 MiB
+*virtual*) capped workers at ~61 pthreads (mmap-based runtimes count
+virtual mappings, not resident pages). Generated configs now emit
+`rlimit_as_type: INF`; `memory_mb: 8192` makes cgroup `MemoryMax`
+the authoritative memory bound. With `TasksMax=512`, a 400-pthread
+probe passes inside the jail. The two real-model tests then passed
+(see REAL_MODEL_LIFECYCLE.md); the full script ends with
+`QUALIFICATION: PASS` including the live-listener `net:LISTENER`
+positive network control.
 
 ## v16.4.9 rerun — strict preflight + distinct worker identity
 

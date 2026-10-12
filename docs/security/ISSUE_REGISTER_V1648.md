@@ -38,13 +38,13 @@ explicit `MINAGI_WORKER_UID`).
 
 | Gate | Claim | Evidence |
 |------|-------|----------|
-| G1 NsJail restrictions | source complete, **unqualified** | `test_v1648_linux_nsjail.py` skips off-Linux |
-| G2 authority isolation | source complete, **unqualified** | `denied_paths` + `_allowed` mount screening; Linux test pending |
-| G3 network denial | source complete, **unqualified** | `clone_newnet`+`iface_no_lo` in generated config; probe `net:` pending |
-| G4 kernel containment | source complete, **unqualified** | cgroup.populated verification in `broker.terminate`; Linux test pending |
+| G1 NsJail restrictions | **qualified** (privileged Linux container) | strict preflight + 7/7 adversarial in the same run as below |
+| G2 authority isolation | **qualified** | `deny:/etc/shadow`,`deny:/root`→missing; `read:` positive control read-ok |
+| G3 network denial | **qualified** | live host listener `net:LISTENER`→`connect-denied`; `127.0.0.1:9` denied |
+| G4 kernel containment | **qualified** | `cgroup.events populated` verified per-unit; terminate requires explicit `0` or gone+inactive |
 | G5 job inputs cannot weaken isolation | verified by unit tests | frozen profile, `with_runtime` whitelist, digest binding |
 | G6 production refuses missing/ineffective restrictions | verified by unit tests | `resolve_worker_executor` SystemExit paths |
-| G7 lifecycle correctness | verified on dev executor | 364 runtime tests incl. IPC adversarial + spawn/unload |
-| G8 regression tests pass | verified | `test_v1648_executor_isolation.py` 42 tests |
-| G9 release inventory | verified | clean-extraction `verify_release.py` PASS (1544 files, pinned key fp `0f9d7358`, manifest `7e46786a`, zip `836a65c4`) |
-| G10 real-model lifecycle | pending | needs Linux host + HF/PEFT env |
+| G7 lifecycle correctness | verified on dev executor | runtime tests incl. IPC adversarial + spawn/unload |
+| G8 regression tests pass | verified | executor + audit-repair suites green |
+| G9 release inventory | verified | clean-extraction `verify_release.py` PASS (1544 files, pinned key fp `0f9d7358`) |
+| G10 real-model lifecycle | **qualified** (CPU) | real GPT2+LoRA load/infer/cancel/switch inside the jail, uid 65534; GPU + production scale on target HW remains |

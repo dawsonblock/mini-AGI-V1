@@ -63,10 +63,17 @@ _ALLOWED_ENV = frozenset({
     "HF_HOME", "HF_HUB_CACHE", "HF_DATASETS_CACHE",
     "TRANSFORMERS_CACHE", "TORCH_HOME", "XDG_CACHE_HOME",
     "HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE",
+    "OMP_NUM_THREADS", "TOKENIZERS_PARALLELISM", "MKL_NUM_THREADS",
     "MINAGI_WORKER_UNIT", "MINAGI_WORKER_ROLE",
     "MINAGI_PROBE_SCRATCH", "MINAGI_PROBE_ARGS"})
 
 _SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
+
+# Credential-shaped names that are nevertheless standard, benign
+# performance/verbosity knobs — no secret material crosses.
+_BENIGN_MARKER_NAMES = frozenset({
+    "TOKENIZERS_PARALLELISM", "TORCH_LOGS", "TRANSFORMERS_VERBOSITY",
+    "OPENBLAS_NUM_THREADS"})
 
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -422,7 +429,8 @@ class WorkerLaunchBroker:
             key = str(k)
             if key not in _ALLOWED_ENV:
                 continue
-            if any(m in key.upper() for m in _SECRET_MARKERS):
+            if any(m in key.upper() for m in _SECRET_MARKERS) \
+                    and key.upper() not in _BENIGN_MARKER_NAMES:
                 raise BrokerRefused(
                     f"envar {key!r} is credential-shaped — refused")
             out[key] = str(v)

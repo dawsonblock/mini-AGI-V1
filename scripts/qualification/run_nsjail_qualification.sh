@@ -53,12 +53,20 @@ ex = NsJailWorkerExecutor.from_profile(
 report = run_preflight(ex, isolation=DEFAULT_ISOLATION, timeout=180.0,
                        probe_args=["deny:/etc/shadow", "deny:/root",
                                    "read:/proc/self/status",
-                                   "net:127.0.0.1:9",
+                                   "net:LISTENER",   # live host listener
                                    "detach:/work/detached.marker"])
 import json; print(json.dumps(report, indent=2, sort_keys=True))
 sys.exit(0 if report["qualified"] else 1)
 PY
 
+# The gated suites inherit the SAME distinct worker identity — the
+# boundary under test is the one production will run.
+if [ "$(id -u)" = "0" ]; then
+    export MINAGI_WORKER_UID="${MINAGI_WORKER_UID:-65534}"
+    export MINAGI_WORKER_GID="${MINAGI_WORKER_GID:-$MINAGI_WORKER_UID}"
+fi
 echo "== adversarial boundary tests =="
 python3 -m pytest tests-python/runtime/test_v1648_linux_nsjail.py -v
+echo "== real-model lifecycle (G10) =="
+python3 -m pytest tests-python/runtime/test_v1649_real_model_nsjail.py -v
 echo "QUALIFICATION: PASS"

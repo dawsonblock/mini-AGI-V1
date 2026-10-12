@@ -83,6 +83,18 @@ def _probe_net(addr: str) -> str:
         return "connect-error"
 
 
+def _open_listener(port: int = 0):
+    """A KNOWN-LISTENING endpoint on the host loopback — the worker's
+    connect attempt must still fail. Denial proven against a dead port
+    proves nothing about the boundary."""
+    import socket
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(("127.0.0.1", int(port)))
+    s.listen(4)
+    return s
+
+
 def _probe_detach(marker_path: str) -> str:
     """Fork a child that setsid-detaches, writes its pid to the
     marker, and sleeps briefly — the supervisor checks the unit's
@@ -187,6 +199,20 @@ def run_preflight(executor, *, isolation, probe_args=(),
         expect.setdefault("egid", broker.worker_gid)
         expect.setdefault("identity_distinct", True)
     expect.setdefault("supervisor_euid", os.geteuid())
+    # net:LISTENER[<port>] opens a real listener on host loopback —
+    # the worker must still fail to connect to it. net:<addr:port>
+    # remains available for fixed endpoints.
+    listener = None
+    expanded = []
+    for spec in probe_args:
+        if str(spec).startswith("net:LISTENER"):
+            if listener is None:
+                listener = _open_listener()
+            port = listener.getsockname()[1]
+            expanded.append(f"net:127.0.0.1:{port}")
+        else:
+            expanded.append(spec)
+    probe_args = expanded
     dirs = executor.prepare(worker_id=worker_id or "preflight",
                             isolation=isolation)
     env = (build_env_fn(dirs) if build_env_fn else {
@@ -236,6 +262,11 @@ def run_preflight(executor, *, isolation, probe_args=(),
                        if launched is not None else None)
         if launched is not None:
             executor.release(launched)
+        if listener is not None:
+            try:
+                listener.close()
+            except OSError:
+                pass
     checks = _grade(probe if isinstance(probe, dict) else {},
                     expect=expect, host_ns=host_ns,
                     probe_args=probe_args)

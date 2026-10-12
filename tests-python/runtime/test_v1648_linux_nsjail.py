@@ -58,7 +58,23 @@ def _nsjail():
         Path(path).read_bytes()).hexdigest()
 
 
+
+
+def _traversable(path):
+    """The userns-mapped worker uid must traverse every ancestor of
+    the bind-mounted scratch — chmod o+x up the chain (traverse-only,
+    listing still denied)."""
+    p = Path(path).resolve()
+    for d in (p, *p.parents):
+        try:
+            os.chmod(d, os.stat(d).st_mode | 0o001)
+        except OSError:
+            break
+        if d.parent == d or d.name == "tmp":
+            break
+
 def _executor(tmp_path, *, denied=()):
+    _traversable(tmp_path)
     found = _nsjail()
     if found is None:
         pytest.skip("nsjail binary not found — set MINAGI_NSJAIL")
@@ -73,9 +89,11 @@ def _executor(tmp_path, *, denied=()):
         load_profile(PROFILE_PATH),
         worker_state_root=tmp_path / "workers",
         nsjail_path=binary, nsjail_digest=digest,
-        worker_uid=int(os.environ.get("MINAGI_WORKER_UID") or euid),
+        worker_uid=int(os.environ.get("MINAGI_WORKER_UID")
+                       or (65534 if euid == 0 else euid)),
         worker_gid=int(os.environ.get("MINAGI_WORKER_GID")
-                       or os.getegid()),
+                       or os.environ.get("MINAGI_WORKER_UID")
+                       or (65534 if euid == 0 else os.getegid())),
         user_manager=rootless,
         python_path_entries=tuple(
             str(p) for p in sys.path if p),

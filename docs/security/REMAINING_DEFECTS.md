@@ -16,9 +16,11 @@ for the fix table):
 
 ## Open (blocking production claims)
 
-- **G10 real-model lifecycle** — HF/PEFT load, inference, cancel,
-  rollback, and revocation INSIDE the NsJail boundary still need a
-  real-model run on a qualified host.
+- **G10 real-model lifecycle** — DONE on the qualified container:
+  real HF/PEFT load, inference, cooperative cancel, fresh-jail model
+  switch, and verified-empty cgroup teardown all PASS inside NsJail
+  as uid 65534 (see REAL_MODEL_LIFECYCLE.md). GPU scale-out and
+  production-scale models remain to qualify on target hardware.
 - **Non-root `MINAGI_WORKER_UID` qualification** — the containerized
   run exercised root→65534 mapping; a rootless `systemd-run --user`
   deployment is a separate qualification.

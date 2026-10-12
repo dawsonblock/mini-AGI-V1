@@ -328,7 +328,7 @@ def test_render_config_required_fields(tmp_path):
         "clone_newuser: true", "clone_newns: true",
         "clone_newpid: true", "clone_newipc: true",
         "keep_caps: false", "disable_no_new_privs: false",
-        "rlimit_nproc: 32", "rlimit_nofile: 256",
+        "rlimit_nproc: 512", "rlimit_nofile: 1024",
         "use_cgroupv2: true", "mount_proc: true",
         'exec_bin {\n  path: "/usr/bin/python3"',
         'arg: "-m"',
@@ -451,7 +451,7 @@ def test_broker_launch_builds_exact_nsjail_unit(tmp_path):
     assert call[0] == "run_service"
     props = list(call[2])
     assert "KillMode=control-group" in props
-    assert "TasksMax=32" in props
+    assert "TasksMax=512" in props
     assert "NoNewPrivileges=yes" in props
     argv = list(call[3])
     assert argv[0] == broker.nsjail_path

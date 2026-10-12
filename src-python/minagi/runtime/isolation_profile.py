@@ -64,7 +64,7 @@ class IsolationProfile:
     max_processes             RLIMIT_NPROC + unit TasksMax bound
     max_open_files            RLIMIT_NOFILE bound
     max_file_mb               RLIMIT_FSIZE bound (None = unbounded)
-    memory_mb                 cgroup MemoryMax AND rlimit_as (None =
+    memory_mb                 cgroup MemoryMax (None = no memory cap;
                               decided by deployment, not the worker)
     cpu_seconds               RLIMIT_CPU bound
     wall_time_seconds         nsjail time_limit bound

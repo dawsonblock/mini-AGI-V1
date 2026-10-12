@@ -7,10 +7,10 @@
   "base_version": "16.4.7",
   "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.6/16.4.7 (repairs SEC-301..SEC-504, VAL-501 remain in effect)",
   "evidence": {
-    "gate_status": "G1-G4 verified on real Linux boundary (containered systemd 252 + cgroup v2 + NsJail); G5-G9 verified by tests/envelope; G10 real-model lifecycle pending bare-metal host",
-    "linux_boundary": "test_v1648_linux_nsjail.py: 7/7 PASS in privileged Debian container (linuxkit 7.0.14 aarch64); preflight qualified=true; capeff=0; detached child proven via its own /proc/self/cgroup",
+    "gate_status": "G1-G4 + G10 verified on real Linux boundary (containered systemd 252 + cgroup v2 + NsJail, uid 65534 worker); G5-G9 verified by tests/envelope",
+    "linux_boundary": "test_v1648_linux_nsjail.py 7/7 PASS + test_v1649_real_model_nsjail.py 2/2 PASS (real GPT2+LoRA load/infer/cancel/switch inside the jail); strict preflight qualified=true; net:LISTENER connect-denied; rlimit_as cap found and replaced by cgroup MemoryMax",
     "nsjail_binary": "pinned commit 4ff54a6e0d5b65a0e1633d6e2fd1425ba6c882ce; sha256:a9408ab22219cb71e9e6d8ff571a594983d098df0acf1e4447494cfa0c1b3af8",
-    "python_tests": "full suite 999 passed / 14 skipped / 0 failed (macOS); executor suite 42; Linux-gated 7"
+    "python_tests": "full suite 1007 passed / 16 skipped / 0 failed (macOS); Linux container: 7/7 adversarial + 2/2 real-model"
   },
   "file_changes": [
     {
@@ -100,6 +100,34 @@
     {
       "change": "recorded: containered-Linux qualification PASS + defects found/fixed",
       "path": "docs/security/LINUX_HOST_QUALIFICATION.md"
+    },
+    {
+      "change": "v16.4.9: SEC-801 cgroup.events strict occupancy; SEC-803 launch refusal without verified cgroup + _abort_launch; stderr log capture; checked stop/kill rc; atomic nonce O_EXCL; strict authority digests; workspace 0711 traversal",
+      "path": "src-python/minagi/runtime/worker_launch_broker.py"
+    },
+    {
+      "change": "v16.4.9: SEC-802 ancestor-mount denial (src containing denied path refused); memory_mb docstring corrected (cgroup MemoryMax, not rlimit_as)",
+      "path": "src-python/minagi/runtime/isolation_profile.py"
+    },
+    {
+      "change": "v16.4.9: rlimit_as_type INF (virtual-AS cap wrongly starves mmap-based model runtimes; MemoryMax is the authority); TOKENIZERS_PARALLELISM et al env allowlist",
+      "path": "src-python/minagi/runtime/nsjail_config.py"
+    },
+    {
+      "change": "v16.4.9: SEC-804 strict grading \u2014 every mandatory property requires measured evidence; net:LISTENER positive control",
+      "path": "src-python/minagi/runtime/isolation_preflight.py"
+    },
+    {
+      "change": "v16.4.9: real budget digest bound; worker launches require manifest digest (no zero fallback)",
+      "path": "src-python/minagi/runtime/nsjail_executor.py"
+    },
+    {
+      "change": "v16.4.9: G10 real HF/PEFT lifecycle inside the jail (Linux-gated)",
+      "path": "tests-python/runtime/test_v1649_real_model_nsjail.py"
+    },
+    {
+      "change": "v16.4.9: SEC-801..805 regression tests; FakeSystemd cgroup.events; zombie-aware teardown waits",
+      "path": "tests-python/runtime/test_v1648_executor_isolation.py"
     }
   ],
   "release": "mini-AGI-V1-v16.4.9-Containment-Verification-and-Runtime-Qualification",
