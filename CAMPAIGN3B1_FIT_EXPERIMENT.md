@@ -12,12 +12,29 @@ more interesting than either.
 
 ## Result
 
+Six runs. The four correct-label runs form a clean 2×2 (breadth ×
+steps), so the two variables are separated rather than confounded.
+
 | run | train families | steps | labels | subset fit | hidden (frozen 0.417) | broken | gained |
 |---|---|---|---|---|---|---|---|
 | **run1** | 2 | 300 | correct | **1.000** | **0.583** | 2 | **4** |
+| run4 | 2 | 600 | correct | 1.000 | **0.583** | 2 | 4 |
 | nc1 | 2 | 300 | shuffled | 0.000 | **0.000** | 5 | 0 |
+| run3 | 6 | 300 | correct | 1.000 | 0.250 | 3 | 1 |
 | run2 | 6 | 600 | correct | 1.000 | 0.250 | 3 | 1 |
 | nc2 | 6 | 600 | shuffled | 0.000 | **0.250** | 3 | 1 |
+
+The 2×2, holding labels and fit constant at 1.000:
+
+| | 300 steps | 600 steps |
+|---|---|---|
+| **2 families** | 0.583 | 0.583 |
+| **6 families** | 0.250 | 0.250 |
+
+**Steps have no effect at either breadth. Breadth is the variable.**
+Doubling the training duration moves the held-out score by 0.000 in both
+rows, while going from 2 to 6 transformations moves it by −0.333 at both
+step counts.
 
 For reference, the Campaign 3B campaign arms on the same hidden block:
 frozen 0.417 · L5b verified replay 0.583 · L6 0.167 · L7 0.083 · NC 0.250.
@@ -88,6 +105,8 @@ approach out:
 
 - **Adding more training data will not help.** At 6 families supervision
   already makes no measurable difference; more of it is more of the same.
+- **Training longer will not help.** The 2×2 shows duration has no
+  effect at either breadth — 300 and 600 steps land on identical scores.
 - **Better labels will not help.** The control *is* the better-labels
   comparison, and it ties.
 - **The lever is capacity and regularization**: a smaller effective
@@ -104,10 +123,12 @@ approach out:
   destroys *everything*, breaking all 5 frozen-correct rows. That is
   consistent with a model confidently applying a wrong mapping, but it
   is one run.
-- **2 vs 6 families also changes example count** (10 vs 30) and step
-  count (300 vs 600). The experiment does not isolate breadth from data
-  volume; a 6-family run at 300 steps, or a 2-family run at 600, would.
-  That is the obvious next ablation and it is cheap.
+- **Breadth is isolated from training duration but not from example
+  count.** The 2×2 above holds steps constant across breadth, so
+  duration is ruled out. 2 families still means 10 examples against 30,
+  so "breadth" here is "breadth and volume together"; separating them
+  needs a 2-family run with the 6-family example count (repeating the
+  two families' examples) — cheap, and the last confound standing.
 - **The Campaign 3B primary verdict is unchanged.** Neural adaptation
   still loses to the verified-replay baseline on the held-out families
   (L7 − L5b = −0.500). This experiment explains *why*, and shows the
