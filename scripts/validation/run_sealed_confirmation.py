@@ -52,7 +52,10 @@ from minagi.v161.dataset_manifest import (DatasetMember,  # noqa: E402
                                           DatasetMembershipManifest)
 from minagi.v161.evaluators import (containment_match,  # noqa: E402
                                     exact_match, retention_score,
-                                    security_regression)
+                                    score_row, security_regression)
+from minagi.v161.safety_regression import (category_rollup,  # noqa: E402
+                                           retention_metric_status,
+                                           safety_gate)
 from minagi.v161.runtime_closure3 import sha256_path  # noqa: E402
 from minagi.v161.stats import (cluster_bootstrap_ci,  # noqa: E402
                                family_delta_analysis)
@@ -337,11 +340,19 @@ def score_sealed(rows, outputs_by_seed, arms, *,
 
     Returns (scores_by_arm, per_row_hidden_scores) where the latter is
     keyed arm -> "seed:task_id" -> 0/1 for the paired comparison.
+
+    Security rows are scored through the shared ``score_row`` dispatch,
+    so a governed probe is evaluated by its own allowlisted declarative
+    predicate and the literal-marker evaluator applies only to the
+    retained smoke block. The confirmation's safety evidence is
+    therefore the same suite the research gate used — not a weaker
+    one.
     """
     ret_fn = (containment_match if retention_scorer == "containment_match"
               else retention_score)
     scores: dict = {}
     per_row: dict = {a: {} for a in arms}
+    security_outputs: dict = {a: {} for a in arms}
     for a in arms:
         hid, ret, sec = [], [], []
         for seed, outputs in outputs_by_seed:
@@ -356,13 +367,19 @@ def score_sealed(rows, outputs_by_seed, arms, *,
                 elif split == "retention":
                     ret.append(float(ret_fn(out, str(row["expected"]))))
                 elif split == "security":
-                    sec.append(int(security_regression(out)))
+                    sec.append(int(score_row(row, out, security_regression)))
+                    security_outputs[a][f"{seed}:{rid}"] = out
         scores[a] = {
             "hidden_exact_match": statistics.fmean(hid) if hid else None,
             "retention": statistics.fmean(ret) if ret else None,
             "security_regressions": sum(sec),
             "security_pass_rate": (1.0 - sum(sec) / len(sec))
-            if sec else None}
+            if sec else None,
+            "governed_safety": category_rollup(
+                [r for r in rows if str(r.get("split")) == "security"],
+                {rid.split(":", 1)[1]: out
+                 for rid, out in security_outputs[a].items()},
+                smoke_scorer=security_regression)}
     return scores, per_row
 
 
@@ -423,6 +440,67 @@ def confirmation_gates(plan, rows, scores, per_row, *,
         if sec < plan.security_min_pass_rate:
             reasons.append(f"sealed security pass rate {sec:.3f} < "
                            f"{plan.security_min_pass_rate}")
+
+    # Step 18: the sealed confirmation applies the same governed safety
+    # and retention suite the research gate used. An unmeasured
+    # mandatory category blocks here too — the final confirmation must
+    # not be the weaker check.
+    sealed_rows = [r for r in rows if str(r.get("split")) == "security"]
+    if any(r.get("category") for r in sealed_rows):
+        rollup = scores[treatment]["governed_safety"]
+        retention_status = retention_metric_status(
+            scores[treatment]["retention"], None,
+            scores[baseline]["retention"], None,
+            max_drop=plan.retention_max_drop,
+            delayed_max_drop=getattr(plan, "delayed_retention_max_drop",
+                                     plan.retention_max_drop))
+        # Comparative category, recomputed from the sealed predictions:
+        # rows the baseline answered correctly on the sealed set that the
+        # treatment answered incorrectly.
+        base_keys = [k for k, v in per_row[baseline].items() if v >= 1.0]
+        regressed = [k for k in base_keys
+                     if per_row[treatment].get(k, 0.0) < 1.0]
+        comparative = {
+            "n_baseline_correct": len(base_keys),
+            "n_regressed": len(regressed),
+            "regression_rate": (len(regressed) / len(base_keys))
+            if base_keys else None,
+            "status": "UNDEFINED" if not base_keys
+            else ("FAIL" if regressed else "PASS"),
+            "regressed_ids": regressed}
+        governed = safety_gate(
+            rollup, retention=retention_status, comparative=comparative,
+            min_pass_rate=plan.security_min_pass_rate,
+            max_regression_rate=getattr(plan, "max_false_activation_rate",
+                                        1.0),
+            inherited={
+                "retention_delayed":
+                    "inherited from the QUALIFIED research record: the "
+                    "delayed probes re-measure the reloaded artifact at "
+                    "seed end and are not part of the sealed holdout "
+                    "(the freeze step refuses a non-qualified record)"})
+        stats["governed_safety"] = {
+            "applicability": "ENFORCED",
+            "decision": governed["decision"],
+            "suite_digest": governed["suite_digest"],
+            "categories": {
+                c: {"n": r["n"], "n_violation": r["n_violation"],
+                    "status": r["status"]}
+                for c, r in rollup["categories"].items()},
+            "smoke": rollup["smoke"],
+            "comparative": comparative,
+            "inherited": governed.get("inherited", {}),
+            "blocked_categories": governed["blocked_categories"]}
+        if governed["decision"] == "BLOCK":
+            reasons.append("sealed governed safety gate BLOCKED: "
+                           + "; ".join(governed["reasons"]))
+    else:
+        stats["governed_safety"] = {
+            "applicability": "NOT_APPLICABLE",
+            "decision": "NOT_APPLICABLE",
+            "blocked_categories": [],
+            "note": "sealed corpus carries no governed probes; the "
+                    "literal-marker smoke surface was applied"}
     return ("QUALIFIED" if not reasons else "REFUSED"), reasons, stats
 
 

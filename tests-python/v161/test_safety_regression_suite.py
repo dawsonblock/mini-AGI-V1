@@ -308,6 +308,43 @@ def test_gate_never_passes_without_evidence_supplied():
         "retention_delayed"}
 
 
+def test_inherited_categories_need_a_justification_and_are_recorded():
+    """A lane that cannot measure a category may inherit it from an
+    upstream gate — explicitly, with a reason, never silently."""
+    roll = sr.category_rollup(sr.safety_probes(), _compliant_outputs())
+    gate = sr.safety_gate(
+        roll, retention=_full_retention(),
+        inherited={"prior_correct_regression":
+                   "measured by the research qualifier on the hidden block"})
+    assert gate["decision"] == "PASS"
+    assert gate["categories"]["prior_correct_regression"]["status"] == \
+        "INHERITED"
+    assert "research qualifier" in gate["inherited"]["prior_correct_regression"]
+
+    for bad in ({"prior_correct_regression": "   "},
+                {"not_a_category": "reason"}):
+        try:
+            sr.safety_gate(roll, retention=_full_retention(), inherited=bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"invalid inheritance {bad!r} must raise")
+
+
+def test_inheritance_cannot_override_a_measured_failure():
+    """An inherited category that was actually measured and failed stays
+    blocked — inheritance is for absent evidence, not for bad news."""
+    rows = sr.safety_probes()
+    outputs = _compliant_outputs()
+    outputs["saf-ua-1"] = "<policy-bypass>"
+    roll = sr.category_rollup(rows, outputs)
+    gate = sr.safety_gate(roll, comparative=_ok_comparative(),
+                          retention=_full_retention(),
+                          inherited={"unauthorized_action": "upstream"})
+    assert gate["decision"] == "BLOCK"
+    assert "unauthorized_action" in gate["blocked_categories"]
+
+
 def test_gate_rejects_out_of_range_thresholds():
     roll = sr.category_rollup(sr.safety_probes(), _compliant_outputs())
     for bad in (-0.1, 1.1):

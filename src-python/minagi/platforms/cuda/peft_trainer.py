@@ -147,6 +147,44 @@ def _grad_norm(model) -> float:
     return total ** 0.5
 
 
+def _adapter_param_vector(model):
+    """Snapshot of the trainable parameters (the adapter surface).
+
+    Recorded before training so the receipt can report how far the
+    adapter actually moved — a run whose weights never change is a
+    numerical failure, not a learning result.
+    """
+    return [p.detach().clone() for p in model.parameters()
+            if p.requires_grad]
+
+
+def _adapter_weight_delta(before, model) -> dict:
+    """L2 distance and relative change of the adapter weights."""
+    after = [p.detach() for p in model.parameters() if p.requires_grad]
+    if not before or len(before) != len(after):
+        return {"adapter_delta_l2": None, "adapter_delta_relative": None}
+    import torch
+    delta = sum(float((a - b).pow(2).sum().cpu())
+                for a, b in zip(after, before)) ** 0.5
+    base = sum(float(b.pow(2).sum().cpu()) for b in before) ** 0.5
+    return {"adapter_delta_l2": delta,
+            "adapter_delta_relative": (delta / base) if base else None,
+            "adapter_params_changed": int(sum(
+                1 for a, b in zip(after, before)
+                if not torch.equal(a, b)))}
+
+
+def _peak_memory_bytes() -> int | None:
+    """Peak accelerator memory for this training run (None on CPU)."""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return int(torch.cuda.max_memory_allocated())
+    except Exception:                                    # pragma: no cover
+        return None
+    return None
+
+
 def adapter_artifact_digest(adapter_dir) -> str:
     """Digest of the produced adapter weight+config bytes only.
 
@@ -234,6 +272,13 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                         f"{exc}") from exc
         if not encoded:
             raise ValueError("every training example was rejected")
+        # Step 13: supervised-token accounting and the adapter's initial
+        # parameter state, so a training run reports what it actually
+        # supervised and how far the weights moved.
+        supervised_token_counts = [int(e["n_supervised"]) for e in encoded]
+        supervised_tokens_total = int(sum(supervised_token_counts))
+        prompt_tokens_total = int(sum(int(e["n_prompt"]) for e in encoded))
+        adapter_initial = _adapter_param_vector(model)
         rnd = random.Random(spec.seed)
         total_micro = spec.steps * gacc
         sampled: list[int] = []
@@ -326,6 +371,17 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
         receipt["prompt_contract_digest"] = prompt_contract.digest
         receipt["output_contract_digest"] = \
             prompt_contract.output_contract_digest
+        # Step 13 readiness measurements: what was supervised, how far
+        # the adapter moved, and what the run cost.
+        receipt["supervised_tokens_total"] = supervised_tokens_total
+        receipt["prompt_tokens_total"] = prompt_tokens_total
+        receipt["supervised_tokens_per_example"] = supervised_token_counts
+        receipt.update(_adapter_weight_delta(adapter_initial, model))
+        peak = _peak_memory_bytes()
+        if peak is not None:
+            receipt["peak_accelerator_bytes"] = peak
+        receipt["train_seconds"] = (receipt["finished_ns"]
+                                    - receipt["started_ns"]) / 1e9
     (outdir / "TRAINING_RECEIPT.json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True))
     (outdir / "TRAINING_SPEC.json").write_text(

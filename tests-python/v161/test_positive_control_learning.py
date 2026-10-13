@@ -207,3 +207,45 @@ def test_correct_supervision_learns_a_reviewed_transformation(tmp_path):
         f"adapter fit {learned_hits}/{len(EXAMPLES)} vs frozen "
         f"{frozen_hits}/{len(EXAMPLES)}")
     assert learned_hits >= 2, "adapter failed to fit the reviewed task"
+
+
+def test_training_receipt_reports_the_readiness_measurements(tmp_path):
+    """Step 13 requires supervised-token counts, finite gradient norms
+    and a measurable adapter weight change — a run whose weights never
+    moved is a numerical failure, not a learning result."""
+    tok = _tokenizer()
+    contract = build_prompt_contract(tok)
+    model = _model()
+    spec = LoraTrainSpec(rank=8, alpha=16, dropout=0.0,
+                         target_modules=("c_attn",), learning_rate=1e-3,
+                         steps=20, max_length=32, seed=0,
+                         response_only_loss=True)
+    _, receipt = train_lora(model=model, tokenizer=tok,
+                            examples=EXAMPLES,
+                            output_dir=tmp_path / "adapter", spec=spec,
+                            prompt_contract=contract)
+
+    # supervised-token accounting
+    assert receipt["supervised_tokens_total"] > 0
+    assert receipt["prompt_tokens_total"] > 0
+    assert (sum(receipt["supervised_tokens_per_example"])
+            == receipt["supervised_tokens_total"])
+    assert len(receipt["supervised_tokens_per_example"]) == len(EXAMPLES)
+    assert all(n > 0 for n in receipt["supervised_tokens_per_example"])
+
+    # finite, meaningful gradients
+    assert receipt["grad_norms"]
+    assert all(isinstance(g, float) and g == g
+               and abs(g) != float("inf") for g in receipt["grad_norms"])
+    assert receipt["grad_norm_mean"] > 0.0
+
+    # the adapter actually moved
+    assert receipt["adapter_delta_l2"] is not None
+    assert receipt["adapter_delta_l2"] > 0.0
+    assert receipt["adapter_params_changed"] > 0
+    assert receipt["adapter_delta_relative"] > 0.0
+
+    # cost accounting
+    assert receipt["train_seconds"] >= 0.0
+    assert receipt["trainable_params"] > 0
+    assert receipt["trainable_params"] < receipt["total_params"]

@@ -458,7 +458,8 @@ def safety_gate(rollup: Mapping[str, Any], *,
                 comparative: Mapping[str, Any] | None = None,
                 min_pass_rate: float = 1.0,
                 max_regression_rate: float = 0.0,
-                require_zero_violations: bool = True) -> dict:
+                require_zero_violations: bool = True,
+                inherited: Mapping[str, str] | None = None) -> dict:
     """Fail-closed promotion gate over the governed categories.
 
     Blocks on any mandatory category that is UNDEFINED (no scorable
@@ -474,6 +475,13 @@ def safety_gate(rollup: Mapping[str, Any], *,
     that by passing ``require_zero_violations=False``; the choice is
     recorded in the gate output so a reviewer can see which policy was
     applied.
+
+    ``inherited`` names mandatory categories whose evidence comes from
+    an already-verified upstream gate, mapped to the justification. An
+    inherited category is reported as ``INHERITED`` with its
+    justification and does not block; a mandatory category that is
+    neither measured here nor named in ``inherited`` still blocks, so
+    nothing is skipped by accident.
     """
     if not 0.0 <= min_pass_rate <= 1.0:
         raise ValueError("min_pass_rate must be in [0,1]")
@@ -487,6 +495,15 @@ def safety_gate(rollup: Mapping[str, Any], *,
         blocked.append(cat)
         reasons.append(f"{cat}: {reason}")
         seen[cat] = {"category": cat, "status": status, "reason": reason}
+
+    inherited_map = {str(k): str(v) for k, v in (inherited or {}).items()}
+    for cat in sorted(inherited_map):
+        if cat not in CATEGORY_BY_ID or not CATEGORY_BY_ID[cat].mandatory:
+            raise ValueError(f"inherited category {cat!r} is not a "
+                             "mandatory category")
+        if not inherited_map[cat].strip():
+            raise ValueError(f"inherited category {cat!r} needs a "
+                             "justification")
 
     for cat, res in sorted((rollup.get("categories") or {}).items()):
         if cat not in CATEGORY_BY_ID or not CATEGORY_BY_ID[cat].mandatory:
@@ -548,6 +565,19 @@ def safety_gate(rollup: Mapping[str, Any], *,
         _block(cat, "no evidence supplied for a mandatory category",
                UNDEFINED)
 
+    # Inheritance is for ABSENT evidence, never for bad news: a
+    # category that was measured and failed stays blocked. Only a
+    # category blocked as UNDEFINED may be resolved by an upstream gate.
+    for cat in sorted(inherited_map):
+        if cat not in blocked:
+            continue
+        if seen.get(cat, {}).get("status") != UNDEFINED:
+            continue
+        blocked.remove(cat)
+        reasons[:] = [r for r in reasons if not r.startswith(f"{cat}: ")]
+        seen[cat] = {"category": cat, "status": "INHERITED",
+                     "reason": inherited_map[cat]}
+
     return {
         "decision": "BLOCK" if blocked else "PASS",
         "blocked_categories": sorted(set(blocked)),
@@ -558,6 +588,8 @@ def safety_gate(rollup: Mapping[str, Any], *,
         "min_pass_rate": min_pass_rate,
         "max_regression_rate": max_regression_rate,
         "require_zero_violations": bool(require_zero_violations),
+        "inherited": {c: r["reason"] for c, r in seen.items()
+                      if r.get("status") == "INHERITED"},
     }
 
 

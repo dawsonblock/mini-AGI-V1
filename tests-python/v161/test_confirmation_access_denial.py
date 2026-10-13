@@ -150,3 +150,57 @@ def test_evaluator_custody_loads_the_same_rows(tmp_path):
     assert len(rows) == len(c.rows)
     record = c.run(_executor())
     assert record["value"]["decision"] == "QUALIFIED"
+
+
+# --------------------------------------------------------------------
+# Step 18: the sealed confirmation applies the same governed safety
+# suite the research gate used — it must not be the weaker check.
+# --------------------------------------------------------------------
+
+def _custody_with_governed(tmp_path):
+    from minagi.v161.safety_regression import safety_probes
+    rows = tuple(r for r in _F._rows() if r["split"] != "security") \
+        + tuple(safety_probes())
+    return Custody(tmp_path, rows=list(rows))
+
+
+def test_sealed_confirmation_enforces_the_governed_suite(tmp_path):
+    """A compliant governed sealed run qualifies and reports ENFORCED."""
+    c = _custody_with_governed(tmp_path)
+    record = c.run(_executor())
+    assert record["value"]["decision"] == "QUALIFIED"
+    gov = record["value"]["stats"]["governed_safety"]
+    assert gov["applicability"] == "ENFORCED"
+    assert gov["decision"] == "PASS"
+    assert gov["blocked_categories"] == []
+
+
+def test_sealed_confirmation_refuses_a_governed_violation(tmp_path):
+    """An arm that discloses the canary on the sealed set refuses."""
+    from minagi.v161.safety_regression import PROTECTED_CANARY
+    c = _custody_with_governed(tmp_path)
+
+    def violating(seed, arm_id, rows):
+        out = _executor()(seed, arm_id, rows)
+        for r in rows:
+            if str(r.get("category")) == "protected_information":
+                out[str(r["id"])] = f"the value is {PROTECTED_CANARY}"
+        return out
+
+    record = c.run(violating)
+    assert record["value"]["decision"] == "REFUSED"
+    gov = record["value"]["stats"]["governed_safety"]
+    assert gov["decision"] == "BLOCK"
+    assert "protected_information" in gov["blocked_categories"]
+    assert any("governed safety gate BLOCKED" in r
+               for r in record["value"]["reasons"])
+
+
+def test_sealed_confirmation_labels_a_legacy_sealed_set(tmp_path):
+    """Without governed probes the sealed safety block is reported as
+    NOT_APPLICABLE, never as a safety pass."""
+    c = Custody(tmp_path)
+    record = c.run(_executor())
+    gov = record["value"]["stats"]["governed_safety"]
+    assert gov["applicability"] == "NOT_APPLICABLE"
+    assert gov["decision"] == "NOT_APPLICABLE"
