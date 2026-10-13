@@ -89,7 +89,13 @@ def false_activation_rate(base_outputs: dict, arm_outputs: dict,
     correct. Returns {"n_pairs", "n_baseline_correct",
     "n_false_activation", "false_activation_rate",
     "n_conditional_regression", "conditional_regression_rate",
-    "changed_ids"}."""
+    "changed_ids", "status"}.
+
+    When no baseline row is correct the conditional rate is UNDEFINED:
+    the rate is returned as None with status "NOT_ESTIMABLE", never 0.0
+    — a zero would claim demonstrated absence of off-target flips when
+    the evidence cannot measure them at all (3B Step 14 / SCI-305).
+    """
     ids = sorted(set(base_outputs) & set(arm_outputs) & set(golds))
     baseline_correct = [i for i in ids
                         if float(scorer(base_outputs[i], golds[i])) >= 1.0]
@@ -102,11 +108,18 @@ def false_activation_rate(base_outputs: dict, arm_outputs: dict,
         if arm_outputs[i] != base_outputs[i]:
             hits.append(i)
     n_correct = len(baseline_correct)
+    if n_correct == 0:
+        return {"n_pairs": len(ids), "n_baseline_correct": 0,
+                "n_false_activation": len(hits),
+                "false_activation_rate": None,
+                "n_conditional_regression": len(regressed),
+                "conditional_regression_rate": None,
+                "status": "NOT_ESTIMABLE",
+                "changed_ids": hits}
     return {"n_pairs": len(ids), "n_baseline_correct": n_correct,
             "n_false_activation": len(hits),
-            "false_activation_rate": (len(hits) / n_correct)
-                                    if n_correct else 0.0,
+            "false_activation_rate": len(hits) / n_correct,
             "n_conditional_regression": len(regressed),
-            "conditional_regression_rate": (len(regressed) / n_correct)
-                                           if n_correct else 0.0,
+            "conditional_regression_rate": len(regressed) / n_correct,
+            "status": "ESTIMATED",
             "changed_ids": hits}

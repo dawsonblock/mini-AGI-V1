@@ -24,7 +24,8 @@ from egai.common.canonical import digest, sha256_bytes  # noqa: E402
 from egai.common.crypto import Ed25519Signer  # noqa: E402
 from minagi.v161.authority import (AuthorityLedger, AuthorityRegistry,  # noqa: E402
                                    write_trust_root, AUTHORITY_ROLES)
-from minagi.v161.campaign_plan import ColabCampaignPlanV165  # noqa: E402
+from minagi.v161.campaign_plan import (ColabCampaignPlanV165,  # noqa: E402
+                                       ColabCampaignPlanV166)
 from minagi.v161.dataset_manifest import (DatasetMember,  # noqa: E402
                                           DatasetMembershipManifest,
                                           DatasetPartitionSet)
@@ -97,7 +98,8 @@ class SyntheticCampaign:
     """A complete v165 evidence tree, built with the same code paths the
     runner uses — predictions, bundles, receipts, commit manifests."""
 
-    def __init__(self, tmp_path: Path):
+    def __init__(self, tmp_path: Path, plan_version: str = "v165"):
+        self.plan_version = plan_version
         self.storage = tmp_path / "storage"
         self.root = tmp_path / "root"
         self.cdir = self.storage / "campaigns" / CID
@@ -123,7 +125,7 @@ class SyntheticCampaign:
         scorer_d, retention_d, security_d = (digest("scorer"),
                                              digest("retention"),
                                              digest("security"))
-        self.plan = ColabCampaignPlanV165(
+        plan_kwargs = dict(
             campaign_id=CID, model_id="synthetic-model",
             model_revision="rev1",
             dataset_partition_digest=self.parts.digest,
@@ -145,6 +147,24 @@ class SyntheticCampaign:
             min_delta_ft_ci_lower=0.0,
             delayed_retention_max_drop=0.10,
             experiment_protocol_digest=self.protocol.digest)
+        if plan_version == "v166":
+            # the sealed holdout is bound by manifest digest only; the
+            # evaluator supplies the file at qualification time
+            holdout_rows = [_row(f"ho{i}", "holdout", "fam-holdout",
+                                 f"hq{i}", f"ha{i}") for i in range(3)]
+            self.holdout_path = tmp_path / "holdout.jsonl"
+            self.holdout_path.write_text("\n".join(
+                json.dumps(r, sort_keys=True) for r in holdout_rows) + "\n")
+            self.plan = ColabCampaignPlanV166(
+                **plan_kwargs,
+                final_holdout_digest=DatasetMembershipManifest(
+                    "final_holdout",
+                    tuple(_member(r) for r in holdout_rows)).digest,
+                cluster_unit="family", max_false_activation_rate=0.05,
+                n_comparisons_preregistered=1)
+        else:
+            self.holdout_path = None
+            self.plan = ColabCampaignPlanV165(**plan_kwargs)
 
         write_trust_root(self.storage / ".keys",
                          self.storage / "trust_root.json")
@@ -279,7 +299,7 @@ class SyntheticCampaign:
              "attempt_id": "test-attempt", "files": files}))
         return sd
 
-    def build(self, plan_signer=None):
+    def build(self, plan_signer=None, hidden_scores=None):
         """Write plan-level docs + evidence; returns the witness signer
         used (for cross-signing attacks in tests)."""
         plan_signer = plan_signer or self.signers["plan"]
@@ -303,8 +323,9 @@ class SyntheticCampaign:
             {"value": asdict(self.plan), "digest": self.plan.digest})
         # L6 wins by 2 correct answers over L5 -> delta_ft_neural = 0.5;
         # NC scores like L1 -> zero negative-control transfer.
+        scores = hidden_scores or {"L1": 2, "L5": 2, "L6": 4, "NC": 2}
         for seed in SEEDS:
-            self._seed(seed, {"L1": 2, "L5": 2, "L6": 4, "NC": 2})
+            self._seed(seed, scores)
         (self.cdir / "RESULT.json").write_text(json.dumps(
             {"decision": "QUALIFIED"}))
         return wit
@@ -312,12 +333,13 @@ class SyntheticCampaign:
 
 def _qualify(c: SyntheticCampaign):
     out = c.storage / "QUALIFICATION_RECORD.json"
-    proc = subprocess.run(
-        [sys.executable,
-         str(ROOT / "scripts" / "validation" / "qualify_campaign1.py"),
-         "--storage", str(c.storage), "--campaign-id", CID,
-         "--root", str(c.root), "--output", str(out)],
-        capture_output=True, text=True)
+    cmd = [sys.executable,
+           str(ROOT / "scripts" / "validation" / "qualify_campaign1.py"),
+           "--storage", str(c.storage), "--campaign-id", CID,
+           "--root", str(c.root), "--output", str(out)]
+    if c.holdout_path is not None:
+        cmd += ["--holdout", str(c.holdout_path)]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
     return proc, out
 
 
@@ -350,6 +372,36 @@ def test_clean_matrix_qualifies_and_signs(tmp_path):
              .read_text().splitlines() if line.strip()]
     assert kinds == ["experiment_preregistration", "evaluation_bundle",
                      "qualification_record"]
+
+
+def test_undefined_false_activation_blocks_qualification(tmp_path):
+    """3B Step 14 / SCI-305: with no baseline-correct hidden population
+    the false-activation rate is NOT_ESTIMABLE, so the absence of
+    off-target flips is not demonstrated and the matrix must not
+    qualify (the gate is a v166 preregistered bound)."""
+    c = SyntheticCampaign(tmp_path, plan_version="v166")
+    c.build(hidden_scores={"L1": 0, "L5": 2, "L6": 4, "NC": 0})
+    proc, out = _qualify(c)
+    doc = json.loads(out.read_text())
+    value = doc["value"]
+    assert value["decision"] != "QUALIFIED"
+    assert value["delta_ft_neural_stats"][
+        "false_activation_not_estimable_seeds"] == 1
+    assert any("NOT_ESTIMABLE" in r for r in value["reasons"]), \
+        value["reasons"]
+    # the off-target view is still reported for unaffected suites
+    assert "offtarget_regression" in value["delta_ft_neural_stats"]
+
+
+def test_v166_clean_matrix_still_qualifies(tmp_path):
+    """The same fixture with a baseline-correct population qualifies —
+    the new gate blocks only the undefined case."""
+    c = SyntheticCampaign(tmp_path, plan_version="v166")
+    c.build()
+    proc, out = _qualify(c)
+    assert proc.returncode == 0, proc.stderr
+    doc = json.loads(out.read_text())
+    assert _decision(doc) == "QUALIFIED"
 
 
 def test_tampered_prediction_fails_closed(tmp_path):

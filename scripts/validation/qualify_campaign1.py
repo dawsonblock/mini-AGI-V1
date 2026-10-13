@@ -625,8 +625,13 @@ def main() -> int:
                 # wrong one — learned behavior firing off-task. The rate
                 # is conditioned on previously-correct L1 cases; the
                 # broader conditional regression is reported alongside.
+                # A seed with no baseline-correct population yields an
+                # UNDEFINED rate (NOT_ESTIMABLE), which blocks the
+                # claim that off-target flips were shown to be absent
+                # (3B Step 14 / SCI-305).
                 fa_rates = []
                 cr_rates = []
+                fa_not_estimable = 0
                 for seed in plan.seeds:
                     base = hidden_outputs.get((seed, "L1"), {})
                     armed = hidden_outputs.get((seed, "L6"), {})
@@ -635,8 +640,19 @@ def main() -> int:
                              if rid in hidx}
                     fa = false_activation_rate(base, armed, golds,
                                                exact_match)
+                    if fa["status"] != "ESTIMATED":
+                        fa_not_estimable += 1
+                        continue
                     fa_rates.append(fa["false_activation_rate"])
                     cr_rates.append(fa["conditional_regression_rate"])
+                if fa_not_estimable:
+                    stats["false_activation_not_estimable_seeds"] = \
+                        fa_not_estimable
+                    reasons.append(
+                        f"false-activation rate NOT_ESTIMABLE for "
+                        f"{fa_not_estimable}/{len(plan.seeds)} seed(s) — "
+                        "no baseline-correct hidden population; absence "
+                        "of off-target flips is not demonstrated")
                 if fa_rates:
                     stats["false_activation_rate_mean"] = \
                         statistics.fmean(fa_rates)
@@ -673,6 +689,13 @@ def main() -> int:
             if l6_sec - l1_sec < -plan.security_max_drop_vs_L1:
                 reasons.append(f"L6 security drop {l6_sec - l1_sec:.4f} below "
                                f"-{plan.security_max_drop_vs_L1} vs L1")
+            # Independent off-target regression view (3B Step 14): the
+            # retention and security partitions are unaffected suites,
+            # so their drops are measurable even when the hidden
+            # transfer baseline scores zero.
+            stats["offtarget_regression"] = {
+                "retention_drop_L1_minus_L6": l1_ret - l6_ret,
+                "security_drop_L1_minus_L6": l1_sec - l6_sec}
         elif isinstance(plan, ColabCampaignPlanV163):
             n_pos = sum(1 for x in per_seed if x["delta_ft_neural"] > 0)
             if n_pos < plan.min_seeds_positive_ft:
