@@ -116,3 +116,46 @@ this work did not re-run.
 | changed files flagged by ruff over the full tree | **none** |
 | runtime security modules in the diff | **none** |
 | qualifier gate reasons removed | **none** (17 → 19) |
+| `scripts/release/source_audit.py` | **PASS** |
+
+## Verification of the shipped archive
+
+Run against a **fresh extraction** of
+`mini-AGI-V1-Campaign3B-Full-Scientific-Hardening.zip`, never the
+working tree:
+
+| check | result |
+|---|---|
+| `scripts/verify_release.py` on the extracted tree | **PASS** — 1590 files verified, signature valid against the bundled key |
+| archive entries | 1594 (1590 governed + 4 envelope files) |
+| duplicate entries | 0 |
+| absolute or path-traversal entries | 0 |
+| symlink entries | 0 |
+| `python3 -m pytest tests-python -q` on the extracted tree | **1183 passed, 18 skipped, 0 failed** |
+| all 13 required deliverables present | **yes** |
+
+## Acceptance gates
+
+| gate | status | evidence |
+|---|---|---|
+| **G1** prompt correctness | **PASS** | `test_campaign_prompt_parity.py`; 30/30 train rows prove `training_input_ids[:prompt_length] == inference_prompt_input_ids` on the pinned tokenizer; boundary merges refused |
+| **G2** output correctness | **PASS** | answer-only contract frozen and digest-bound; strict exact match primary; format/EOS/truncation deterministic and tested |
+| **G3** baseline validity | **PASS** | L5b admitted 30/30 train records, 20/20 retrieval hits, 760 injected tokens; provenance tests prove hidden/sealed labels are refused and never persisted |
+| **G4** learning readiness | **PASS (with a reported failure)** | the fixed-rank LoRA positive control *runs and learns within-family* (0.222 → 0.444 vs frozen 0.222; NC collapses to 0.067); the 95% fit gate itself **FAILS** (0.767) and is reported as such |
+| **G5** negative-control validity | **PASS** | shuffled-label LoRA train accuracy 0.067 vs 0.767 for correct labels; NC forward transfer −0.167, within the preregistered bound |
+| **G6** statistical integrity | **PASS** | undefined denominators are `NOT_ESTIMABLE`/`null` and block; family-clustered CIs, leave-one-family-out, worst-family and positive-family counts implemented and tested |
+| **G7** safety and retention | **PASS** | governed suite enforced on the executed run: 0 undefined mandatory categories, 8 categories measured, violations block; the frozen model's two violations are reported as a baseline property |
+| **G8** confirmation integrity | **PASS for executability; real confirmation NOT RUN** | the executor generates and scores real predictions under frozen rules and signs QUALIFIED/REFUSED (19 tests); no independent evaluator custody was available, so no candidate is reported as confirmed |
+| **G9** runtime preservation | **PASS** | `git diff` over the runtime security modules is empty; qualifier gate reasons only added |
+| **G10** regression | **PASS (host scope)** | Python 1183/0/18; native CTest 28/28. GPU and Linux-isolation suites **NOT RUN** here |
+| **G11** release integrity | **PASS** | clean-extraction verification above; manifest + signature verify; separate evidence package verifies by SHA-256 and signature |
+| **G12** scientific honesty | **PASS** | every claim traces to a recorded run; the executed result is REFUSED and reported as REFUSED; the sealed lane is NOT RUN and reported as NOT RUN |
+
+Two gates deserve their qualifier spelled out rather than a bare PASS:
+
+- **G4** passes on *readiness to learn* and fails on the fit threshold.
+  The distinction matters: the pipeline can train, and the training did
+  not reach the bar the diagnostic set.
+- **G8** passes on the machinery and is **NOT RUN** on the real thing.
+  Treating an unexecuted confirmation as a pass is exactly the error
+  Campaign 3A made.
