@@ -659,6 +659,154 @@ def resolve_worker_policy(args, *, production: bool,
                if policy.demote_to else " same-identity"))
 
 
+def resolve_worker_executor(args, *, production: bool,
+                            denied_paths: tuple = (),
+                            authority_registry=None,
+                            record_resolver=None):
+    """v16.4.8 Step 15/WP7: resolve the worker-executor boundary —
+    fail closed. Returns (executor, report).
+
+    Production REQUIRES the nsjail executor (systemd cgroup v2 +
+    namespaces): a signed isolation profile, the pinned measured
+    binary, and a host that can actually establish the boundary —
+    anything else is refused at startup, never silently degraded.
+    Development uses the local executor and is always reported as
+    development so it can never be confused with production."""
+    from minagi.runtime.worker_executor import (
+        DevelopmentWorkerExecutor)
+    name = getattr(args, "worker_executor", None) or (
+        "nsjail" if production else "development")
+    if production and name != "nsjail":
+        raise SystemExit(
+            "production startup refused — the development worker "
+            "executor provides no kernel-enforced boundary: "
+            "--worker-executor development is refused under "
+            "--production (there is no permissive fallback)")
+    if name == "development":
+        return DevelopmentWorkerExecutor(), "development"
+    if name != "nsjail":
+        raise SystemExit(
+            f"worker executor {name!r} is not an approved executor")
+    from minagi.runtime.isolation_profile import (
+        ProfileRefused, load_profile)
+    from minagi.runtime.nsjail_executor import NsJailWorkerExecutor
+    try:
+        profile = load_profile(args.isolation_profile)
+    except ProfileRefused as exc:
+        raise SystemExit(
+            f"worker isolation profile refused: {exc}")
+    nsjail_digest = (getattr(args, "nsjail_digest", None)
+                     or os.environ.get("MINAGI_NSJAIL_DIGEST"))
+    try:
+        executor = NsJailWorkerExecutor.from_profile(
+            profile,
+            worker_state_root=getattr(
+                args, "worker_state_root", "/var/lib/minagi/workers"),
+            nsjail_path=getattr(args, "nsjail_path",
+                                "/usr/local/bin/nsjail"),
+            nsjail_digest=nsjail_digest,
+            worker_uid=args.worker_uid,
+            worker_gid=args.worker_gid,
+            user_manager=getattr(args, "worker_user_manager", False),
+            python_path_entries=tuple(p for p in sys.path if p),
+            denied_paths=tuple(str(p) for p in denied_paths),
+            authority_registry=authority_registry,
+            record_resolver=record_resolver,
+            require_authorization=(
+                True if production else None))
+    except PermissionError as exc:
+        raise SystemExit(
+            f"worker launch broker refused: {exc}")
+    report = executor.validate_host()
+    if production and not report.get("ok"):
+        raise SystemExit(
+            "production startup refused — the nsjail worker boundary "
+            "cannot be established on this host (missing: "
+            + ", ".join(k for k, v in report.items()
+                        if v is False) + ")")
+    if production:
+        # SEC-906: capability preflight is NOT readiness — production
+        # requires the ENFORCEMENT qualification: a real jailed probe
+        # must demonstrate the boundary, and the evidence is recorded
+        # bound to this host + binary + profile + worker identity.
+        qual = qualify_production_host(
+            executor, args=args, denied_paths=denied_paths)
+        if not qual.get("qualified"):
+            raise SystemExit(
+                "production startup refused — enforcement "
+                f"qualification failed: {qual.get('failures')}")
+        report["host_qualification"] = qual.get("record_digest")
+    return (executor,
+            f"nsjail profile={profile.profile_id} "
+            f"digest={profile.digest()} host_ok={report.get('ok')}")
+
+
+def qualify_production_host(executor, *, args, denied_paths=()) -> dict:
+    """SEC-906 / Phase C step 9-10: RUN the real isolation preflight
+    at production startup and persist a host-identity-bound
+    qualification record into protected evidence storage.
+
+    A production service must not become ready because
+    ``validate_host()`` returned ok — it becomes ready only after a
+    jailed probe measured the actual boundary: fresh namespaces,
+    zero capabilities, denied authority paths, denied network,
+    verified cgroup containment. Fresh per start (no cache) — a
+    rebooted host or changed binary/profile necessarily requalifies.
+    """
+    from minagi.runtime.isolation_preflight import run_preflight
+    from minagi.runtime.worker_isolation import DEFAULT_ISOLATION
+    report = run_preflight(
+        executor, isolation=DEFAULT_ISOLATION, timeout=180.0,
+        probe_args=["deny:/etc/shadow", "deny:/root",
+                    "read:/proc/self/status",
+                    "net:127.0.0.1:9"])
+    storage = Path(getattr(args, "storage_root", ".")).resolve()
+    ev_dir = storage / "host_qualification"
+    ev_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        os.chmod(ev_dir, 0o700)
+    except OSError:
+        pass
+    try:
+        boot_id = Path("/proc/sys/kernel/random/boot_id"
+                       ).read_text().strip()
+    except OSError:
+        boot_id = ""
+    record = {
+        "schema": "minagi-host-qualification-v1",
+        "host_boot_id": boot_id,
+        "kernel_release": os.uname().release,
+        "nsjail_binary_digest": executor.broker._nsjail_digest or "",
+        "isolation_profile_digest": executor.profile_digest,
+        "worker_uid": int(getattr(executor.broker, "worker_uid", -1)),
+        "worker_gid": int(getattr(executor.broker, "worker_gid", -1)),
+        "user_manager": bool(executor.broker.user_manager),
+        "cgroup_v2_mount": "/sys/fs/cgroup",
+        "systemd_environment": "user" if executor.broker.user_manager
+                               else "system",
+        "qualification_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                           time.gmtime()),
+        "qualified": bool(report.get("qualified")),
+        "preflight_report": report,
+        "denied_paths": [str(p) for p in denied_paths],
+    }
+    from egai.common.canonical import digest as _digest
+    record["qualification_record_digest"] = _digest(record)
+    rec_path = ev_dir / "latest.json"
+    tmp = ev_dir / ".latest.tmp"
+    tmp.write_text(json.dumps(record, indent=1, sort_keys=True))
+    os.replace(tmp, rec_path)
+    try:
+        os.chmod(rec_path, 0o400)
+    except OSError:
+        pass
+    return {"qualified": bool(report.get("qualified")),
+            "record_digest": record["qualification_record_digest"],
+            "record_path": str(rec_path),
+            "failures": [k for k, v in (
+                report.get("checks") or {}).items() if v is False]}
+
+
 def main(argv=None) -> int:
     """Run the supervised launch service.
 
@@ -739,6 +887,30 @@ def main(argv=None) -> int:
                     help="require network denial for workers "
                          "(Linux network namespace); startup refuses "
                          "where the host cannot enforce it")
+    ap.add_argument("--worker-executor", default=None,
+                    choices=("development", "nsjail"),
+                    help="worker launch boundary (v16.4.8): 'nsjail' "
+                         "runs each worker in a managed systemd "
+                         "cgroup under NsJail namespaces — the ONLY "
+                         "executor production accepts. Default: "
+                         "nsjail under --production, development "
+                         "otherwise")
+    ap.add_argument("--isolation-profile", default=None,
+                    help="frozen isolation profile JSON "
+                         "(minagi-isolation-profile-v1); required "
+                         "under --production")
+    ap.add_argument("--worker-state-root",
+                    default="/var/lib/minagi/workers",
+                    help="broker-owned root for worker workspaces")
+    ap.add_argument("--nsjail-path", default="/usr/local/bin/nsjail",
+                    help="the pinned NsJail binary")
+    ap.add_argument("--nsjail-digest", default=None,
+                    help="required sha256:<hex> of the NsJail binary "
+                         "(or MINAGI_NSJAIL_DIGEST)")
+    ap.add_argument("--worker-user-manager", action="store_true",
+                    help="launch worker units under the user systemd "
+                         "manager (rootless) instead of the system "
+                         "manager")
     args = ap.parse_args(argv)
 
     if args.production and (
@@ -753,6 +925,23 @@ def main(argv=None) -> int:
             "executes model code with the supervisor's authority "
             "(SEC-501): --backend-isolation inprocess is refused "
             "under --production")
+    if args.production and args.allow_insecure_dev:
+        # SEC-501: production never serves unauthenticated clients.
+        raise SystemExit(
+            "production startup refused — --allow-insecure-dev is a "
+            "development escape hatch and cannot coexist with "
+            "--production")
+    if args.production and not args.isolation_profile:
+        default_profile = (Path(__file__).resolve().parents[3]
+                           / "configs" / "isolation"
+                           / "linux-production-offline-v1.json")
+        if default_profile.is_file():
+            args.isolation_profile = str(default_profile)
+        else:
+            raise SystemExit(
+                "production startup refused — no isolation profile "
+                "configured and the bundled "
+                "linux-production-offline-v1.json is absent")
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from egai.common.crypto import Ed25519Signer
@@ -928,16 +1117,83 @@ def main(argv=None) -> int:
                 manifest_backend_id=(
                     backend_manifest.backend_id
                     if backend_manifest is not None else None))
+        # SEC-905 production authority: the broker independently
+        # verifies a signed, unexpired, record-resolved launch
+        # authorization. The resolver maps the digests THIS startup
+        # already verified — the signed backend manifest, the frozen
+        # isolation profile, and the executor's derived budget.
+        from minagi.runtime.worker_launch_broker import (
+            AuthorizedLaunchRecord, MappingRecordResolver,
+            issue_launch_authorization)
+        from minagi.runtime.isolation_profile import load_profile
+        from egai.common.canonical import digest
+        import secrets
+        manifest_digest = str(
+            (backend_manifest_doc or {}).get("digest") or "")
+        _executor_profile = load_profile(args.isolation_profile)
+        _budget_probe = digest({
+            k: _executor_profile.to_doc().get(k) for k in (
+                "memory_mb", "cpu_seconds", "wall_time_seconds",
+                "unit_memory_max", "unit_tasks_max", "max_file_mb")})
+        _approved_records = {
+            manifest_digest: "backend_manifest",
+            _executor_profile.digest(): "isolation_profile",
+            _budget_probe: "execution_budget"}
+        _mv = backend_manifest_doc.get("value", {}) \
+            if isinstance(backend_manifest_doc, dict) else {}
+        for _k in ("implementation_digest", "dependency_lock_digest",
+                   "runtime_image_digest"):
+            if _mv.get(_k):
+                _approved_records[str(_mv[_k])] = _k
+        try:
+            _rev_floor = int(max(rstore.epochs() or [0]))
+        except Exception:  # noqa: BLE001
+            _rev_floor = 0
+        record_resolver = MappingRecordResolver(
+            _approved_records, revocation_epoch_floor=_rev_floor)
+        worker_executor, executor_report = resolve_worker_executor(
+            args, production=args.production,
+            denied_paths=(
+                storage / ".keys", state_dir,
+                storage / "quarantine", storage / "revocations",
+                receipts),
+            authority_registry=registry, record_resolver=record_resolver)
+        worker_isolation_report += f" executor={executor_report}"
         peft_spec = BackendSpec(
             module="minagi.v161.peft_serving",
             qualname="PeftServingBackend",
             kwargs={"budget": budget})
+        import time as _time
+        def _issue_launch_auth() -> dict:
+            """Fresh signed launch authorization per spawn (SEC-905):
+            runtime-role signature binding this activation's verified
+            digests + a single-use nonce + short expiry."""
+            now = int(_time.time())
+            rec = AuthorizedLaunchRecord(
+                activation_id=f"act-{secrets.token_hex(8)}",
+                backend_manifest_digest=manifest_digest,
+                runtime_manifest_digest=str(
+                    _mv.get("implementation_digest")
+                    or manifest_digest),
+                artifact_root_digest=str(
+                    _mv.get("dependency_lock_digest")
+                    or manifest_digest),
+                isolation_profile_digest=_executor_profile.digest(),
+                execution_budget_digest=_budget_probe,
+                policy_epoch=0, revocation_epoch=_rev_floor,
+                issued_at=now, expires_at=now + 300,
+                nonce=secrets.token_hex(16))
+            return issue_launch_authorization(
+                runtime_key, record=rec)
         factories = {"hf-peft": (lambda: WorkerBackend(
             peft_spec,
             isolation=worker_policy,
             backend_id=backend_id,
+            executor=worker_executor,
             request_watchdog=(budget.execution_deadline_seconds * 2.0
-                              + 15.0)))}
+                              + 15.0),
+            backend_manifest_digest=manifest_digest,
+            authorization_supplier=_issue_launch_auth))}
     else:
         factories = {"hf-peft": (lambda: PeftServingBackend(
             budget=budget))}

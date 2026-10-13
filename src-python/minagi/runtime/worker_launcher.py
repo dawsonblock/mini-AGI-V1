@@ -1,5 +1,14 @@
 """Dedicated worker-launch process (v16.4.7 / isolation enforcement).
 
+v16.4.8: this launcher is the DEVELOPMENT executor's privilege-setup
+path only (``worker_executor.DevelopmentWorkerExecutor``). The
+production worker boundary is ``nsjail_executor`` — a managed
+systemd unit running the pinned NsJail binary — so the hand-rolled
+``unshare``/``pivot_root``/cgroup machinery below never executes on
+the production path (SEC-702). It remains for trusted local testing
+where the platform cannot run NsJail.
+
+
 The supervisor is multithreaded: doing isolation setup inside
 ``subprocess.Popen(..., preexec_fn=...)`` is unsafe — a lock held by
 another thread at fork() can deadlock the child before it ever execs.

@@ -53,7 +53,7 @@ every release ships a signed manifest verifiable offline.
 
 | Item | State |
 |---|---|
-| Current release | **v16.4.4 — Verified Runtime Closure** (`v16.4.4-runtime-closure`, in flight) · previous: v16.4.3 |
+| Current release | **v16.4.10 — Containment and Authority Closure** (`v16.4.10-containment-and-authority-closure`) · previous: v16.4.9 |
 | Release integrity | ✅ **PASS** — `scripts/verify_release.py`: signed manifest, Ed25519 signature, attestation/version reconciliation |
 | CI | ✅ **green** — lint (ruff · Flake8 · Pylint error-gate), ubuntu + macOS validation, native CMake/CTest, tag-gated release-integrity |
 | Unified Python suite | ✅ **793 passed, 1 skipped** (`tests-python/`) |
