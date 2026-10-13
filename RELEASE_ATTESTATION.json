@@ -28,6 +28,7 @@
     "tests": "tests-python/security/{test_grant_ledger,test_path_containment,test_backend_identity}.py; tests-python/runtime/{test_journal_integrity,test_serving_router,test_activation_supervisor,test_supervised_service}.py; tests-python/integration/test_full_admission_chain.py",
     "threat_model": "docs/research/THREAT_MODEL_V1643.md"
   },
+  "campaign3b1_release": "mini-AGI-V1-Campaign3B1-Interference-Repair",
   "campaign3b_base_runtime": "16.4.10-containment-and-authority-closure",
   "campaign3b_release": "mini-AGI-V1-Campaign3B-Full-Scientific-Hardening",
   "campaign3b_scientific_hardening": "Campaign 3B (v16.4.10+campaign3b): prompt parity proved per example; strict exact match primary with format/termination diagnostics recorded separately; verified replay operates (30/30 records, 20/20 retrieval hits) where 3A admitted zero traces; false-activation and retention undefined metrics are NOT_ESTIMABLE and block; governed safety suite enforced with 0 undefined mandatory categories. Positive control EXECUTED and REFUSED (6/7 readiness gates): LoRA learns within-family (0.222 -> 0.444 vs frozen 0.222) but misses the 95% fit gate (0.767) and degrades held-out families (0.167 vs 0.417). Runtime security surface unchanged. Sealed confirmation NOT RUN (no independent evaluator custody).",
@@ -86,7 +87,7 @@
     "qualification": "macOS suite green; Linux boundary run pending",
     "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
   },
-  "manifest_sha256": "07a678e3853cb2b4b44c36a2a83480788b473469b3b1cfb490c99b30c430f1e2",
+  "manifest_sha256": "1bc8331edeacd498cb8d77c4c049f373bfb5864c35167e2b65cecbaf2e0bb421",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "1067 passed, 18 skipped, 0 failed (macOS); container: 62/62 v16.4.10 + 50/50 executor-isolation + 2/2 G10",
@@ -397,9 +398,14 @@
       "manifest_sha256": "07a678e3853cb2b4b44c36a2a83480788b473469b3b1cfb490c99b30c430f1e2",
       "reason": "Campaign 3B: clean-extraction verification + G1-G12 gate record",
       "utc": "2026-10-13T08:13:20Z"
+    },
+    {
+      "manifest_sha256": "1bc8331edeacd498cb8d77c4c049f373bfb5864c35167e2b65cecbaf2e0bb421",
+      "reason": "Campaign 3B.1: interference diagnosis, qualifier L5b/L7 repair, enforceable custody control, violation classification",
+      "utc": "2026-10-13T08:41:49Z"
     }
   ],
-  "reissued_utc": "2026-10-13T08:13:20Z",
+  "reissued_utc": "2026-10-13T08:41:49Z",
   "reissues": [
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
