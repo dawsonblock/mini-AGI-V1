@@ -89,10 +89,20 @@ def sealed_manifest_digest(rows) -> str:
 
 
 #: Environment marker the runtime sets for research-side processes.
-#: The confirmation set is evaluator custody: a research worker must
-#: never read sealed rows — through files, environment variables,
-#: shared caches, prompts, retrieval indexes or logs.
+#: This is a COOPERATIVE guard, not isolation: a research worker that
+#: controls its own environment can unset it, and an in-process caller
+#: can simply not pass it. It exists to catch accidents — a research
+#: harness that wanders into the evaluator's entry point — and it is
+#: reported as cooperative so no reader mistakes it for a boundary.
+#: The boundary that actually holds is OS-level custody: a separate
+#: evaluator identity, sealed files the research uid cannot open, and
+#: keys that never touched the training worker.
 RESEARCH_WORKER_ENV = "MINAGI_RESEARCH_WORKER"
+
+#: Owner-only file mode. A sealed set readable by group or other is
+#: readable by the research worker's OS identity on a shared host, so
+#: the loader refuses it outright.
+SEALED_MODE_MASK = 0o077
 
 
 def is_research_worker(environ=None) -> bool:
@@ -102,19 +112,61 @@ def is_research_worker(environ=None) -> bool:
     return value not in ("", "0", "false", "no")
 
 
-def assert_evaluator_custody(environ=None) -> None:
-    """Fail closed when the caller is a research worker.
+def require_sealed_file_permissions(path: Path) -> dict:
+    """Refuse a sealed set that other OS identities can read.
 
-    This guard is one control among several, not the whole boundary:
-    the evaluator also runs this tool in its own custody, under keys
-    that never touched the training worker. It exists so that a
-    research-side process which somehow reaches this entry point is
-    refused before any sealed row is read.
+    This is the enforceable control: whatever a research worker does
+    inside its own process, it cannot read a file its OS identity has
+    no permission to open. A sealed set that is group- or
+    world-readable offers no such barrier, so the loader refuses it
+    rather than proceeding with a weaker guarantee than the protocol
+    claims.
+
+    Returns the observed custody facts so they can be recorded in the
+    signed confirmation record. On platforms that do not expose POSIX
+    ownership (or a filesystem that does not implement it) the check
+    cannot be enforced and says so explicitly — it never reports a
+    pass it did not observe.
+    """
+    facts = {"enforced": False, "mode": None, "uid": None, "euid": None,
+             "reason": ""}
+    if not hasattr(os, "stat") or os.name == "nt":      # pragma: no cover
+        facts["reason"] = ("POSIX ownership unavailable on this platform — "
+                           "sealed-file permissions NOT enforced")
+        return facts
+    try:
+        st = os.stat(path)
+    except OSError as exc:
+        raise ConfirmationRefused(f"cannot stat sealed set: {exc}") from exc
+    mode = st.st_mode & 0o777
+    facts.update({"mode": oct(mode), "uid": int(st.st_uid),
+                  "euid": int(os.geteuid())})
+    if mode & SEALED_MODE_MASK:
+        raise ConfirmationRefused(
+            f"sealed set mode {oct(mode)} is readable beyond its owner — "
+            "the research worker's OS identity could open it. Require "
+            f"owner-only ({oct(0o600)} or stricter)")
+    if facts["uid"] != facts["euid"]:
+        raise ConfirmationRefused(
+            f"sealed set is owned by uid {facts['uid']}, not the evaluator's "
+            f"uid {facts['euid']} — evaluator custody requires the file to "
+            "belong to the identity that evaluates")
+    facts["enforced"] = True
+    facts["reason"] = "owner-only mode, owned by the evaluating uid"
+    return facts
+
+
+def assert_evaluator_custody(environ=None) -> None:
+    """Cooperative refusal for a research-marked process.
+
+    Deliberately NOT described as isolation. See
+    :data:`RESEARCH_WORKER_ENV` for what this does and does not
+    establish.
     """
     if is_research_worker(environ):
         raise ConfirmationRefused(
             f"{RESEARCH_WORKER_ENV} is set: a research worker may not "
-            "read sealed confirmation data")
+            "read sealed confirmation data (cooperative guard)")
 
 
 def require_outside_research_storage(sealed: Path, storage: Path) -> None:
@@ -137,14 +189,86 @@ def require_outside_research_storage(sealed: Path, storage: Path) -> None:
 
 def load_sealed(path: Path, *, storage: Path | None = None,
                 environ=None) -> list[dict]:
+    """Load the sealed confirmation set under evaluator custody.
+
+    Controls, in the order they fire:
+
+    1. cooperative refusal of a research-marked process (in-process,
+       not a boundary — see :data:`RESEARCH_WORKER_ENV`);
+    2. the sealed set must live outside the research storage;
+    3. **owner-only file permissions, owned by the evaluating uid** —
+       the enforceable control, because a research worker's OS identity
+       cannot open a file it has no permission to open.
+
+    Returns the rows. The observed custody facts are available from
+    :func:`sealed_custody_report` for recording in the signed record.
+    """
     assert_evaluator_custody(environ)
     if storage is not None:
         require_outside_research_storage(path, storage)
+    require_sealed_file_permissions(path)
     rows = [json.loads(line) for line in path.read_text().splitlines()
             if line.strip()]
     if not rows:
         raise ConfirmationRefused("sealed confirmation set is empty")
     return rows
+
+
+def sealed_custody_report(path: Path, *, storage: Path | None = None,
+                          environ=None) -> dict:
+    """What custody controls were actually enforced for this sealed set.
+
+    Recorded in the signed confirmation record so a reader can see the
+    real level of assurance rather than an assurance asserted in prose.
+    ``permissions_enforced`` false means the sealed set was readable by
+    other OS identities and the run should not be treated as
+    independently isolated.
+    """
+    cooperative = {"control": "research_worker_env_marker",
+                   "kind": "cooperative (in-process, bypassable)",
+                   "enforced": True,
+                   "detail": f"{RESEARCH_WORKER_ENV} was not set"}
+    outside = {"control": "sealed_outside_research_storage",
+               "kind": "structural (path relationship)", "enforced": False,
+               "detail": ""}
+    perms = {"control": "sealed_file_permissions",
+             "kind": "filesystem (OS-enforced)", "enforced": False,
+             "detail": ""}
+    if is_research_worker(environ):
+        cooperative.update({"enforced": False,
+                            "detail": f"{RESEARCH_WORKER_ENV} was set"})
+    if storage is not None:
+        try:
+            require_outside_research_storage(path, storage)
+            outside.update({"enforced": True,
+                            "detail": "sealed set is outside the research "
+                                      "storage"})
+        except ConfirmationRefused as exc:
+            outside["detail"] = str(exc)
+    try:
+        facts = require_sealed_file_permissions(path)
+        perms.update({"enforced": bool(facts["enforced"]),
+                      "detail": facts["reason"], "observed": {
+                          "mode": facts["mode"], "uid": facts["uid"],
+                          "euid": facts["euid"]}})
+    except ConfirmationRefused as exc:
+        perms["detail"] = str(exc)
+    return {
+        "schema": "mini-agi-campaign3b-custody-report-v1",
+        "controls": [cooperative, outside, perms],
+        "independent_isolation_established": bool(perms["enforced"]),
+        "statement": (
+            "The boundary that holds is OS-level: a separate evaluator "
+            "identity, sealed files the research uid cannot open, and keys "
+            "that never touched the training worker. The environment marker "
+            "is a cooperative guard and is NOT isolation — a research worker "
+            "that controls its own environment can bypass it, and an "
+            "in-process caller can simply not pass it."
+            if perms["enforced"] else
+            "Owner-only sealed-file permissions were NOT enforced, so this "
+            "run did NOT establish independent isolation. Treat the "
+            "confirmation as un-isolated evidence."),
+    }
 
 
 SUBMISSION_FIELDS = ("campaign_id", "plan_digest", "model_id",
@@ -509,7 +633,8 @@ def run_confirmation(*, storage: Path, plan, submission, sealed_rows,
                      retention_scorer: str = "retention_score",
                      bootstrap_resamples: int = 2000,
                      ci_alpha: float = 0.05,
-                     verify_artifacts=None) -> dict:
+                     verify_artifacts=None,
+                     custody: dict | None = None) -> dict:
     """The whole evaluator-side flow with an injected executor.
 
     ``execute_arm(seed, arm_id, rows) -> {task_id: output}`` runs one
@@ -542,6 +667,12 @@ def run_confirmation(*, storage: Path, plan, submission, sealed_rows,
             "stats": stats,
             "decision": decision,
             "reasons": reasons,
+            "custody": custody or {
+                "schema": "mini-agi-campaign3b-custody-report-v1",
+                "controls": [],
+                "independent_isolation_established": False,
+                "statement": "no custody report supplied — independent "
+                             "isolation NOT established"},
             "note": "evaluator-sealed confirmation — independent of the "
                     "research worker; promotion remains a separate "
                     "governed step"}
@@ -697,7 +828,9 @@ def main() -> int:
     plan = _load_plan(campaign_dir)
     signers = _load_signers(storage)
     submission = load_submission(Path(args.submission))
-    sealed_rows = load_sealed(Path(args.sealed), storage=storage)
+    sealed_path = Path(args.sealed)
+    custody = sealed_custody_report(sealed_path, storage=storage)
+    sealed_rows = load_sealed(sealed_path, storage=storage)
 
     protocol = None
     proto_path = campaign_dir / "EXPERIMENT_PROTOCOL.json"
@@ -711,6 +844,7 @@ def main() -> int:
     record = run_confirmation(
         storage=storage, plan=plan, submission=submission,
         sealed_rows=sealed_rows, execute_arm=execute_arm, signers=signers,
+        custody=custody,
         retention_scorer=str(getattr(protocol, "retention_scorer",
                                      "retention_score")),
         verify_artifacts=lambda: verify_candidate_artifacts(

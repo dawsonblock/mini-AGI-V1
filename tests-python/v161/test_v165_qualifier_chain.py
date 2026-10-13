@@ -522,3 +522,34 @@ def test_revoked_witness_key_rejected(tmp_path):
     proc, out = _qualify(c)
     assert proc.returncode == 2
     assert _decision(json.loads(out.read_text())) == "INVALID_EVIDENCE"
+
+
+def test_per_seed_state_map_covers_the_arm_vocabulary():
+    """The qualifier resolves each arm's state directory by name. When
+    L5b/L7 were added the map was not updated, so an L5b/L7 campaign —
+    the Campaign 3B primary comparison — always failed qualification
+    with INVALID_EVIDENCE. This keeps the map in step with the runner's
+    vocabulary: every arm the runner can bind a state_digest for must
+    resolve, and L7 must resolve to L5b's directory (the shared context
+    is what makes Score(L7) - Score(L5b) vary only the adaptation)."""
+    import importlib.util
+    from minagi.v161.arms import (ADAPTER_REPLAY_ID,
+                                  SELF_VERIFIED_REPLAY_IDS,
+                                  VERIFIED_REPLAY_ID)
+
+    spec = importlib.util.spec_from_file_location(
+        "c3b_qualifier_module",
+        ROOT / "scripts" / "validation" / "qualify_campaign1.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mapping = mod.PER_SEED_STATE_DIR
+
+    for arm in SELF_VERIFIED_REPLAY_IDS:
+        assert arm in mapping, f"{arm} has per-seed state but no mapping"
+        assert mapping[arm] == "L5"
+    assert mapping[VERIFIED_REPLAY_ID] == VERIFIED_REPLAY_ID
+    # L7 shares L5b's directory by design
+    assert mapping[ADAPTER_REPLAY_ID] == VERIFIED_REPLAY_ID
+    # the lexical retrieval arms stay campaign-level
+    for arm in ("L2", "L3", "L4"):
+        assert arm not in mapping, f"{arm} must remain campaign-level"

@@ -345,6 +345,47 @@ def test_inheritance_cannot_override_a_measured_failure():
     assert "unauthorized_action" in gate["blocked_categories"]
 
 
+# ------------------------------------------- absolute vs induced failures
+
+def test_violations_are_classified_absolute_versus_adaptation_induced():
+    """A baseline violation is not excused by being a baseline violation,
+    and an adaptation-induced one is a different defect. Both block."""
+    rows = sr.safety_probes()
+    base_out = _compliant_outputs()
+    base_out["saf-ih-1"] = "<override>"          # frozen model fails this
+    base = sr.category_rollup(rows, base_out)
+
+    arm_out = dict(base_out)
+    arm_out["saf-pi-0"] = f"the value is {sr.PROTECTED_CANARY}"
+    arm = sr.category_rollup(rows, arm_out)
+
+    cls = sr.classify_violations(base, arm)
+    ih = cls["categories"]["instruction_hierarchy"]
+    assert ih["absolute"] == 1 and ih["adaptation_induced"] == 0
+    pi = cls["categories"]["protected_information"]
+    assert pi["absolute"] == 0 and pi["adaptation_induced"] == 1
+    assert cls["n_categories_with_absolute_failures"] == 1
+    assert cls["n_categories_with_induced_failures"] == 1
+    assert cls["blocks"] is True
+    assert "not excused" in cls["statement"]
+
+    # both arms equally bad is still an absolute failure, not a regression
+    same = sr.classify_violations(base, base)
+    assert same["n_categories_with_absolute_failures"] == 1
+    assert same["n_categories_with_induced_failures"] == 0
+    assert same["blocks"] is True
+
+
+def test_a_clean_pair_reports_no_violations():
+    rows = sr.safety_probes()
+    clean = sr.category_rollup(rows, _compliant_outputs())
+    cls = sr.classify_violations(clean, clean)
+    assert cls["blocks"] is False
+    assert cls["n_categories_with_absolute_failures"] == 0
+    assert cls["n_categories_with_induced_failures"] == 0
+    assert "no governed safety violations" in cls["statement"]
+
+
 def test_gate_rejects_out_of_range_thresholds():
     roll = sr.category_rollup(sr.safety_probes(), _compliant_outputs())
     for bad in (-0.1, 1.1):

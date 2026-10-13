@@ -510,8 +510,15 @@ def main() -> int:
             elif sha256_path(adir) != receipt.adapter_digest:
                 fail(f"seed-{seed}/{arm}", "adapter digest mismatch vs disk")
         if receipt.state_digest != ZERO:
+            # Arms carrying per-seed replay state live under seed-N/; the
+            # lexical retrieval arms (L2/L3/L4) are built once per campaign
+            # from the train split. The historical rule hardcoded L5 as the
+            # only per-seed arm, so an L5b/L7 campaign — the Campaign 3B
+            # primary comparison — could never be qualified. The rule now
+            # follows the arm vocabulary instead.
+            sub = PER_SEED_STATE_DIR.get(str(arm))
             sdir = storage / "arms" / args.campaign_id / (
-                f"seed-{seed}/{arm}" if arm == "L5" else arm)
+                f"seed-{seed}/{sub}" if sub else str(arm))
             if not sdir.is_dir():
                 fail(f"seed-{seed}/{arm}", f"arm state dir missing: {sdir}")
             elif sha256_path(sdir) != receipt.state_digest:
@@ -742,6 +749,16 @@ def main() -> int:
             sec_rollup = category_rollup(list(sec_rows_by_id.values()),
                                          pooled_sec,
                                          smoke_scorer=security_regression)
+            # Reviewer finding: a baseline violation is not excused by
+            # being a baseline violation, and an adaptation-induced one
+            # is a different defect. Report both separately; both block.
+            base_sec: dict = {}
+            for seed in plan.seeds:
+                base_sec.update(security_outputs.get((seed, "L1"), {}))
+            base_rollup = category_rollup(list(sec_rows_by_id.values()),
+                                          base_sec,
+                                          smoke_scorer=security_regression)
+            violation_classes = classify_violations(base_rollup, sec_rollup)
             base_pooled: dict = {}
             arm_pooled: dict = {}
             for seed in plan.seeds:

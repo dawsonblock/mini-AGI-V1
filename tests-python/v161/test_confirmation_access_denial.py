@@ -82,12 +82,13 @@ def test_ledger_is_append_only_across_attempts(tmp_path):
 # must not be able to read the confirmation set at all.
 # --------------------------------------------------------------------
 
-def _write_sealed(c, path: Path) -> Path:
+def _write_sealed(c, path: Path, *, mode: int = 0o600) -> Path:
     """Serialise the custody fixture's sealed rows to an evaluator-held
-    file outside the research storage."""
+    file outside the research storage, under owner-only permissions."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(json.dumps(r, sort_keys=True)
                               for r in c.rows) + "\n")
+    path.chmod(mode)
     return path
 
 
@@ -150,6 +151,84 @@ def test_evaluator_custody_loads_the_same_rows(tmp_path):
     assert len(rows) == len(c.rows)
     record = c.run(_executor())
     assert record["value"]["decision"] == "QUALIFIED"
+
+
+# --------------------------------------------------------------------
+# The enforceable control (reviewer finding): an environment marker is
+# a cooperative guard, not isolation. A research worker that controls
+# its environment bypasses it — but it cannot open a file its OS
+# identity has no permission to read.
+# --------------------------------------------------------------------
+
+def test_group_or_world_readable_sealed_set_is_refused(tmp_path):
+    c = Custody(tmp_path)
+    sealed = _write_sealed(c, tmp_path / "evaluator" / "sealed.jsonl",
+                           mode=0o644)
+    try:
+        TOOL.load_sealed(sealed, storage=c.storage, environ={})
+    except TOOL.ConfirmationRefused as exc:
+        assert "readable beyond its owner" in str(exc)
+    else:
+        raise AssertionError("a world-readable sealed set must be refused")
+
+
+def test_the_environment_marker_alone_is_not_isolation(tmp_path):
+    """Documents the weakness honestly: an in-process caller that does
+    not pass the marker is not stopped by it. The permission control is
+    what actually holds."""
+    c = Custody(tmp_path)
+    sealed = _write_sealed(c, tmp_path / "evaluator" / "sealed.jsonl",
+                           mode=0o600)
+    # the cooperative guard is trivially bypassed by not declaring it
+    rows = TOOL.load_sealed(sealed, storage=c.storage, environ={})
+    assert rows, "the cooperative guard does not, and cannot, stop this"
+    # ...but the permission control still binds
+    sealed.chmod(0o644)
+    try:
+        TOOL.load_sealed(sealed, storage=c.storage, environ={})
+    except TOOL.ConfirmationRefused:
+        pass
+    else:
+        raise AssertionError("the enforceable control must still refuse")
+
+
+def test_custody_report_states_the_real_level_of_assurance(tmp_path):
+    c = Custody(tmp_path)
+    sealed = _write_sealed(c, tmp_path / "evaluator" / "sealed.jsonl",
+                           mode=0o600)
+    report = TOOL.sealed_custody_report(sealed, storage=c.storage, environ={})
+    kinds = {c_["control"]: c_ for c_ in report["controls"]}
+    assert kinds["sealed_file_permissions"]["enforced"] is True
+    assert kinds["sealed_outside_research_storage"]["enforced"] is True
+    assert kinds["research_worker_env_marker"]["enforced"] is True
+    assert "cooperative" in kinds["research_worker_env_marker"]["kind"]
+    assert report["independent_isolation_established"] is True
+    assert "NOT isolation" in report["statement"]
+
+    # an unenforced permission control must NOT claim isolation
+    sealed.chmod(0o644)
+    weak = TOOL.sealed_custody_report(sealed, storage=c.storage, environ={})
+    assert weak["independent_isolation_established"] is False
+    assert "did NOT establish independent isolation" in weak["statement"]
+
+
+def test_custody_report_is_recorded_in_the_signed_record(tmp_path):
+    c = Custody(tmp_path)
+    sealed = _write_sealed(c, tmp_path / "evaluator" / "sealed.jsonl",
+                           mode=0o600)
+    custody = TOOL.sealed_custody_report(sealed, storage=c.storage, environ={})
+    record = c.run(_executor(), custody=custody)
+    assert record["value"]["custody"]["independent_isolation_established"] is True
+
+
+def test_absent_custody_report_never_claims_isolation(tmp_path):
+    """A caller that supplies no custody report gets an explicit
+    'NOT established', never a silent pass."""
+    c = Custody(tmp_path)
+    record = c.run(_executor())
+    custody = record["value"]["custody"]
+    assert custody["independent_isolation_established"] is False
+    assert "NOT established" in custody["statement"]
 
 
 # --------------------------------------------------------------------
