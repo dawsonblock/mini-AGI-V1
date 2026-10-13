@@ -39,6 +39,10 @@ import json
 import random
 import time
 from egai.common.canonical import digest, sha256_bytes
+from minagi.v161.prompt_contract import (DEFAULT_OUTPUT_CONTRACT,
+                                         PromptContract,
+                                         build_prompt_contract,
+                                         render_training_example)
 
 LABEL_IGNORE = -100
 
@@ -86,45 +90,21 @@ def example_digest(prompt: str, response: str) -> str:
 
 
 def supervised_tokens(tokenizer, prompt: str, response: str,
-                      max_length: int) -> dict:
+                      max_length: int,
+                      contract: PromptContract | None = None) -> dict:
     """Tokenize one {prompt, response} pair with prompt masked to -100.
 
-    The chat template (when the tokenizer defines one) renders the
-    prompt boundary exactly as inference does, so training sees the
-    same surface generation will see.
+    Delegates to the shared prompt contract (SCI-301): the prompt
+    boundary is rendered exactly as ``run_campaign1.generate`` renders
+    it, and the chat-template path additionally proves the prompt token
+    sequence is a token-level prefix of the supervised sequence. When no
+    contract is supplied, the historical default surface (no answer
+    instruction) is built from the tokenizer.
     """
-    if not prompt or not str(response).strip():
-        raise ValueError("empty prompt or response")
-    messages = [{"role": "user", "content": str(prompt)}]
-    if getattr(tokenizer, "chat_template", None):
-        prompt_text = tokenizer.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=False)
-        full_text = tokenizer.apply_chat_template(
-            messages + [{"role": "assistant", "content": str(response)}],
-            tokenize=False)
-        if not full_text.startswith(prompt_text):
-            raise ValueError("chat template render is not prefix-consistent")
-        response_text = full_text[len(prompt_text):]
-    else:
-        prompt_text = str(prompt)
-        eos = getattr(tokenizer, "eos_token", "") or ""
-        response_text = str(response) + eos
-    p_ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
-    r_ids = tokenizer(response_text, add_special_tokens=False)["input_ids"]
-    input_ids = list(p_ids) + list(r_ids)
-    labels = [LABEL_IGNORE] * len(p_ids) + list(r_ids)
-    if len(input_ids) > max_length:
-        # keep the response tail: drop leading prompt context, never the
-        # supervised suffix
-        overflow = len(input_ids) - max_length
-        input_ids = input_ids[overflow:]
-        labels = labels[overflow:]
-    n_sup = sum(1 for t in labels if t != LABEL_IGNORE)
-    if n_sup == 0:
-        raise ValueError("response fully truncated by max_length — "
-                         "no supervised tokens remain")
-    return {"input_ids": input_ids, "labels": labels,
-            "n_prompt": len(labels) - n_sup, "n_supervised": n_sup}
+    if contract is None:
+        contract = build_prompt_contract(tokenizer, DEFAULT_OUTPUT_CONTRACT)
+    return render_training_example(tokenizer, prompt, response, contract,
+                                   max_length)
 
 
 def _pad_batch(encoded, pad_token_id):
@@ -190,16 +170,23 @@ def adapter_artifact_digest(adapter_dir) -> str:
 
 def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                examples: Sequence[Mapping] | None = None,
-               output_dir: str | Path, spec: LoraTrainSpec):
+               output_dir: str | Path, spec: LoraTrainSpec,
+               prompt_contract: PromptContract | None = None):
     """Train a LoRA adapter and persist it.
 
     `examples` (v165+, structured {prompt,response} masking) takes
-    precedence over legacy `texts`. Returns (model, receipt).
+    precedence over legacy `texts`. The structured path encodes through
+    `prompt_contract` (default: the historical no-instruction surface
+    built from the tokenizer), so training renders the same input the
+    runner's generation contract renders. Returns (model, receipt).
     """
     import torch
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
     if examples is None and not texts:
         raise ValueError("training texts or examples required")
+    if prompt_contract is None:
+        prompt_contract = build_prompt_contract(tokenizer,
+                                                DEFAULT_OUTPUT_CONTRACT)
     random.seed(spec.seed)
     torch.manual_seed(spec.seed)
     if torch.cuda.is_available():
@@ -237,7 +224,7 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
             try:
                 encoded.append(supervised_tokens(
                     tokenizer, str(e["prompt"]), str(e["response"]),
-                    spec.max_length))
+                    spec.max_length, contract=prompt_contract))
             except ValueError as exc:
                 rejected += 1
                 if spec.malformed_policy == "fail":
@@ -332,6 +319,13 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                "trainable_params": trainable, "total_params": total,
                "library_versions": _library_versions(),
                "started_ns": started, "finished_ns": time.time_ns()}
+    if examples is not None:
+        # SCI-301: the exact rendering contract this adapter was trained
+        # under, so training/inference parity is auditable from the
+        # artifact alone.
+        receipt["prompt_contract_digest"] = prompt_contract.digest
+        receipt["output_contract_digest"] = \
+            prompt_contract.output_contract_digest
     (outdir / "TRAINING_RECEIPT.json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True))
     (outdir / "TRAINING_SPEC.json").write_text(
