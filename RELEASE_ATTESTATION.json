@@ -29,6 +29,7 @@
     "threat_model": "docs/research/THREAT_MODEL_V1643.md"
   },
   "campaign3b1_release": "mini-AGI-V1-Campaign3B1-Interference-Repair",
+  "campaign3b2_release": "mini-AGI-V1-Campaign3B2-Full-Scientific-Hardening",
   "campaign3b_base_runtime": "16.4.10-containment-and-authority-closure",
   "campaign3b_release": "mini-AGI-V1-Campaign3B-Full-Scientific-Hardening",
   "campaign3b_scientific_hardening": "Campaign 3B (v16.4.10+campaign3b): prompt parity proved per example; strict exact match primary with format/termination diagnostics recorded separately; verified replay operates (30/30 records, 20/20 retrieval hits) where 3A admitted zero traces; false-activation and retention undefined metrics are NOT_ESTIMABLE and block; governed safety suite enforced with 0 undefined mandatory categories. Positive control EXECUTED and REFUSED (6/7 readiness gates): LoRA learns within-family (0.222 -> 0.444 vs frozen 0.222) but misses the 95% fit gate (0.767) and degrades held-out families (0.167 vs 0.417). Runtime security surface unchanged. Sealed confirmation NOT RUN (no independent evaluator custody).",
@@ -87,7 +88,7 @@
     "qualification": "macOS suite green; Linux boundary run pending",
     "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
   },
-  "manifest_sha256": "3f5a27c9163a593c48b6956e1ed55fb09dad0ded3e9a66dfde890fd8bf299c3f",
+  "manifest_sha256": "a153af22d26ef5973c2c56a07f26acaee49cc6c472482beaa6b96a6be571a1cf",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "1067 passed, 18 skipped, 0 failed (macOS); container: 62/62 v16.4.10 + 50/50 executor-isolation + 2/2 G10",
@@ -408,9 +409,14 @@
       "manifest_sha256": "3f5a27c9163a593c48b6956e1ed55fb09dad0ded3e9a66dfde890fd8bf299c3f",
       "reason": "Campaign 3B.1 Step 4: fit experiment + breadth-vs-steps ablation",
       "utc": "2026-10-13T09:30:25Z"
+    },
+    {
+      "manifest_sha256": "a153af22d26ef5973c2c56a07f26acaee49cc6c472482beaa6b96a6be571a1cf",
+      "reason": "Campaign 3B.2 Stages 1-3: immutable run artifacts, contrast controls, interference and counterfactual analysis, generated experiment/artifact manifests",
+      "utc": "2026-10-13T23:59:54Z"
     }
   ],
-  "reissued_utc": "2026-10-13T09:30:25Z",
+  "reissued_utc": "2026-10-13T23:59:54Z",
   "reissues": [
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",

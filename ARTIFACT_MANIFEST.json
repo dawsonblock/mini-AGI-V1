@@ -1,0 +1,1647 @@
+{
+  "adapters": 21,
+  "artifacts": [
+    {
+      "bytes": 886,
+      "path": "A2/ADAPTER_MANIFEST.json",
+      "run_id": "A2",
+      "sha256": "8fa3af5937fd24e84e14ed5832fcf5751d1e560440abd66f36d7934982ae8f7d"
+    },
+    {
+      "bytes": 1183,
+      "path": "A2/CONFIG.json",
+      "run_id": "A2",
+      "sha256": "2cedc793394f246cc823db40d6eb5465b1e50b44ed27b9e2265b0466fd5b58d5"
+    },
+    {
+      "bytes": 2495,
+      "path": "A2/METRICS.json",
+      "run_id": "A2",
+      "sha256": "18c54bbd51664b82ec345092c89357fdcd6963c662b794dc38e3a8bd1a948643"
+    },
+    {
+      "bytes": 2266,
+      "path": "A2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "A2",
+      "sha256": "d219d8a0cf4658a5c44201cc3bcf688d4ca0531da0f592c1b47c7496450c8f3f"
+    },
+    {
+      "bytes": 2279,
+      "path": "A2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "A2",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 1930,
+      "path": "A2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "A2",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1418,
+      "path": "A2/RUN_COMMIT.json",
+      "run_id": "A2",
+      "sha256": "de95cdf768a48ef32f9f2189b30a42375542d24bb1c460b2a4dee387b589cac3"
+    },
+    {
+      "bytes": 17510,
+      "path": "A2/TRAINING_RECEIPT.json",
+      "run_id": "A2",
+      "sha256": "9ed66ec891182fbe43cc434d5444d8c01a37968b6e447d043d4050fa752d9b60"
+    },
+    {
+      "bytes": 5206,
+      "path": "A2/adapter/README.md",
+      "run_id": "A2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17509,
+      "path": "A2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "A2",
+      "sha256": "6c73859e5c43974dae2ee6dd7b2060eb74284111277f33b63ed7b83999e98d7f"
+    },
+    {
+      "bytes": 402,
+      "path": "A2/adapter/TRAINING_SPEC.json",
+      "run_id": "A2",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "A2/adapter/adapter_config.json",
+      "run_id": "A2",
+      "sha256": "1c94115c10787433d10d549853869c67eddcb40e3b0a96a0fb177d906944a046"
+    },
+    {
+      "bytes": 8676008,
+      "path": "A2/adapter/adapter_model.safetensors",
+      "run_id": "A2",
+      "sha256": "16f75a8c83e43abef23ec0d0b4ce590f00a59b96e7b2374fcc9ba8891c2bf228"
+    },
+    {
+      "bytes": 886,
+      "path": "A4/ADAPTER_MANIFEST.json",
+      "run_id": "A4",
+      "sha256": "62dd682ec9d73faa6e38e6e5e711ee14b94f43f3efc489c592d7972f28aeaa8e"
+    },
+    {
+      "bytes": 1251,
+      "path": "A4/CONFIG.json",
+      "run_id": "A4",
+      "sha256": "82c109ec61d1a330e1ac752acb62a4f2fe3df16f47cb0735d4dcf5b6d6df604e"
+    },
+    {
+      "bytes": 2747,
+      "path": "A4/METRICS.json",
+      "run_id": "A4",
+      "sha256": "e613e26fa7cbb123d4002a6cef50d4a43c4218acc3c7745f9cc4ae8528967bd8"
+    },
+    {
+      "bytes": 2268,
+      "path": "A4/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "A4",
+      "sha256": "c1da8e81c7fbff0e8afc401874e547e52cd88498705b1712c5c0d0a7cb0c118d"
+    },
+    {
+      "bytes": 2279,
+      "path": "A4/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "A4",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 3860,
+      "path": "A4/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "A4",
+      "sha256": "330c7c5c56eabcef0e67f1c479ff7ecc435ba9607c90f082938205660e6f45d7"
+    },
+    {
+      "bytes": 1418,
+      "path": "A4/RUN_COMMIT.json",
+      "run_id": "A4",
+      "sha256": "3963dd3ab742be953217a7a8e3ee7561f7a385770f0fb177409f4f2b42d028ab"
+    },
+    {
+      "bytes": 16918,
+      "path": "A4/TRAINING_RECEIPT.json",
+      "run_id": "A4",
+      "sha256": "78f36a4af8426f59ada887d2dc1759d1fd6f6261dd1bce304dc3d6f937d51457"
+    },
+    {
+      "bytes": 5206,
+      "path": "A4/adapter/README.md",
+      "run_id": "A4",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16917,
+      "path": "A4/adapter/TRAINING_RECEIPT.json",
+      "run_id": "A4",
+      "sha256": "abd50374b6f8813e6798924b2698ea864b4f85e7e0ad285e4f82eb1e008d13ca"
+    },
+    {
+      "bytes": 402,
+      "path": "A4/adapter/TRAINING_SPEC.json",
+      "run_id": "A4",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "A4/adapter/adapter_config.json",
+      "run_id": "A4",
+      "sha256": "c891708023831728bdb68f4ec709b4e42f498b6e01c7627222c1f4f0c729bfc0"
+    },
+    {
+      "bytes": 8676008,
+      "path": "A4/adapter/adapter_model.safetensors",
+      "run_id": "A4",
+      "sha256": "60c9c4f44e43e3724ad4e128b0b71aa97d54ab3ee9a84db9e5e305749de8b8d2"
+    },
+    {
+      "bytes": 883,
+      "path": "A6/ADAPTER_MANIFEST.json",
+      "run_id": "A6",
+      "sha256": "40840f62d7665352d181049d32bdf610723c9e215cb7dc81f3a85bb0bda6c567"
+    },
+    {
+      "bytes": 1323,
+      "path": "A6/CONFIG.json",
+      "run_id": "A6",
+      "sha256": "948129452b9de03acf223698c176c5cb717fb859bc8348d5af146e31a2597533"
+    },
+    {
+      "bytes": 3122,
+      "path": "A6/METRICS.json",
+      "run_id": "A6",
+      "sha256": "8bf3f480367545bf0ec023b6e6121cbbcbf7e9380b01a661d31e16be635cea1b"
+    },
+    {
+      "bytes": 2262,
+      "path": "A6/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "A6",
+      "sha256": "0724a5a3c180cba416c9ef71da7cdd45b5fe75ce4a2bb5ec920897399df3de0e"
+    },
+    {
+      "bytes": 2279,
+      "path": "A6/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "A6",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 5864,
+      "path": "A6/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "A6",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1418,
+      "path": "A6/RUN_COMMIT.json",
+      "run_id": "A6",
+      "sha256": "3db78c9bfdaa0711cafd69041d51bcd8a2457515ad3f7a4d15606053c95d7bd6"
+    },
+    {
+      "bytes": 16712,
+      "path": "A6/TRAINING_RECEIPT.json",
+      "run_id": "A6",
+      "sha256": "022b5e7a9f06a53e7e6a5558e402b461c403f7b293fbd58f3212ac18113ef4aa"
+    },
+    {
+      "bytes": 5206,
+      "path": "A6/adapter/README.md",
+      "run_id": "A6",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16711,
+      "path": "A6/adapter/TRAINING_RECEIPT.json",
+      "run_id": "A6",
+      "sha256": "b850f31c92d651f084764fdf268a5e689857afb63b0242d23070cd02bc5c8123"
+    },
+    {
+      "bytes": 402,
+      "path": "A6/adapter/TRAINING_SPEC.json",
+      "run_id": "A6",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "A6/adapter/adapter_config.json",
+      "run_id": "A6",
+      "sha256": "cc0cb39d6cbf633027071c999acd069b457f972d2dbb43ab5ff80bce2ae4e036"
+    },
+    {
+      "bytes": 8676008,
+      "path": "A6/adapter/adapter_model.safetensors",
+      "run_id": "A6",
+      "sha256": "e8e84a72c72f634c798d90cfcda1bc4698760ea933866774b87a1ed5a519a564"
+    },
+    {
+      "bytes": 887,
+      "path": "B4/ADAPTER_MANIFEST.json",
+      "run_id": "B4",
+      "sha256": "e5bf4db52bd58aa44c426756d11c7b1e97b5beac008fc5ec25f3bfe5d0716ffe"
+    },
+    {
+      "bytes": 1256,
+      "path": "B4/CONFIG.json",
+      "run_id": "B4",
+      "sha256": "66acd57504fd1df75b13ae045f340c958b7eb44944742f6807e2a029ec55bdde"
+    },
+    {
+      "bytes": 2750,
+      "path": "B4/METRICS.json",
+      "run_id": "B4",
+      "sha256": "9755a06713f40700effa5740ad118458ad5b090118fb3012f6669366cdbd6845"
+    },
+    {
+      "bytes": 2267,
+      "path": "B4/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "B4",
+      "sha256": "aca893485ed45512b748c18875a4b1600d099fbec81af3ccb45cfb81f42e89f2"
+    },
+    {
+      "bytes": 2279,
+      "path": "B4/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "B4",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 3860,
+      "path": "B4/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "B4",
+      "sha256": "330c7c5c56eabcef0e67f1c479ff7ecc435ba9607c90f082938205660e6f45d7"
+    },
+    {
+      "bytes": 1418,
+      "path": "B4/RUN_COMMIT.json",
+      "run_id": "B4",
+      "sha256": "eb82855e5559885aee326d277a68d72ce73347ff2441791ef993f5e2e550b55a"
+    },
+    {
+      "bytes": 16711,
+      "path": "B4/TRAINING_RECEIPT.json",
+      "run_id": "B4",
+      "sha256": "e8b9a427647eb43e783edd548c95a9c25b63a7a5c8fc4f8fcf21cf3f1d884d66"
+    },
+    {
+      "bytes": 5206,
+      "path": "B4/adapter/README.md",
+      "run_id": "B4",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16710,
+      "path": "B4/adapter/TRAINING_RECEIPT.json",
+      "run_id": "B4",
+      "sha256": "3aa3b66c49efb5086fbf2846430caee942dbd18f1835cc749a23e7c4b878dba5"
+    },
+    {
+      "bytes": 402,
+      "path": "B4/adapter/TRAINING_SPEC.json",
+      "run_id": "B4",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "B4/adapter/adapter_config.json",
+      "run_id": "B4",
+      "sha256": "c4483fd61e91b57717e65e1fe93ea35624e5d6ed9dfca48cf397799bb1288c28"
+    },
+    {
+      "bytes": 8676008,
+      "path": "B4/adapter/adapter_model.safetensors",
+      "run_id": "B4",
+      "sha256": "7fcbe238dda08bcb2e0468d4fbec84be25b47a0fb1f625e6488bbdeba0f43ffe"
+    },
+    {
+      "bytes": 887,
+      "path": "C4/ADAPTER_MANIFEST.json",
+      "run_id": "C4",
+      "sha256": "0cd7765d55b27734329a936c400eaf965d53336795a072ef48af66ed6f5d3bc1"
+    },
+    {
+      "bytes": 1254,
+      "path": "C4/CONFIG.json",
+      "run_id": "C4",
+      "sha256": "7b72241ed5ded5311a394f5d258bff04c8ca4e9a49f2e26eca006acac0fd9708"
+    },
+    {
+      "bytes": 2750,
+      "path": "C4/METRICS.json",
+      "run_id": "C4",
+      "sha256": "44418fd8eb230881ea4062e2e0a9647516de723d62b458d0eb40a771d0f1727d"
+    },
+    {
+      "bytes": 2266,
+      "path": "C4/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "C4",
+      "sha256": "c4444a9dfde608fb1668ad7ac6ddc6feb0e561c3db3aff84b25eef847f079ed7"
+    },
+    {
+      "bytes": 2279,
+      "path": "C4/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "C4",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 3860,
+      "path": "C4/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "C4",
+      "sha256": "330c7c5c56eabcef0e67f1c479ff7ecc435ba9607c90f082938205660e6f45d7"
+    },
+    {
+      "bytes": 1418,
+      "path": "C4/RUN_COMMIT.json",
+      "run_id": "C4",
+      "sha256": "4566513a0516ccedf5c788ee6f235a01f23db0b2ded84f401f6600f81aedc3f5"
+    },
+    {
+      "bytes": 32320,
+      "path": "C4/TRAINING_RECEIPT.json",
+      "run_id": "C4",
+      "sha256": "cc1892be5d23319d15ab907f4de67a4b8080bcd8c8b1af9767f010092e461de2"
+    },
+    {
+      "bytes": 5206,
+      "path": "C4/adapter/README.md",
+      "run_id": "C4",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 32319,
+      "path": "C4/adapter/TRAINING_RECEIPT.json",
+      "run_id": "C4",
+      "sha256": "a48759d4a998f66f679fd7428e2b8485f7fc6fb18a55873e0557e743ba1287eb"
+    },
+    {
+      "bytes": 402,
+      "path": "C4/adapter/TRAINING_SPEC.json",
+      "run_id": "C4",
+      "sha256": "15ec7e6eafe9b0972edb9372a3db2676e91fda396e29b618617cc8980b3aa147"
+    },
+    {
+      "bytes": 1110,
+      "path": "C4/adapter/adapter_config.json",
+      "run_id": "C4",
+      "sha256": "0c04b2ebb4884e691dde5e243b4f43dd9dfb1d1b18232b95f2f3e9b67e81214a"
+    },
+    {
+      "bytes": 8676008,
+      "path": "C4/adapter/adapter_model.safetensors",
+      "run_id": "C4",
+      "sha256": "a16dd9c89b2bc7fffa630cf69c96092508068a358c83e8bc4c09451dc3d20f84"
+    },
+    {
+      "bytes": 883,
+      "path": "C6/ADAPTER_MANIFEST.json",
+      "run_id": "C6",
+      "sha256": "b332f6ece7b3bb0bca0d8f3b646ecdf315a212b1b02a575f90d4c7349172d35b"
+    },
+    {
+      "bytes": 1326,
+      "path": "C6/CONFIG.json",
+      "run_id": "C6",
+      "sha256": "11943c92c132c4c208d7fdb0cd201111c9ef53dfde13dd853f6c42260dda7586"
+    },
+    {
+      "bytes": 3125,
+      "path": "C6/METRICS.json",
+      "run_id": "C6",
+      "sha256": "894d27ca546236fefaeed49f393e23fbe4a2c41c9210c5b784d38b4d06599ce9"
+    },
+    {
+      "bytes": 2262,
+      "path": "C6/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "C6",
+      "sha256": "0724a5a3c180cba416c9ef71da7cdd45b5fe75ce4a2bb5ec920897399df3de0e"
+    },
+    {
+      "bytes": 2279,
+      "path": "C6/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "C6",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 5864,
+      "path": "C6/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "C6",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1418,
+      "path": "C6/RUN_COMMIT.json",
+      "run_id": "C6",
+      "sha256": "595ee84b1de1c7abed52bbf9e506d76b5da59e8788c8102586b7ba9fb77d0ee0"
+    },
+    {
+      "bytes": 48045,
+      "path": "C6/TRAINING_RECEIPT.json",
+      "run_id": "C6",
+      "sha256": "ae2115872e0d1db0b48802ef4e98e013fa5dc4323d8bafda36bf49a8b961f883"
+    },
+    {
+      "bytes": 5206,
+      "path": "C6/adapter/README.md",
+      "run_id": "C6",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 48044,
+      "path": "C6/adapter/TRAINING_RECEIPT.json",
+      "run_id": "C6",
+      "sha256": "728d9a5db8386f2835ddc2a2d487582d2f08fd839b6430d0efe636bc91452897"
+    },
+    {
+      "bytes": 402,
+      "path": "C6/adapter/TRAINING_SPEC.json",
+      "run_id": "C6",
+      "sha256": "e50e3185e3cfa98a1fc373a5aea505b1b534148a4c8fefdafeae3c7a36ec027d"
+    },
+    {
+      "bytes": 1110,
+      "path": "C6/adapter/adapter_config.json",
+      "run_id": "C6",
+      "sha256": "b30175fd066e3f0024475e69e9b9724075444d40000474c7b64790a4e9750573"
+    },
+    {
+      "bytes": 8676008,
+      "path": "C6/adapter/adapter_model.safetensors",
+      "run_id": "C6",
+      "sha256": "c61532176f88e9dd1459b092bb009f33bf521064bf96aee7349685a6330293d5"
+    },
+    {
+      "bytes": 884,
+      "path": "nc1/ADAPTER_MANIFEST.json",
+      "run_id": "nc1",
+      "sha256": "d432f0da1b983c113c66325ad26df27f1fc1ecd21fdf68725b03d0d1a66b48fa"
+    },
+    {
+      "bytes": 886,
+      "path": "nc1/CONFIG.json",
+      "run_id": "nc1",
+      "sha256": "466d1ac785a3e1e05280788bedfde48aad59dea3328f1a5d074499e01dc89dbe"
+    },
+    {
+      "bytes": 2035,
+      "path": "nc1/METRICS.json",
+      "run_id": "nc1",
+      "sha256": "62572c0d06e58ee09a9f686775a628d81e347cbca66479d3e7fa95c12bbe41cd"
+    },
+    {
+      "bytes": 2262,
+      "path": "nc1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "nc1",
+      "sha256": "990304491a7fda0c80f1c879a12a99cc29473c3b75c72cfb782cc9066499c2de"
+    },
+    {
+      "bytes": 2279,
+      "path": "nc1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "nc1",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 1930,
+      "path": "nc1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "nc1",
+      "sha256": "0ee8934cc734ed8b0273b302bddc1d8a8162405dccfdedc58884209084fc7bb6"
+    },
+    {
+      "bytes": 1419,
+      "path": "nc1/RUN_COMMIT.json",
+      "run_id": "nc1",
+      "sha256": "5a64b76a1efa70a100d58accb2e4881aa6b7cf9a367440ed7f43c8781a90398c"
+    },
+    {
+      "bytes": 16946,
+      "path": "nc1/TRAINING_RECEIPT.json",
+      "run_id": "nc1",
+      "sha256": "46791da53b1e80b85e6ebccd844186159d2c9f96add7a2e3218c0cb4aec8e02d"
+    },
+    {
+      "bytes": 5206,
+      "path": "nc1/adapter/README.md",
+      "run_id": "nc1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16945,
+      "path": "nc1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "nc1",
+      "sha256": "b1d86ff035738fa0c997c94128df2adbbb7210c9ca85f9106cde8d4871e5d6c3"
+    },
+    {
+      "bytes": 402,
+      "path": "nc1/adapter/TRAINING_SPEC.json",
+      "run_id": "nc1",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "nc1/adapter/adapter_config.json",
+      "run_id": "nc1",
+      "sha256": "bfdb59350208c9ff05a2527e23c7f5ed2062f7e51ba37369685bada89e28912d"
+    },
+    {
+      "bytes": 8676008,
+      "path": "nc1/adapter/adapter_model.safetensors",
+      "run_id": "nc1",
+      "sha256": "45082142130cfc1e5d23d72f424d75daec1416ff30ddc081938f16f11c26126f"
+    },
+    {
+      "bytes": 886,
+      "path": "nc2/ADAPTER_MANIFEST.json",
+      "run_id": "nc2",
+      "sha256": "cb5485ad416788f1c36a514694c0c1f0a79733180ffca78ca82d72a63add9c7b"
+    },
+    {
+      "bytes": 947,
+      "path": "nc2/CONFIG.json",
+      "run_id": "nc2",
+      "sha256": "337bd8c4999df17a421868a16408f89ef7083acafb57fd60c1fe508c61bfc3ba"
+    },
+    {
+      "bytes": 2560,
+      "path": "nc2/METRICS.json",
+      "run_id": "nc2",
+      "sha256": "ae957c5e630b27cb0cf3a10485352fc18584e240842c2fab28b817c59ee6fe9f"
+    },
+    {
+      "bytes": 2265,
+      "path": "nc2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "nc2",
+      "sha256": "9b2a5e00916e3c3c785b4c7c0aa2926ce6148845df43c8dcd61147658e84c3c6"
+    },
+    {
+      "bytes": 2279,
+      "path": "nc2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "nc2",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 5864,
+      "path": "nc2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "nc2",
+      "sha256": "75a835dd3f1fbc173df481bfd103784386e5125df5f8ad3830faf33531694e05"
+    },
+    {
+      "bytes": 1419,
+      "path": "nc2/RUN_COMMIT.json",
+      "run_id": "nc2",
+      "sha256": "a3c2708817671d23dd33d5e8f0e6a24f80f4d6af253809136216a8e651d91e5f"
+    },
+    {
+      "bytes": 31523,
+      "path": "nc2/TRAINING_RECEIPT.json",
+      "run_id": "nc2",
+      "sha256": "1692606c406e5e9077ab05bda01bc7a0e4e9c1ebc3f4cf35c4637b572990735f"
+    },
+    {
+      "bytes": 5206,
+      "path": "nc2/adapter/README.md",
+      "run_id": "nc2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 31522,
+      "path": "nc2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "nc2",
+      "sha256": "c5d00668da6efde80d42cd49c52e0dc5984195a56f2b1b276ceecccf46d1a623"
+    },
+    {
+      "bytes": 402,
+      "path": "nc2/adapter/TRAINING_SPEC.json",
+      "run_id": "nc2",
+      "sha256": "15ec7e6eafe9b0972edb9372a3db2676e91fda396e29b618617cc8980b3aa147"
+    },
+    {
+      "bytes": 1110,
+      "path": "nc2/adapter/adapter_config.json",
+      "run_id": "nc2",
+      "sha256": "3c9fbd4b7a84c044a24851e161b215824661d559c5fa56ff058507b8f6e5fa82"
+    },
+    {
+      "bytes": 8676008,
+      "path": "nc2/adapter/adapter_model.safetensors",
+      "run_id": "nc2",
+      "sha256": "ac40018f7199113f8f6eea058872938395a7918e3ecf3cbfe2d1f63656bfb4ba"
+    },
+    {
+      "bytes": 885,
+      "path": "ncA2/ADAPTER_MANIFEST.json",
+      "run_id": "ncA2",
+      "sha256": "3f15dfbfa3df1f81be21986ce3894340f34d67583befad4992f602641cb8a7b7"
+    },
+    {
+      "bytes": 1184,
+      "path": "ncA2/CONFIG.json",
+      "run_id": "ncA2",
+      "sha256": "a69d71950ad655bc5c77aa48db793dc84024f76718ae049d3369d7c8c7ec9745"
+    },
+    {
+      "bytes": 2519,
+      "path": "ncA2/METRICS.json",
+      "run_id": "ncA2",
+      "sha256": "c5b20199c65ad1bccc1e84a4e2964ed5f7a2c9849d117fc2693e9b9b0f3daf96"
+    },
+    {
+      "bytes": 2262,
+      "path": "ncA2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "ncA2",
+      "sha256": "e80aa27b8f4cd8dfd989f21d668521632416dac33f821e60f891bfb6320df73a"
+    },
+    {
+      "bytes": 2279,
+      "path": "ncA2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "ncA2",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 1930,
+      "path": "ncA2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "ncA2",
+      "sha256": "028151b4c5586d74fc18686899230bbb6b089052e1bd1192e9aac9fcb127e348"
+    },
+    {
+      "bytes": 1420,
+      "path": "ncA2/RUN_COMMIT.json",
+      "run_id": "ncA2",
+      "sha256": "bfbae90e7fed456f91cbdb28a2ed28162ea6f248ded5d83f4c2bf4c2f8f8bd2a"
+    },
+    {
+      "bytes": 16103,
+      "path": "ncA2/TRAINING_RECEIPT.json",
+      "run_id": "ncA2",
+      "sha256": "c83c9eddf4232b253c327acdfac3b3a684b2ed24221e835a2d484f681d7002f8"
+    },
+    {
+      "bytes": 5206,
+      "path": "ncA2/adapter/README.md",
+      "run_id": "ncA2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16102,
+      "path": "ncA2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "ncA2",
+      "sha256": "3f4ba551a3b6c158a0c4d121f95df999574c61adc9d16bc11d5e8c83bc1b1d70"
+    },
+    {
+      "bytes": 402,
+      "path": "ncA2/adapter/TRAINING_SPEC.json",
+      "run_id": "ncA2",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "ncA2/adapter/adapter_config.json",
+      "run_id": "ncA2",
+      "sha256": "ca77283aad2a604e546e2903fdbaf1a3943396e1a7bf28a0d049a5d07ecda677"
+    },
+    {
+      "bytes": 8676008,
+      "path": "ncA2/adapter/adapter_model.safetensors",
+      "run_id": "ncA2",
+      "sha256": "84974514ab1fec345f34100ffaeb194ca2e6a90d3bec54dc1fff13feb88fda06"
+    },
+    {
+      "bytes": 885,
+      "path": "ncA4/ADAPTER_MANIFEST.json",
+      "run_id": "ncA4",
+      "sha256": "6a9cf5f399f487437bd2a3f6f026679a1aa40efabe54f5acc6e4342dd44f6de6"
+    },
+    {
+      "bytes": 1252,
+      "path": "ncA4/CONFIG.json",
+      "run_id": "ncA4",
+      "sha256": "4aed3e47246f192508c7e0739175616c9a2e99be680bfeb061747097804999b7"
+    },
+    {
+      "bytes": 2820,
+      "path": "ncA4/METRICS.json",
+      "run_id": "ncA4",
+      "sha256": "728aa65b9b0ca137e7ecf6b7f54a5d332436f244521abbb7c2ef1ffe59fece39"
+    },
+    {
+      "bytes": 2262,
+      "path": "ncA4/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "ncA4",
+      "sha256": "0f3598a29eea5760a57ba2a266a40fe54bcc315a818bd5494ad439b27c044fa5"
+    },
+    {
+      "bytes": 2279,
+      "path": "ncA4/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "ncA4",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 3860,
+      "path": "ncA4/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "ncA4",
+      "sha256": "c8fd250d0131b3a718e70361b6abde3f9958fbe36ce042babd762c0c2b5cf3ef"
+    },
+    {
+      "bytes": 1420,
+      "path": "ncA4/RUN_COMMIT.json",
+      "run_id": "ncA4",
+      "sha256": "e8b0df545e6a9f0566a04c91703251f1fc6c8b60c46da6a9506543ff79b70476"
+    },
+    {
+      "bytes": 16149,
+      "path": "ncA4/TRAINING_RECEIPT.json",
+      "run_id": "ncA4",
+      "sha256": "74b7205db7a9385b51ab8a63cf36b290ad63f5169d94ee8bffe90ca34bff37da"
+    },
+    {
+      "bytes": 5206,
+      "path": "ncA4/adapter/README.md",
+      "run_id": "ncA4",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16148,
+      "path": "ncA4/adapter/TRAINING_RECEIPT.json",
+      "run_id": "ncA4",
+      "sha256": "1aca6294fe4d41349b3d8ab32cbf1e91eb8587121a507010ee716b2aff5ae4fb"
+    },
+    {
+      "bytes": 402,
+      "path": "ncA4/adapter/TRAINING_SPEC.json",
+      "run_id": "ncA4",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "ncA4/adapter/adapter_config.json",
+      "run_id": "ncA4",
+      "sha256": "38cc05cab41e0928b888c3e8c6605c2a551315b23a9668598683a6f95f70b242"
+    },
+    {
+      "bytes": 8676008,
+      "path": "ncA4/adapter/adapter_model.safetensors",
+      "run_id": "ncA4",
+      "sha256": "34b21c429ea5d23b979357a3872cb8afdd3f5d61886ab29b3f1940529d8984c3"
+    },
+    {
+      "bytes": 885,
+      "path": "ncA6/ADAPTER_MANIFEST.json",
+      "run_id": "ncA6",
+      "sha256": "d7a7647728d393d38a74f43847d8252df9761f40daebaafde2d54476e506e657"
+    },
+    {
+      "bytes": 1324,
+      "path": "ncA6/CONFIG.json",
+      "run_id": "ncA6",
+      "sha256": "9bca4a3c3363260ab7975d9ee8822367a29b46faf389d69e71f25994ba37c209"
+    },
+    {
+      "bytes": 3132,
+      "path": "ncA6/METRICS.json",
+      "run_id": "ncA6",
+      "sha256": "f4c3b8bf9fb1041764f65ef8ca4dafad404e2e72ab6cf8670c72aec119ef7b8b"
+    },
+    {
+      "bytes": 2264,
+      "path": "ncA6/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "ncA6",
+      "sha256": "7069853e8d1ad4cab3a9e8e09918823fd8f09d8b0c99050bb2358be3c4628bab"
+    },
+    {
+      "bytes": 2279,
+      "path": "ncA6/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "ncA6",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 5864,
+      "path": "ncA6/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "ncA6",
+      "sha256": "410ec69422932b6e1834e1db5dc3b20e88bd5bc67cf24a9b9d2be4c9ad169f22"
+    },
+    {
+      "bytes": 1420,
+      "path": "ncA6/RUN_COMMIT.json",
+      "run_id": "ncA6",
+      "sha256": "2e9331f8b9bdb0b7fbc7f387d69e94d3e0efcde646c6cfadb4d409aca7ec9da9"
+    },
+    {
+      "bytes": 16182,
+      "path": "ncA6/TRAINING_RECEIPT.json",
+      "run_id": "ncA6",
+      "sha256": "417e70c5715ff416b00fb64c095089894e0928ea1f729b1dda88e21fedabbed8"
+    },
+    {
+      "bytes": 5206,
+      "path": "ncA6/adapter/README.md",
+      "run_id": "ncA6",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16181,
+      "path": "ncA6/adapter/TRAINING_RECEIPT.json",
+      "run_id": "ncA6",
+      "sha256": "05572144af4c54e524a3db751210c005389f088930c5b1b5c72d8831275cf75c"
+    },
+    {
+      "bytes": 402,
+      "path": "ncA6/adapter/TRAINING_SPEC.json",
+      "run_id": "ncA6",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "ncA6/adapter/adapter_config.json",
+      "run_id": "ncA6",
+      "sha256": "d70b8879e9b6eacc4ff6c2b172b4868bb3c50af00213fab09f2f769921d08614"
+    },
+    {
+      "bytes": 8676008,
+      "path": "ncA6/adapter/adapter_model.safetensors",
+      "run_id": "ncA6",
+      "sha256": "23a2f3a8403b4573c837e0bf6b0b65ba761dd711f7a81d965ba7870bb7808dfe"
+    },
+    {
+      "bytes": 894,
+      "path": "run1/ADAPTER_MANIFEST.json",
+      "run_id": "run1",
+      "sha256": "263294bda3262e389d87a401646270404215a87d16e584a13ddb5553690fc9bd"
+    },
+    {
+      "bytes": 888,
+      "path": "run1/CONFIG.json",
+      "run_id": "run1",
+      "sha256": "b26da49bb44d192bae4ef1ea16b2fe7abbb32ae8e9c4ef94cd56ddb73cd6633b"
+    },
+    {
+      "bytes": 2082,
+      "path": "run1/METRICS.json",
+      "run_id": "run1",
+      "sha256": "22696fca6859e5df6c43fc6fe2fc9d825a56a8f85c16a1b9b504e6a77f5cb83b"
+    },
+    {
+      "bytes": 2274,
+      "path": "run1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "run1",
+      "sha256": "40ceea1c3f4542efeab1aac05451103328769336b412fa4423165d607571576e"
+    },
+    {
+      "bytes": 2279,
+      "path": "run1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "run1",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 1930,
+      "path": "run1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "run1",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1420,
+      "path": "run1/RUN_COMMIT.json",
+      "run_id": "run1",
+      "sha256": "520dbbaca6a2904eb52dc2fe87950ac26fc47b84fa910f090aae0ca7259c8bbf"
+    },
+    {
+      "bytes": 17201,
+      "path": "run1/TRAINING_RECEIPT.json",
+      "run_id": "run1",
+      "sha256": "b3b5187ffdc5e591e08160b71b8a8ae9a438eeaf9b8469f8ff57bdd68bc96a26"
+    },
+    {
+      "bytes": 5206,
+      "path": "run1/adapter/README.md",
+      "run_id": "run1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17200,
+      "path": "run1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "run1",
+      "sha256": "19bd81163562e5b85abe7d18740f93298f578bc35dd6577d47ee5a88f3e37757"
+    },
+    {
+      "bytes": 402,
+      "path": "run1/adapter/TRAINING_SPEC.json",
+      "run_id": "run1",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "run1/adapter/adapter_config.json",
+      "run_id": "run1",
+      "sha256": "1c94115c10787433d10d549853869c67eddcb40e3b0a96a0fb177d906944a046"
+    },
+    {
+      "bytes": 8676008,
+      "path": "run1/adapter/adapter_model.safetensors",
+      "run_id": "run1",
+      "sha256": "a8cd0aa1a9c0bae6dfbb5ca1d44f916d66f23537ab70a1ac36be46d9f74897d4"
+    },
+    {
+      "bytes": 885,
+      "path": "run2/ADAPTER_MANIFEST.json",
+      "run_id": "run2",
+      "sha256": "32b44bd384424f26cacbe91f6236f084abe36e07ce720e828021731910afe4a5"
+    },
+    {
+      "bytes": 949,
+      "path": "run2/CONFIG.json",
+      "run_id": "run2",
+      "sha256": "190d0a7a8856d422fd815367b1597a8c26a808432f1022a6f1faf99f89287b7f"
+    },
+    {
+      "bytes": 2554,
+      "path": "run2/METRICS.json",
+      "run_id": "run2",
+      "sha256": "733426151ae60693e42129e2f9290b2f4128f4839266f368f8a8349f71d63180"
+    },
+    {
+      "bytes": 2262,
+      "path": "run2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "run2",
+      "sha256": "0724a5a3c180cba416c9ef71da7cdd45b5fe75ce4a2bb5ec920897399df3de0e"
+    },
+    {
+      "bytes": 2279,
+      "path": "run2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "run2",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 5864,
+      "path": "run2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "run2",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1420,
+      "path": "run2/RUN_COMMIT.json",
+      "run_id": "run2",
+      "sha256": "35276ecba2514cfdd1f4f7ed630abb7e1694f7317457dff1f8895018959fc808"
+    },
+    {
+      "bytes": 32258,
+      "path": "run2/TRAINING_RECEIPT.json",
+      "run_id": "run2",
+      "sha256": "fccf6f9eff1f9bd2d7e6c72040d9e4d647bb7b9188c111fd25d2602681e9f42d"
+    },
+    {
+      "bytes": 5206,
+      "path": "run2/adapter/README.md",
+      "run_id": "run2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 32257,
+      "path": "run2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "run2",
+      "sha256": "d325b39667cfbb66fff3e327e7a709d216ec671a5443be6d73864d1d85634ae1"
+    },
+    {
+      "bytes": 402,
+      "path": "run2/adapter/TRAINING_SPEC.json",
+      "run_id": "run2",
+      "sha256": "15ec7e6eafe9b0972edb9372a3db2676e91fda396e29b618617cc8980b3aa147"
+    },
+    {
+      "bytes": 1110,
+      "path": "run2/adapter/adapter_config.json",
+      "run_id": "run2",
+      "sha256": "ca77283aad2a604e546e2903fdbaf1a3943396e1a7bf28a0d049a5d07ecda677"
+    },
+    {
+      "bytes": 8676008,
+      "path": "run2/adapter/adapter_model.safetensors",
+      "run_id": "run2",
+      "sha256": "cd94ebc528f9844b42907f3056a4c5c75fb8233f6bd74fa184dea543a060c60b"
+    },
+    {
+      "bytes": 885,
+      "path": "run3/ADAPTER_MANIFEST.json",
+      "run_id": "run3",
+      "sha256": "39c3ecbc2b4a11e35ea2a703046be0091936b57323c3f861f3816b18db60f029"
+    },
+    {
+      "bytes": 949,
+      "path": "run3/CONFIG.json",
+      "run_id": "run3",
+      "sha256": "935cf150047b346ebd6f9a7bc7ba3b3c3a9c3345af9b030bb40ef7130c0c2a69"
+    },
+    {
+      "bytes": 2557,
+      "path": "run3/METRICS.json",
+      "run_id": "run3",
+      "sha256": "2129bb1c0a0978f80e96b9bdd508208885029e4bf144d845911b622f9e9b9cb7"
+    },
+    {
+      "bytes": 2262,
+      "path": "run3/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "run3",
+      "sha256": "0724a5a3c180cba416c9ef71da7cdd45b5fe75ce4a2bb5ec920897399df3de0e"
+    },
+    {
+      "bytes": 2279,
+      "path": "run3/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "run3",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 5864,
+      "path": "run3/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "run3",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1420,
+      "path": "run3/RUN_COMMIT.json",
+      "run_id": "run3",
+      "sha256": "3bbd0e468e55a8fd9a8c237e57473d891692f8e24a3a369b0a21e6327e159606"
+    },
+    {
+      "bytes": 16712,
+      "path": "run3/TRAINING_RECEIPT.json",
+      "run_id": "run3",
+      "sha256": "6100b6918738a14458d5172538774c37dae73fa34d83046b94f4a6d5f1a315c9"
+    },
+    {
+      "bytes": 5206,
+      "path": "run3/adapter/README.md",
+      "run_id": "run3",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16711,
+      "path": "run3/adapter/TRAINING_RECEIPT.json",
+      "run_id": "run3",
+      "sha256": "a110810307f02194b2bc0fb975a0bf3c7f02ced26a2ef813be412a9f872afe2e"
+    },
+    {
+      "bytes": 402,
+      "path": "run3/adapter/TRAINING_SPEC.json",
+      "run_id": "run3",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "run3/adapter/adapter_config.json",
+      "run_id": "run3",
+      "sha256": "86470860ae26e000c9ad5f2ad2361e8dc021402da8602522469926eb723c95de"
+    },
+    {
+      "bytes": 8676008,
+      "path": "run3/adapter/adapter_model.safetensors",
+      "run_id": "run3",
+      "sha256": "e8e84a72c72f634c798d90cfcda1bc4698760ea933866774b87a1ed5a519a564"
+    },
+    {
+      "bytes": 894,
+      "path": "run4/ADAPTER_MANIFEST.json",
+      "run_id": "run4",
+      "sha256": "70ee9105ee04778cbfbcc437d2fe53fa38782c94b90fbb03290f9253ab998d86"
+    },
+    {
+      "bytes": 888,
+      "path": "run4/CONFIG.json",
+      "run_id": "run4",
+      "sha256": "7a5c32187de05c3f71b0764610767c18761ec1ec80ce50766c5fbc4a98e3642f"
+    },
+    {
+      "bytes": 2080,
+      "path": "run4/METRICS.json",
+      "run_id": "run4",
+      "sha256": "4919fea9772cd1e9669a5091aa14aad2d14a6808207944b942ee3bb8291743f2"
+    },
+    {
+      "bytes": 2274,
+      "path": "run4/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "run4",
+      "sha256": "40ceea1c3f4542efeab1aac05451103328769336b412fa4423165d607571576e"
+    },
+    {
+      "bytes": 2279,
+      "path": "run4/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "run4",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 1930,
+      "path": "run4/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "run4",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1420,
+      "path": "run4/RUN_COMMIT.json",
+      "run_id": "run4",
+      "sha256": "f01afe5127a22ebe7c83e127064c7d066dfc1209ea9b6790a35532e395f2e53e"
+    },
+    {
+      "bytes": 33207,
+      "path": "run4/TRAINING_RECEIPT.json",
+      "run_id": "run4",
+      "sha256": "f0059b027d790d9f2b236fee7fe2ee9b554f2ff95814b957c8bcc79037b8975f"
+    },
+    {
+      "bytes": 5206,
+      "path": "run4/adapter/README.md",
+      "run_id": "run4",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 33206,
+      "path": "run4/adapter/TRAINING_RECEIPT.json",
+      "run_id": "run4",
+      "sha256": "bc7fd10c314e32287da0e2a3c4ad35227b2a6f406f20a5cbfadab1be14a8480b"
+    },
+    {
+      "bytes": 402,
+      "path": "run4/adapter/TRAINING_SPEC.json",
+      "run_id": "run4",
+      "sha256": "15ec7e6eafe9b0972edb9372a3db2676e91fda396e29b618617cc8980b3aa147"
+    },
+    {
+      "bytes": 1110,
+      "path": "run4/adapter/adapter_config.json",
+      "run_id": "run4",
+      "sha256": "ca77283aad2a604e546e2903fdbaf1a3943396e1a7bf28a0d049a5d07ecda677"
+    },
+    {
+      "bytes": 8676008,
+      "path": "run4/adapter/adapter_model.safetensors",
+      "run_id": "run4",
+      "sha256": "8bf8a3473d37a718e52a7ccccc11203002291bfaced6425c02223d448acc468b"
+    },
+    {
+      "bytes": 900,
+      "path": "seed1-2fam/ADAPTER_MANIFEST.json",
+      "run_id": "seed1-2fam",
+      "sha256": "6b4de0ebc6137fae4b77fe3fb850f2f932dca7f681c451008a3647bd58679320"
+    },
+    {
+      "bytes": 1194,
+      "path": "seed1-2fam/CONFIG.json",
+      "run_id": "seed1-2fam",
+      "sha256": "0557bcdeeee50a00ec4830b53fd91cd274baddf80e8e38bdf3145f24ea2fdc30"
+    },
+    {
+      "bytes": 2528,
+      "path": "seed1-2fam/METRICS.json",
+      "run_id": "seed1-2fam",
+      "sha256": "4e16f21ad100069effb683cf5d15b563f15b794d1adb8bea6d40337279ceaa94"
+    },
+    {
+      "bytes": 2277,
+      "path": "seed1-2fam/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "seed1-2fam",
+      "sha256": "9ad3380f038dd4a9d05dae5bc7222aca64308b47366d9491783b9d8b45e8898d"
+    },
+    {
+      "bytes": 2279,
+      "path": "seed1-2fam/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "seed1-2fam",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 1930,
+      "path": "seed1-2fam/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "seed1-2fam",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1426,
+      "path": "seed1-2fam/RUN_COMMIT.json",
+      "run_id": "seed1-2fam",
+      "sha256": "69807ac8fa3ea2cda30a34e02661a0a2f1887de441b5744fd5b539c85c22d7e7"
+    },
+    {
+      "bytes": 17325,
+      "path": "seed1-2fam/TRAINING_RECEIPT.json",
+      "run_id": "seed1-2fam",
+      "sha256": "66226fdf842a7ce8f4508374e9a36d0d317635547749c9172fc78ca9caf3b6b0"
+    },
+    {
+      "bytes": 5206,
+      "path": "seed1-2fam/adapter/README.md",
+      "run_id": "seed1-2fam",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17324,
+      "path": "seed1-2fam/adapter/TRAINING_RECEIPT.json",
+      "run_id": "seed1-2fam",
+      "sha256": "c73071690575ffbbac3894199988df9fbb9f2ebca27a9bf901a93ef0fac2a775"
+    },
+    {
+      "bytes": 402,
+      "path": "seed1-2fam/adapter/TRAINING_SPEC.json",
+      "run_id": "seed1-2fam",
+      "sha256": "ca6eb5ad653655980e9c797146f57f74cc65cc515c048b942760c4b00b951a7f"
+    },
+    {
+      "bytes": 1110,
+      "path": "seed1-2fam/adapter/adapter_config.json",
+      "run_id": "seed1-2fam",
+      "sha256": "10adf80b7ef20cce5d495ef4e20a09760469c33b50e36c551bd38c6b87356c77"
+    },
+    {
+      "bytes": 8676008,
+      "path": "seed1-2fam/adapter/adapter_model.safetensors",
+      "run_id": "seed1-2fam",
+      "sha256": "c94ecd742782d8353a1dae6080be6f4a90d0307b6498453072262ddf29ae0d9f"
+    },
+    {
+      "bytes": 891,
+      "path": "seed1-4fam/ADAPTER_MANIFEST.json",
+      "run_id": "seed1-4fam",
+      "sha256": "d451ace6bcf55a9ea1d1086f9fc40e676ab5527dafae90a0c027a781c543a3ed"
+    },
+    {
+      "bytes": 1259,
+      "path": "seed1-4fam/CONFIG.json",
+      "run_id": "seed1-4fam",
+      "sha256": "a68be23b66a39af7581e9d641bffdb180e2a3589cf881cdf30028fd476a04c52"
+    },
+    {
+      "bytes": 2813,
+      "path": "seed1-4fam/METRICS.json",
+      "run_id": "seed1-4fam",
+      "sha256": "29fa8b64c54284843b41acf0015d6afe78aca14ffa911e44732eb8b90be5e5ff"
+    },
+    {
+      "bytes": 2261,
+      "path": "seed1-4fam/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "seed1-4fam",
+      "sha256": "eace8b6a987adbbe4e09e222a2f242f13112701cc4fd0bafa017af48d31ee062"
+    },
+    {
+      "bytes": 2279,
+      "path": "seed1-4fam/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "seed1-4fam",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 3860,
+      "path": "seed1-4fam/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "seed1-4fam",
+      "sha256": "330c7c5c56eabcef0e67f1c479ff7ecc435ba9607c90f082938205660e6f45d7"
+    },
+    {
+      "bytes": 1426,
+      "path": "seed1-4fam/RUN_COMMIT.json",
+      "run_id": "seed1-4fam",
+      "sha256": "d27ee6662c64ded48a8acdfca978c6714173bce3aed38c3f95447002ab144d9e"
+    },
+    {
+      "bytes": 16736,
+      "path": "seed1-4fam/TRAINING_RECEIPT.json",
+      "run_id": "seed1-4fam",
+      "sha256": "c9478a98926bff9bb6eed08d7c4c81a9879c839dccaaa1f4784bcca934614072"
+    },
+    {
+      "bytes": 5206,
+      "path": "seed1-4fam/adapter/README.md",
+      "run_id": "seed1-4fam",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16735,
+      "path": "seed1-4fam/adapter/TRAINING_RECEIPT.json",
+      "run_id": "seed1-4fam",
+      "sha256": "25f51b8afb996aff71ae8ad0f330cc0749ab5524f1497a9cd7fed847e4e0c0b5"
+    },
+    {
+      "bytes": 402,
+      "path": "seed1-4fam/adapter/TRAINING_SPEC.json",
+      "run_id": "seed1-4fam",
+      "sha256": "ca6eb5ad653655980e9c797146f57f74cc65cc515c048b942760c4b00b951a7f"
+    },
+    {
+      "bytes": 1110,
+      "path": "seed1-4fam/adapter/adapter_config.json",
+      "run_id": "seed1-4fam",
+      "sha256": "3d7e87c907852e43062c0ff880b4786fa62fff1c12cb5f925f427a5dff33d05f"
+    },
+    {
+      "bytes": 8676008,
+      "path": "seed1-4fam/adapter/adapter_model.safetensors",
+      "run_id": "seed1-4fam",
+      "sha256": "7555ed6b0481b5db186a641c7585ca2763fcf54b0039d01f93f5334211f241cd"
+    },
+    {
+      "bytes": 897,
+      "path": "seed2-2fam/ADAPTER_MANIFEST.json",
+      "run_id": "seed2-2fam",
+      "sha256": "02f7b7b5db0cf2f607172187b5c1373d43134e898b1ee365d235bf73cec5d40d"
+    },
+    {
+      "bytes": 1194,
+      "path": "seed2-2fam/CONFIG.json",
+      "run_id": "seed2-2fam",
+      "sha256": "15ea68fbea9b65eee36781c78702f309b62af281997dcec5c6cc468893f50046"
+    },
+    {
+      "bytes": 2481,
+      "path": "seed2-2fam/METRICS.json",
+      "run_id": "seed2-2fam",
+      "sha256": "ee0f810d5d9305a8b99a32cb744fbdfce49d973d524c7df553ce058fea424e6f"
+    },
+    {
+      "bytes": 2270,
+      "path": "seed2-2fam/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "seed2-2fam",
+      "sha256": "67edd6f18d9fe1e9a2f7f4f81a0b1f2475e2d46cdc8eb4fe284af2a9513d0946"
+    },
+    {
+      "bytes": 2279,
+      "path": "seed2-2fam/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "seed2-2fam",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 1930,
+      "path": "seed2-2fam/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "seed2-2fam",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1426,
+      "path": "seed2-2fam/RUN_COMMIT.json",
+      "run_id": "seed2-2fam",
+      "sha256": "79a4e395a44c5f6eadc859321bf3703796a5b4a229b265c1603f0d35fad76fe3"
+    },
+    {
+      "bytes": 17255,
+      "path": "seed2-2fam/TRAINING_RECEIPT.json",
+      "run_id": "seed2-2fam",
+      "sha256": "27e78e978f206661afb40d071427fcabb9f8df0dd35717d5493e435d30afce7c"
+    },
+    {
+      "bytes": 5206,
+      "path": "seed2-2fam/adapter/README.md",
+      "run_id": "seed2-2fam",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17254,
+      "path": "seed2-2fam/adapter/TRAINING_RECEIPT.json",
+      "run_id": "seed2-2fam",
+      "sha256": "9a6e6f531da9c76cef64255f375a75fe6c94461679d074b9601af171dcfb0479"
+    },
+    {
+      "bytes": 402,
+      "path": "seed2-2fam/adapter/TRAINING_SPEC.json",
+      "run_id": "seed2-2fam",
+      "sha256": "ae8e5b99c91158a7b8ee0abbb9abbf9056caddab82f7a82335ab18086bd732c7"
+    },
+    {
+      "bytes": 1110,
+      "path": "seed2-2fam/adapter/adapter_config.json",
+      "run_id": "seed2-2fam",
+      "sha256": "4b0eb28c74f7e820dedfc37c742fd32e8f8f44229081bab4019d3da3069b1e02"
+    },
+    {
+      "bytes": 8676008,
+      "path": "seed2-2fam/adapter/adapter_model.safetensors",
+      "run_id": "seed2-2fam",
+      "sha256": "b479f7d5fd811d196c3e35363fb4d8790cbd230c871d4c9fef12e6a8acf695c1"
+    },
+    {
+      "bytes": 892,
+      "path": "seed2-4fam/ADAPTER_MANIFEST.json",
+      "run_id": "seed2-4fam",
+      "sha256": "588eea36d087e616d78cb971b71925a02157367ce960ec6fd9044a836d32bcac"
+    },
+    {
+      "bytes": 1259,
+      "path": "seed2-4fam/CONFIG.json",
+      "run_id": "seed2-4fam",
+      "sha256": "8a189f24b749621945b2041c552d24d859466653d8d4a37b6fd2704805eff90e"
+    },
+    {
+      "bytes": 2789,
+      "path": "seed2-4fam/METRICS.json",
+      "run_id": "seed2-4fam",
+      "sha256": "f1dc87ed839f173f13947e5546b653c18418d27502889a9398688d3afa2550ec"
+    },
+    {
+      "bytes": 2264,
+      "path": "seed2-4fam/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "seed2-4fam",
+      "sha256": "a80c60b33906d2c1e723ba32610fb96e5d806563cb74f0fe7cef95d56892f2cf"
+    },
+    {
+      "bytes": 2279,
+      "path": "seed2-4fam/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "seed2-4fam",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 3860,
+      "path": "seed2-4fam/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "seed2-4fam",
+      "sha256": "330c7c5c56eabcef0e67f1c479ff7ecc435ba9607c90f082938205660e6f45d7"
+    },
+    {
+      "bytes": 1426,
+      "path": "seed2-4fam/RUN_COMMIT.json",
+      "run_id": "seed2-4fam",
+      "sha256": "2eaa2d345770dfd914b717342f95ac07b55e1652443f9f5b2fcf81edeb31d6e1"
+    },
+    {
+      "bytes": 16864,
+      "path": "seed2-4fam/TRAINING_RECEIPT.json",
+      "run_id": "seed2-4fam",
+      "sha256": "6c7fcbdf6854a6d5d1554a5d6eab54a6a653f4d38afb8b8a618e8174da7acc2d"
+    },
+    {
+      "bytes": 5206,
+      "path": "seed2-4fam/adapter/README.md",
+      "run_id": "seed2-4fam",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16863,
+      "path": "seed2-4fam/adapter/TRAINING_RECEIPT.json",
+      "run_id": "seed2-4fam",
+      "sha256": "f740f28540ed80a2de8624a298c797ef22650c333c8cbeaaefc6d584969c59be"
+    },
+    {
+      "bytes": 402,
+      "path": "seed2-4fam/adapter/TRAINING_SPEC.json",
+      "run_id": "seed2-4fam",
+      "sha256": "ae8e5b99c91158a7b8ee0abbb9abbf9056caddab82f7a82335ab18086bd732c7"
+    },
+    {
+      "bytes": 1110,
+      "path": "seed2-4fam/adapter/adapter_config.json",
+      "run_id": "seed2-4fam",
+      "sha256": "028e23cfe591dbfcee68de6e3fb26631907775abe667b862bdd4d38dfe783562"
+    },
+    {
+      "bytes": 8676008,
+      "path": "seed2-4fam/adapter/adapter_model.safetensors",
+      "run_id": "seed2-4fam",
+      "sha256": "9e9b3a89c0620fe9a916aeab67d49e86b732ec7554c96fa9e26542e6eb7eff80"
+    },
+    {
+      "bytes": 900,
+      "path": "seed3-2fam/ADAPTER_MANIFEST.json",
+      "run_id": "seed3-2fam",
+      "sha256": "c5325ddaf52207332fa79749d3f22b1a8d4dfa3c94b6c4ceaa6a12365f6b4fca"
+    },
+    {
+      "bytes": 1194,
+      "path": "seed3-2fam/CONFIG.json",
+      "run_id": "seed3-2fam",
+      "sha256": "0fe1330e16dc18f199a4ed37ae826c188289796700042b983899f15cb9788aa3"
+    },
+    {
+      "bytes": 2521,
+      "path": "seed3-2fam/METRICS.json",
+      "run_id": "seed3-2fam",
+      "sha256": "fb03e08927c2202c2f8d42a32428907c892e0ac23b648ee9d203696474bf01ef"
+    },
+    {
+      "bytes": 2272,
+      "path": "seed3-2fam/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "seed3-2fam",
+      "sha256": "ac9a62dcf8bf6b905c9b9f32dd99b5e93ec8584b2a8436b9c5a4a06118590197"
+    },
+    {
+      "bytes": 2279,
+      "path": "seed3-2fam/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "seed3-2fam",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 1930,
+      "path": "seed3-2fam/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "seed3-2fam",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1426,
+      "path": "seed3-2fam/RUN_COMMIT.json",
+      "run_id": "seed3-2fam",
+      "sha256": "1765514d85cabfe14a55e317c81e6f439ab48c6bc4d5d9dea30a6d21e5e2f307"
+    },
+    {
+      "bytes": 17244,
+      "path": "seed3-2fam/TRAINING_RECEIPT.json",
+      "run_id": "seed3-2fam",
+      "sha256": "ed1a3e893490868e9088fa889b3f38d1f0fc50eebf05e330f7fc4939eee9d067"
+    },
+    {
+      "bytes": 5206,
+      "path": "seed3-2fam/adapter/README.md",
+      "run_id": "seed3-2fam",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17243,
+      "path": "seed3-2fam/adapter/TRAINING_RECEIPT.json",
+      "run_id": "seed3-2fam",
+      "sha256": "bee0e4dc870eb27e5629be22d776c7db87857d0f9c9c9a14312fbc36814d9a11"
+    },
+    {
+      "bytes": 402,
+      "path": "seed3-2fam/adapter/TRAINING_SPEC.json",
+      "run_id": "seed3-2fam",
+      "sha256": "b3ceff7432c088b07261d6327b36704400cc23aa96cd84fb4bf46a461ba873cc"
+    },
+    {
+      "bytes": 1110,
+      "path": "seed3-2fam/adapter/adapter_config.json",
+      "run_id": "seed3-2fam",
+      "sha256": "3d7e87c907852e43062c0ff880b4786fa62fff1c12cb5f925f427a5dff33d05f"
+    },
+    {
+      "bytes": 8676008,
+      "path": "seed3-2fam/adapter/adapter_model.safetensors",
+      "run_id": "seed3-2fam",
+      "sha256": "e073b3e7faee64fe72126ce8af152690bac18eeb11db3176c0496e02dfe4e211"
+    },
+    {
+      "bytes": 894,
+      "path": "seed4-2fam/ADAPTER_MANIFEST.json",
+      "run_id": "seed4-2fam",
+      "sha256": "b6687a6cd21aced59f96aca2108bfc70e402dbdbbf737206d8e6178b7004dfd9"
+    },
+    {
+      "bytes": 1194,
+      "path": "seed4-2fam/CONFIG.json",
+      "run_id": "seed4-2fam",
+      "sha256": "5427263fc05bbf4ef0480cec81c105d16eb26e96a2bd845a6d9ba2c56655e9c8"
+    },
+    {
+      "bytes": 2505,
+      "path": "seed4-2fam/METRICS.json",
+      "run_id": "seed4-2fam",
+      "sha256": "e455be5b11986a8d54e73430b5f18a85cb80c25ffbdde5d08dadce40abd87414"
+    },
+    {
+      "bytes": 2265,
+      "path": "seed4-2fam/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "seed4-2fam",
+      "sha256": "a03c1ffe53eb93981971dff5f9591481884a1304c831a0b47d710ed0f0a18d52"
+    },
+    {
+      "bytes": 2279,
+      "path": "seed4-2fam/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "seed4-2fam",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 1930,
+      "path": "seed4-2fam/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "seed4-2fam",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1426,
+      "path": "seed4-2fam/RUN_COMMIT.json",
+      "run_id": "seed4-2fam",
+      "sha256": "8511793063c5bfd25a249e179eb06d0d9d88a27177d8ba64fbb88d8443c4310d"
+    },
+    {
+      "bytes": 17300,
+      "path": "seed4-2fam/TRAINING_RECEIPT.json",
+      "run_id": "seed4-2fam",
+      "sha256": "b8194d322ad023ed740e7273534de2d7220a4f7a1bbe27a4eedd9c5cd7746753"
+    },
+    {
+      "bytes": 5206,
+      "path": "seed4-2fam/adapter/README.md",
+      "run_id": "seed4-2fam",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17299,
+      "path": "seed4-2fam/adapter/TRAINING_RECEIPT.json",
+      "run_id": "seed4-2fam",
+      "sha256": "2a25e3c5269d8d8925e842412db2c15da0582a664d53b2508ff39ac4db479f7c"
+    },
+    {
+      "bytes": 402,
+      "path": "seed4-2fam/adapter/TRAINING_SPEC.json",
+      "run_id": "seed4-2fam",
+      "sha256": "7934df1758877980191d98ad08988b5fd641efc770fd569357c5e0c68ed55eb5"
+    },
+    {
+      "bytes": 1110,
+      "path": "seed4-2fam/adapter/adapter_config.json",
+      "run_id": "seed4-2fam",
+      "sha256": "0c04b2ebb4884e691dde5e243b4f43dd9dfb1d1b18232b95f2f3e9b67e81214a"
+    },
+    {
+      "bytes": 8676008,
+      "path": "seed4-2fam/adapter/adapter_model.safetensors",
+      "run_id": "seed4-2fam",
+      "sha256": "37a7237697dc7b06943457ef75dd40b4c6c9fbc3f9c3b182df66279949efda54"
+    }
+  ],
+  "n_artifacts": 273,
+  "run_root": "results/campaign3b2/runs",
+  "schema": "mini-agi-campaign3b2-artifact-manifest-v1",
+  "total_bytes": 183530457
+}
