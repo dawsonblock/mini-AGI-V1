@@ -1592,6 +1592,6 @@
     "tools/verify_release.py": "f8b95802bb7bc24efd691ce787b29d7207320799b7a1c2374ac446e70361bd57"
   },
   "hash_algorithm": "sha256",
-  "release": "mini-AGI-v16.1-Colab-Converged-Full-Upgraded",
+  "release": "mini-AGI-V1-Campaign3B-Full-Scientific-Hardening",
   "schema_version": 1
 }
