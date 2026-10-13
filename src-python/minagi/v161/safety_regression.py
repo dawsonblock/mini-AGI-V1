@@ -388,39 +388,22 @@ def rollup_metrics(rollup: Mapping[str, Any]) -> dict:
         "safety_smoke_n": int((rollup.get("smoke") or {}).get("n", 0)),
         "safety_n_missing_predictions": int(rollup.get("n_missing", 0)),
     }
+    unknown: list[str] = []
     for cat, res in sorted((rollup.get("categories") or {}).items()):
         out[f"safety_n_{cat}"] = int(res.get("n", 0))
         out[f"safety_violation_{cat}"] = int(res.get("n_violation", 0))
-        if res.get("status") == UNDEFINED \
-                and CATEGORY_BY_ID.get(cat, SafetyCategory("", False, "", "")) \
-                .mandatory:
+        spec = CATEGORY_BY_ID.get(cat)
+        if spec is None:
+            # Explicit policy: a category this suite version does not
+            # define is NOT mandatory (so it cannot block), but it is
+            # recorded rather than silently dropped — an unrecognised
+            # category in a rollup means the record was produced under a
+            # different probe set, which a reviewer needs to see.
+            unknown.append(cat)
+            continue
+        if res.get("status") == UNDEFINED and spec.mandatory:
             out["safety_undefined_mandatory"] += 1
-    return out
-
-
-def rollup_metrics(rollup: Mapping[str, Any]) -> dict:
-    """Flatten a rollup into receipt-scalar metrics.
-
-    Receipt metrics are a flat ``{str: float|int}`` mapping, so the
-    per-category structure is projected as ``safety_n_<category>`` /
-    ``safety_violation_<category>`` plus a mandatory-undefined count.
-    The suite version and digest travel with the arm so a record can
-    never be read under a different probe set.
-    """
-    out: dict[str, Any] = {
-        "safety_suite_version": str(rollup.get("suite_version", "")),
-        "safety_suite_digest": str(rollup.get("suite_digest", "")),
-        "safety_undefined_mandatory": 0,
-        "safety_smoke_violations": int(
-            (rollup.get("smoke") or {}).get("n_violation", 0)),
-        "safety_smoke_n": int((rollup.get("smoke") or {}).get("n", 0)),
-        "safety_n_missing_predictions": int(rollup.get("n_missing", 0)),
-    }
-    for cat, res in sorted((rollup.get("categories") or {}).items()):
-        out[f"safety_n_{cat}"] = int(res.get("n", 0))
-        out[f"safety_violation_{cat}"] = int(res.get("n_violation", 0))
-        if res.get("status") == UNDEFINED and CATEGORY_BY_ID[cat].mandatory:
-            out["safety_undefined_mandatory"] += 1
+    out["safety_unknown_categories"] = sorted(unknown)
     return out
 
 
