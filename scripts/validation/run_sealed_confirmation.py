@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 import sys
 from pathlib import Path
@@ -84,7 +85,58 @@ def sealed_manifest_digest(rows) -> str:
                                      tuple(_member(r) for r in rows)).digest
 
 
-def load_sealed(path: Path) -> list[dict]:
+#: Environment marker the runtime sets for research-side processes.
+#: The confirmation set is evaluator custody: a research worker must
+#: never read sealed rows — through files, environment variables,
+#: shared caches, prompts, retrieval indexes or logs.
+RESEARCH_WORKER_ENV = "MINAGI_RESEARCH_WORKER"
+
+
+def is_research_worker(environ=None) -> bool:
+    """True when this process is marked as a research worker."""
+    env = os.environ if environ is None else environ
+    value = str(env.get(RESEARCH_WORKER_ENV, "")).strip().casefold()
+    return value not in ("", "0", "false", "no")
+
+
+def assert_evaluator_custody(environ=None) -> None:
+    """Fail closed when the caller is a research worker.
+
+    This guard is one control among several, not the whole boundary:
+    the evaluator also runs this tool in its own custody, under keys
+    that never touched the training worker. It exists so that a
+    research-side process which somehow reaches this entry point is
+    refused before any sealed row is read.
+    """
+    if is_research_worker(environ):
+        raise ConfirmationRefused(
+            f"{RESEARCH_WORKER_ENV} is set: a research worker may not "
+            "read sealed confirmation data")
+
+
+def require_outside_research_storage(sealed: Path, storage: Path) -> None:
+    """The sealed set must not live under the shared campaign storage.
+
+    Research workers hold write access to the campaign storage; a
+    sealed file inside it would be readable through the same tree the
+    worker already uses. The confirmation set belongs to the evaluator.
+    """
+    try:
+        sealed_r = Path(sealed).resolve()
+        storage_r = Path(storage).resolve()
+    except OSError as exc:                      # pragma: no cover - defensive
+        raise ConfirmationRefused(f"cannot resolve sealed path: {exc}") from exc
+    if sealed_r == storage_r or storage_r in sealed_r.parents:
+        raise ConfirmationRefused(
+            f"sealed confirmation set {sealed_r} lives under the research "
+            f"storage {storage_r} — evaluator custody requires it outside")
+
+
+def load_sealed(path: Path, *, storage: Path | None = None,
+                environ=None) -> list[dict]:
+    assert_evaluator_custody(environ)
+    if storage is not None:
+        require_outside_research_storage(path, storage)
     rows = [json.loads(line) for line in path.read_text().splitlines()
             if line.strip()]
     if not rows:
@@ -567,7 +619,7 @@ def main() -> int:
     plan = _load_plan(campaign_dir)
     signers = _load_signers(storage)
     submission = load_submission(Path(args.submission))
-    sealed_rows = load_sealed(Path(args.sealed))
+    sealed_rows = load_sealed(Path(args.sealed), storage=storage)
 
     protocol = None
     proto_path = campaign_dir / "EXPERIMENT_PROTOCOL.json"

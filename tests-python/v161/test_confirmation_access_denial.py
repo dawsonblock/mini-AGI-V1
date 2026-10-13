@@ -75,3 +75,78 @@ def test_ledger_is_append_only_across_attempts(tmp_path):
     assert [e["decision"] for e in lines] == ["QUALIFIED", "REFUSED"]
     # the earlier entry is untouched (prefix preserved)
     assert ledger.read_text().startswith(before)
+
+
+# --------------------------------------------------------------------
+# Research-side denial (3B Step 22): the research execution environment
+# must not be able to read the confirmation set at all.
+# --------------------------------------------------------------------
+
+def _write_sealed(c, path: Path) -> Path:
+    """Serialise the custody fixture's sealed rows to an evaluator-held
+    file outside the research storage."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(json.dumps(r, sort_keys=True)
+                              for r in c.rows) + "\n")
+    return path
+
+
+def test_research_worker_marker_is_parsed_conservatively():
+    assert TOOL.is_research_worker({}) is False
+    assert TOOL.is_research_worker({TOOL.RESEARCH_WORKER_ENV: "0"}) is False
+    assert TOOL.is_research_worker(
+        {TOOL.RESEARCH_WORKER_ENV: "false"}) is False
+    assert TOOL.is_research_worker({TOOL.RESEARCH_WORKER_ENV: "1"}) is True
+    assert TOOL.is_research_worker(
+        {TOOL.RESEARCH_WORKER_ENV: "true"}) is True
+    assert TOOL.is_research_worker(
+        {TOOL.RESEARCH_WORKER_ENV: "YES"}) is True
+
+
+def test_research_worker_cannot_load_sealed_rows(tmp_path):
+    """A research-marked process is refused before any row is read."""
+    c = Custody(tmp_path)
+    sealed = _write_sealed(c, tmp_path / "evaluator" / "sealed.jsonl")
+    try:
+        TOOL.load_sealed(sealed, environ={TOOL.RESEARCH_WORKER_ENV: "1"})
+    except TOOL.ConfirmationRefused as exc:
+        assert "research worker" in str(exc)
+    else:
+        raise AssertionError("a research worker must not load sealed rows")
+
+
+def test_custody_guard_fires_before_the_filesystem(tmp_path):
+    """The refusal is a custody decision, not a missing-file error: a
+    nonexistent path under the research marker still reports custody."""
+    missing = tmp_path / "does-not-exist.jsonl"
+    try:
+        TOOL.load_sealed(missing,
+                         environ={TOOL.RESEARCH_WORKER_ENV: "true"})
+    except TOOL.ConfirmationRefused as exc:
+        assert "research worker" in str(exc)
+    else:
+        raise AssertionError("custody guard must fire first")
+
+
+def test_sealed_set_inside_research_storage_is_refused(tmp_path):
+    """Research workers hold write access to the campaign storage, so a
+    sealed set living there is readable through the same tree."""
+    c = Custody(tmp_path)
+    inside = _write_sealed(c, c.storage / "sealed-inside.jsonl")
+    try:
+        TOOL.load_sealed(inside, storage=c.storage, environ={})
+    except TOOL.ConfirmationRefused as exc:
+        assert "evaluator custody" in str(exc)
+    else:
+        raise AssertionError("sealed data under research storage must be refused")
+
+
+def test_evaluator_custody_loads_the_same_rows(tmp_path):
+    """The guard refuses research workers only — evaluator custody is
+    unaffected, so the confirmation still runs."""
+    c = Custody(tmp_path)
+    sealed = _write_sealed(c, tmp_path / "evaluator" / "sealed.jsonl")
+    rows = TOOL.load_sealed(sealed, storage=c.storage, environ={})
+    assert len(rows) == len(c.rows)
+    record = c.run(_executor())
+    assert record["value"]["decision"] == "QUALIFIED"
