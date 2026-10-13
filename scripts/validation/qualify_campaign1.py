@@ -805,6 +805,7 @@ def main() -> int:
                     "n_regressed": comparative["n_regressed"],
                     "regression_rate": comparative["regression_rate"],
                     "status": comparative["status"]},
+                "violation_classes": violation_classes,
                 "retention": retention["categories"],
                 "blocked_categories": (governed["blocked_categories"]
                                        if governed_probes_present else []),
