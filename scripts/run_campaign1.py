@@ -70,6 +70,9 @@ from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
 from minagi.v161.evaluators import (containment_match, exact_match,
                                     retention_score, score_row,
                                     security_regression)
+from minagi.v161.safety_regression import (SAFETY_SUITE_VERSION,
+                                           category_rollup,
+                                           rollup_metrics, suite_digest)
 from minagi.v161.authority import (AuthorityLedger, AuthorityRegistry)
 from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
                                        ColabCampaignPlanV163,
@@ -353,6 +356,9 @@ def main() -> int:
     # recomputes over the committed corpus); filtering is eval-only.
     delayed_rows = [r for r in retention_rows if r.get("probe") == "delayed"]
     retention_probe_rows = [r for r in retention_rows if r.get("probe") != "delayed"]
+    # 3B Step 18: the governed safety suite is present exactly when the
+    # security partition carries categorised probes.
+    governed_probes_present = any(r.get("category") for r in security_rows)
     parts = DatasetPartitionSet(
         DatasetMembershipManifest("train", tuple(member(r) for r in train)),
         DatasetMembershipManifest("validation", tuple(member(r) for r in val)),
@@ -800,6 +806,16 @@ def main() -> int:
                 model, tokenizer, security_rows, max_new, security_fn, arm,
                 prompt_contract)
             diags = h_diags + r_diags + s_diags
+            # Campaign 3B Step 18: the governed safety/retention suite
+            # rolls the security partition up per category. The rollup is
+            # recomputed independently by the qualifier from the
+            # persisted per-row predictions — the metrics below are the
+            # runner's projection of the same evidence, never a
+            # substitute for it.
+            safety_rollup = category_rollup(
+                security_rows,
+                {str(o["id"]): str(o["prediction"]) for o in sec_out},
+                smoke_scorer=security_fn)
             metrics = {"hidden_exact_match": h_em, "retention": ret,
                        "security_regressions": sec_n,
                        "eval_seconds": round(h_sec + r_sec, 3),
@@ -810,7 +826,8 @@ def main() -> int:
                        "generation_diagnostics":
                            _aggregate_diagnostics(diags),
                        "arm_state_bytes": dir_size_bytes(arm_state_dirs[arm_id])
-                       if arm_id in arm_state_dirs else 0}
+                       if arm_id in arm_state_dirs else 0,
+                       **rollup_metrics(safety_rollup)}
             preds = (h_preds + r_preds + s_preds) if v3 else None
             return metrics, {"hidden": h_out, "retention": ret_out,
                              "security": sec_out}, preds, diags
@@ -1051,6 +1068,37 @@ def main() -> int:
     n_sec = max(1, len(security_rows))
     arm_sec_rate = {a: 1.0 - arm_mean(a, "security_regressions") / n_sec
                     for a in plan.arms}
+
+    # ---- governed safety suite rollup (3B Step 18) ----
+    # Per-arm: how many mandatory security-partition categories produced
+    # no scorable evidence, and how many violations were recorded. The
+    # suite digest is bound per arm; arms that disagree were evaluated
+    # under different probe sets and the matrix is not comparable.
+    def arm_metric_sum(arm_id, metric):
+        total = 0.0
+        for s in all_seeds:
+            p = campaign_dir / f"seed-{s['seed']}" / f"{arm_id}.json"
+            if p.is_file():
+                total += float(_cell_metrics(p).get(metric, 0.0))
+        return total
+
+    arm_safety_undefined = {a: int(arm_metric_sum(a, "safety_undefined_mandatory"))
+                            for a in plan.arms}
+    arm_safety_violations = {}
+    safety_digests = set()
+    for a in plan.arms:
+        for s in all_seeds:
+            p = campaign_dir / f"seed-{s['seed']}" / f"{a}.json"
+            if not p.is_file():
+                continue
+            m = _cell_metrics(p)
+            d = m.get("safety_suite_digest")
+            if d:
+                safety_digests.add(str(d))
+            for key, val in m.items():
+                if key.startswith("safety_violation_"):
+                    arm_safety_violations[a] = (arm_safety_violations.get(a, 0)
+                                                + int(val))
     ft = {a: arm_hidden[a] - arm_hidden["L1"] for a in plan.arms if a != "L1"}
     # Historical primary comparison (L6 - L5) when both arms exist; the
     # 3B primary comparison is adapter+verified-replay vs verified
@@ -1138,6 +1186,31 @@ def main() -> int:
             if d_drop > plan.delayed_retention_max_drop:
                 reasons.append(f"L6 delayed-retention drop {d_drop:.4f} > "
                                f"{plan.delayed_retention_max_drop}")
+        # 3B Step 18: the governed safety suite must have produced
+        # scorable evidence for every arm, and the adapted arms must not
+        # violate a mandatory security-partition category. A mandatory
+        # category with no evidence is BLOCKED, never a pass.
+        #
+        # The gate applies when the corpus actually carries governed
+        # probes (rows with a `category`). Corpora that predate the
+        # suite keep their historical smoke surface — the corpus digest
+        # is bound in the evidence, so dropping probes is visible, and
+        # the qualification record reports the suite as NOT_APPLICABLE
+        # rather than as a safety pass.
+        if governed_probes_present:
+            if len(safety_digests) > 1:
+                reasons.append("safety suite digest disagreement across arms: "
+                               f"{sorted(safety_digests)}")
+            for a in plan.arms:
+                if arm_safety_undefined.get(a, 0) > 0:
+                    reasons.append(
+                        f"{a} has {arm_safety_undefined[a]} mandatory safety "
+                        "categories with no scorable evidence (UNDEFINED)")
+            for a in ("L6", "L7"):
+                if arm_safety_violations.get(a, 0) > 0:
+                    reasons.append(
+                        f"{a} recorded {arm_safety_violations[a]} governed "
+                        "safety-suite violations")
         if arm_sec_rate["L6"] < plan.security_min_pass_rate:
             reasons.append(f"L6 security pass rate {arm_sec_rate['L6']:.3f} < "
                            f"{plan.security_min_pass_rate}")
@@ -1226,6 +1299,11 @@ def main() -> int:
                "arm_hidden_exact_match": arm_hidden,
                "arm_retention": arm_ret,
                "arm_security_pass_rate": arm_sec_rate,
+               "safety_suite_version": SAFETY_SUITE_VERSION,
+               "safety_suite_digest": suite_digest(),
+               "safety_suite_digests_seen": sorted(safety_digests),
+               "arm_safety_undefined_mandatory": arm_safety_undefined,
+               "arm_safety_violations": arm_safety_violations,
                "per_seed_delta_ft_neural": per_seed_delta,
                "n_seeds_positive_ft": n_positive,
                "forward_transfer_vs_L1": ft,

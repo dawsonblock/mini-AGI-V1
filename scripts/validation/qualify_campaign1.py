@@ -227,6 +227,10 @@ def main() -> int:
     recomputed_all: dict[tuple[int, str], dict] = {}
     hidden_outputs: dict = {}
     per_id_hidden: dict = {}
+    #: (seed, arm) -> {row_id: prediction} over the security partition,
+    #: kept raw so the governed safety rollup is recomputed here rather
+    #: than trusted from the worker's own reported metrics.
+    security_outputs: dict = {}
 
     if isinstance(plan, ColabCampaignPlanV165):
         # Independent rescore plumbing (v3): prediction records join the
@@ -241,6 +245,9 @@ def main() -> int:
         from minagi.v161.stats import (cluster_bootstrap_ci,
                                        family_delta_analysis,
                                        false_activation_rate)
+        from minagi.v161.safety_regression import (
+            category_rollup, prior_correct_regression,
+            retention_metric_status, safety_gate)
         from egai.common.canonical import digest as _digest, sha256_bytes as _sha
         ret_impl = {"containment_match": containment_match,
                     "retention_score": retention_score}
@@ -319,6 +326,13 @@ def main() -> int:
                             str(rec["id"])] = str(rec["output"])
                         per_id_hidden.setdefault((seed, arm), {})[
                             str(rec["id"])] = float(score)
+                    elif blk == "security":
+                        # 3B Step 18: the qualifier keeps the raw
+                        # security predictions so the governed category
+                        # rollup is recomputed here, independently of
+                        # whatever the runner reported.
+                        security_outputs.setdefault((seed, arm), {})[
+                            str(rec["id"])] = str(rec["output"])
                 metrics[metric] = (sum(vals) if how == "count"
                                    else (sum(vals) / len(vals) if vals else 0.0))
             # worker-reported metrics become checkable claims
@@ -706,6 +720,72 @@ def main() -> int:
             stats["offtarget_regression"] = {
                 "retention_drop_L1_minus_L6": l1_ret - l6_ret,
                 "security_drop_L1_minus_L6": l1_sec - l6_sec}
+
+            # ---- governed safety & retention suite (3B Step 18) ----
+            # Recomputed here from the persisted per-row predictions.
+            # The worker's reported metrics are never an input: a
+            # training agent's own favourable self-assessment is not
+            # safety evidence, and a mandatory category with no scorable
+            # evidence is BLOCKED rather than passed.
+            #
+            # The gate applies when the committed corpus carries
+            # governed probes. A corpus that predates the suite keeps
+            # its historical smoke surface and the suite is reported as
+            # NOT_APPLICABLE — never as a safety pass. The corpus digest
+            # is bound in the signed evidence, so removing probes is
+            # visible to any later reviewer.
+            governed_probes_present = any(
+                r.get("category") for r in by_split["security"])
+            pooled_sec: dict = {}
+            for seed in plan.seeds:
+                pooled_sec.update(security_outputs.get((seed, "L6"), {}))
+            sec_rollup = category_rollup(list(sec_rows_by_id.values()),
+                                         pooled_sec,
+                                         smoke_scorer=security_regression)
+            base_pooled: dict = {}
+            arm_pooled: dict = {}
+            for seed in plan.seeds:
+                base_pooled.update(hidden_outputs.get((seed, "L1"), {}))
+                arm_pooled.update(hidden_outputs.get((seed, "L6"), {}))
+            comparative = prior_correct_regression(
+                base_pooled, arm_pooled,
+                {rid: str(hid_rows_by_id[rid]["expected"])
+                 for rid in set(base_pooled) & set(arm_pooled)
+                 if rid in hid_rows_by_id}, exact_match)
+            retention = retention_metric_status(
+                l6_ret, stats.get("retention_delayed", {}).get("L6"),
+                l1_ret, stats.get("retention_delayed", {}).get("L1"),
+                max_drop=plan.retention_max_drop,
+                delayed_max_drop=plan.delayed_retention_max_drop)
+            governed = safety_gate(
+                sec_rollup, comparative=comparative, retention=retention,
+                min_pass_rate=plan.security_min_pass_rate,
+                max_regression_rate=getattr(plan, "max_false_activation_rate",
+                                            1.0))
+            stats["governed_safety"] = {
+                "applicability": ("ENFORCED" if governed_probes_present
+                                  else "NOT_APPLICABLE"),
+                "decision": (governed["decision"] if governed_probes_present
+                             else "NOT_APPLICABLE"),
+                "suite_digest": governed["suite_digest"],
+                "categories": {
+                    c: {"n": r["n"], "n_violation": r["n_violation"],
+                        "status": r["status"]}
+                    for c, r in sec_rollup["categories"].items()},
+                "smoke": sec_rollup["smoke"],
+                "comparative": {
+                    "n_baseline_correct": comparative["n_baseline_correct"],
+                    "n_regressed": comparative["n_regressed"],
+                    "regression_rate": comparative["regression_rate"],
+                    "status": comparative["status"]},
+                "retention": retention["categories"],
+                "blocked_categories": (governed["blocked_categories"]
+                                       if governed_probes_present else []),
+            }
+            if governed_probes_present and governed["decision"] == "BLOCK":
+                reasons.append(
+                    "governed safety/retention gate BLOCKED: "
+                    + "; ".join(governed["reasons"]))
         elif isinstance(plan, ColabCampaignPlanV163):
             n_pos = sum(1 for x in per_seed if x["delta_ft_neural"] > 0)
             if n_pos < plan.min_seeds_positive_ft:
