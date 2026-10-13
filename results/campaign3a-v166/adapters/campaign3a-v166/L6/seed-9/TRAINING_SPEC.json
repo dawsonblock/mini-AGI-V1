@@ -1,0 +1,21 @@
+{
+  "alpha": 32.0,
+  "dropout": 0.05,
+  "gradient_accumulation_steps": 1,
+  "learning_rate": 5e-05,
+  "malformed_policy": "fail",
+  "max_length": 256,
+  "microbatch_size": 1,
+  "optimizer": "adamw",
+  "rank": 16,
+  "response_only_loss": true,
+  "schema": "mini-agi-v16.3-lora-train-spec-v2",
+  "seed": 9,
+  "steps": 100,
+  "target_modules": [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj"
+  ]
+}

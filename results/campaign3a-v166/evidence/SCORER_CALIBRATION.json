@@ -1,0 +1,6 @@
+{
+  "agreement_rate": 0.9333333333333333,
+  "calibration_set_digest": "sha256:e7a74a19dd22e048d29c140189d05dbe6ccf6d25f950ce101f73e74355c6fd0f",
+  "min_agreement_required": 0.9,
+  "n_cases": 30
+}

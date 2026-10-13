@@ -1,0 +1,35 @@
+{
+  "digest": "sha256:653a6a5ac9c911f26b8b643e23fca056e7f03873fbbb141886091c2448987caf",
+  "value": {
+    "decoding": "greedy",
+    "dtype": "bfloat16",
+    "gradient_accumulation_steps": 1,
+    "learning_rate": 5e-05,
+    "lora_alpha": 32.0,
+    "lora_dropout": 0.05,
+    "lora_rank": 16,
+    "lora_target_modules": [
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj"
+    ],
+    "malformed_policy": "fail",
+    "max_new_tokens": 32,
+    "memory_k": 2,
+    "optimizer": "adamw",
+    "practice_samples": 8,
+    "quantization": "none",
+    "replay_k": 2,
+    "require_native_servable_adapter": false,
+    "response_only_loss": true,
+    "retention_samples": 16,
+    "retention_scorer": "containment_match",
+    "retrieval_k": 3,
+    "schema": "mini-agi-v16.5-experiment-protocol-v1",
+    "train_max_length": 256,
+    "train_microbatch_size": 1,
+    "train_steps": 100,
+    "trust_remote_code": false
+  }
+}

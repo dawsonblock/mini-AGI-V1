@@ -1,0 +1,27 @@
+{
+  "attempt_id": "34adca8fb9a0",
+  "campaign_digest": "sha256:e9ecd87e2b731f255effc75e4ee3885bd635c010a59f2e8406a8a3b4b91a0167",
+  "files": {
+    "COMPLETE": "sha256:37a40f08d8548dba289b9b0bb35bcf63b359f6d37ee86044ebc6b6da080b9ec1",
+    "L1.json": "sha256:e452ec8feccf91370b4a13b20dbbe579a3bb2c5b89bf43c177d14c4dfa0beeac",
+    "L1_delayed.json": "sha256:734544142c51b205158cd17c435e98ced6eece3f1af691d74705f765d04e690f",
+    "L2.json": "sha256:1b57327d273321973a4b5a5ed78ea135271f5b18bb33c4184899ba56277c313e",
+    "L3.json": "sha256:d4d853722c5cc4c971daeb51410ff1b3467d305324d3b4526ca70ac02547ceeb",
+    "L4.json": "sha256:93b45716dd812667b0c18ddfc1aee3b18f1a5a0941b84ee004588d5f26c9276a",
+    "L5.json": "sha256:a0b5eecbfddadb48bb62ccd056827c5bb8cbf79d168fd074170a7f90ec7c18a8",
+    "L6.json": "sha256:5ab1140a30f1ea471b05f0b81ae5552d1ec7aa64eb38797cb01d3a4bac5a069a",
+    "L6_delayed.json": "sha256:f5e7505b67b6c6ff4d2742a29dcc9c13f2307b2c8399b71dddca9c4c98bde9b2",
+    "NC.json": "sha256:8a99980c688f7bf37528d5ba32df6ea375596a020f42ca0fe0bf5be1bb24ed0f",
+    "PREDICTIONS-L1.jsonl": "sha256:04fbd5ae2d7a5e69aa8311ec7bb4efe8992d3629e5d2c666216bf8d6fd5db5f2",
+    "PREDICTIONS-L1_delayed.jsonl": "sha256:58e1225abcdfbb488b22f1413d193a526a109ba79dc4af590323b70f102629c5",
+    "PREDICTIONS-L2.jsonl": "sha256:ab446cbb3c05886d9a3c246c948523fabcd52e35e26f7417f6dd0cc4372b2e4c",
+    "PREDICTIONS-L3.jsonl": "sha256:ea210f57adea215ae1670ad943c57a082e65a640b573648453f1185c644bee91",
+    "PREDICTIONS-L4.jsonl": "sha256:062bae8952198e72a304275f24ed7a6a6ea7a8abfaa74850d550beebd548680f",
+    "PREDICTIONS-L5.jsonl": "sha256:04fbd5ae2d7a5e69aa8311ec7bb4efe8992d3629e5d2c666216bf8d6fd5db5f2",
+    "PREDICTIONS-L6.jsonl": "sha256:7df8bd2f19c793157b91f42a18484b6582469e7d5b3c41ad0317554df28b562c",
+    "PREDICTIONS-L6_delayed.jsonl": "sha256:9a58436eb3c5ee398defe103c73023f8fa058fa9b904513c6cfc8348c32453c1",
+    "PREDICTIONS-NC.jsonl": "sha256:8903c07be185430472560b743eee50cae795f5235cfb40ba158cf465ca0fd2e2",
+    "SEED_RESULT.json": "sha256:85aa6e3aaaf60dd6cc006a4d4044350befab58cbf3401e350b617d99fa7bd9ff"
+  },
+  "seed": 9
+}

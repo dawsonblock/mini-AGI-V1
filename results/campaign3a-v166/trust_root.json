@@ -1,0 +1,37 @@
+{
+  "authorities": [
+    {
+      "key_id": "sha256:c7570e59bb1b3c0af",
+      "not_after": "",
+      "not_before": "",
+      "public_key_b64": "NQGruAFL1TCOJAPO5zyflhL2f/cAMvOuwN6ZW3hbsjc=",
+      "role": "plan",
+      "status": "active"
+    },
+    {
+      "key_id": "sha256:325e8917a648aa5ac",
+      "not_after": "",
+      "not_before": "",
+      "public_key_b64": "AHBw09pGcV2MRTuxR6enP39Eq/JVQilWXfQgBN1Ex4E=",
+      "role": "execution_witness",
+      "status": "active"
+    },
+    {
+      "key_id": "sha256:4f176767ef50be941",
+      "not_after": "",
+      "not_before": "",
+      "public_key_b64": "CfBTMT9FSp2Zn2VH6mTr18281d5k8o6ZQIkqunRAjhg=",
+      "role": "evaluation",
+      "status": "active"
+    },
+    {
+      "key_id": "sha256:431a81939b069dfec",
+      "not_after": "",
+      "not_before": "",
+      "public_key_b64": "BDP9kwJG4sMRD1/BDRZl/oJrEVDIAeRJYp/Z2fdqxMg=",
+      "role": "qualification",
+      "status": "active"
+    }
+  ],
+  "schema": "mini-agi-v16.5-authority-trust-root-v1"
+}

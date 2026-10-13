@@ -1,0 +1,497 @@
+{
+  "digest": "sha256:8049f70d0e7231dd8f27d009c18c9b827cc2b39ef4bb4f99773833417fc0f90b",
+  "signature_b64": "G/3GmNwE8jHPxXKZcp/9VgzvysnlOowVxn7tQw8Dctv4CQt2k/LEy8/JPMMpwcuEjhV3JmcSqI2APShpD1VyCQ==",
+  "signer_key_id": "sha256:431a81939b069dfec",
+  "value": {
+    "campaign_id": "campaign3a-v166",
+    "campaign_plan_digest": "sha256:e9ecd87e2b731f255effc75e4ee3885bd635c010a59f2e8406a8a3b4b91a0167",
+    "decision": "REFUSED",
+    "delta_ft_neural_stats": {
+      "best": 0.00625,
+      "bootstrap_ci": {
+        "alpha": 0.05,
+        "lower": 0.0009375000000000002,
+        "mean": 0.0021875,
+        "n": 10,
+        "resamples": 20000,
+        "rng_seed": 20241006,
+        "upper": 0.0034375000000000005
+      },
+      "cluster_bootstrap_ci_row_delta": {
+        "alpha": 0.05,
+        "lower": 0.0,
+        "mean": 0.0021875,
+        "n": 3200,
+        "n_clusters": 8,
+        "resamples": 20000,
+        "rng_seed": 20241006,
+        "upper": 0.0065625
+      },
+      "conditional_regression_rate_mean": 0.0,
+      "false_activation_rate_mean": 0.0,
+      "mean": 0.0021875,
+      "median": 0.003125,
+      "n": 10,
+      "retention_delayed": {
+        "L1": 0.8125,
+        "L6": 0.8125,
+        "drop": 0.0
+      },
+      "stdev": 0.002109214242845478,
+      "worst": 0.0
+    },
+    "environment_digests": [
+      "sha256:467f445908defd37a4becbcbf231273d1a0caebf7010c023b65b950e1f0c5445",
+      "sha256:53cd53df3c1851123f90c4ac92cc3a2607eeab48e5b572dbb0c1455417377575",
+      "sha256:5f461d2b04d63138fcfbd3f7bfd23deb2ccb4fd587736fe9840fbe18ceedbd1d",
+      "sha256:9f60fd552ebbade0258daae9c7f5a8b5b264ef484aec27053039482a1096f3d3",
+      "sha256:a2e427a55526b462744acd079b5c723fda4f8ab7a89a565fb79ba2f715526eb4",
+      "sha256:b48112de5a881a6efc7bdcd51e0f997a5f1f9b4887cbd600ae0798003ef4cd39",
+      "sha256:d6383faa1da0db25e4a0ef0f06fea4e45b8d6d33c5a5bf9d5750aebebb0a3543",
+      "sha256:e2da8e9984b27573521bb56c9f47a06e9f67e9643f8a35f6736cedfa8c126eb0",
+      "sha256:f9376cebca845f0cb4ab05ad243150a12c108f4f25700f994555dda140cee693",
+      "sha256:fc245212de7490dfce7e35465455835d3393684d6c632f22dadf3d62a1a59f4c"
+    ],
+    "evaluation_bundle_digest": "sha256:0ad4bafada6e5abf83e69d1f6d4bcd974c06ac222e58c25463a6b8223b2395f3",
+    "evidence_root_digest": "sha256:07e0fe2bd2fc3e18d04fdd328b63b9d91ad0450112c3346668cb1d06d3cbe3dc",
+    "failures": [],
+    "matrix": {
+      "seed-0": {
+        "L1": "present",
+        "L2": "present",
+        "L3": "present",
+        "L4": "present",
+        "L5": "present",
+        "L6": "present",
+        "NC": "present"
+      },
+      "seed-1": {
+        "L1": "present",
+        "L2": "present",
+        "L3": "present",
+        "L4": "present",
+        "L5": "present",
+        "L6": "present",
+        "NC": "present"
+      },
+      "seed-2": {
+        "L1": "present",
+        "L2": "present",
+        "L3": "present",
+        "L4": "present",
+        "L5": "present",
+        "L6": "present",
+        "NC": "present"
+      },
+      "seed-3": {
+        "L1": "present",
+        "L2": "present",
+        "L3": "present",
+        "L4": "present",
+        "L5": "present",
+        "L6": "present",
+        "NC": "present"
+      },
+      "seed-4": {
+        "L1": "present",
+        "L2": "present",
+        "L3": "present",
+        "L4": "present",
+        "L5": "present",
+        "L6": "present",
+        "NC": "present"
+      },
+      "seed-5": {
+        "L1": "present",
+        "L2": "present",
+        "L3": "present",
+        "L4": "present",
+        "L5": "present",
+        "L6": "present",
+        "NC": "present"
+      },
+      "seed-6": {
+        "L1": "present",
+        "L2": "present",
+        "L3": "present",
+        "L4": "present",
+        "L5": "present",
+        "L6": "present",
+        "NC": "present"
+      },
+      "seed-7": {
+        "L1": "present",
+        "L2": "present",
+        "L3": "present",
+        "L4": "present",
+        "L5": "present",
+        "L6": "present",
+        "NC": "present"
+      },
+      "seed-8": {
+        "L1": "present",
+        "L2": "present",
+        "L3": "present",
+        "L4": "present",
+        "L5": "present",
+        "L6": "present",
+        "NC": "present"
+      },
+      "seed-9": {
+        "L1": "present",
+        "L2": "present",
+        "L3": "present",
+        "L4": "present",
+        "L5": "present",
+        "L6": "present",
+        "NC": "present"
+      }
+    },
+    "note": "QUALIFIED is experimental qualification only; not production promotion authority.",
+    "per_seed": [
+      {
+        "delta_ft_neural": 0.0,
+        "ft_vs_L1": {
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.0,
+          "NC": 0.0
+        },
+        "hidden_exact_match": {
+          "L1": 0.0,
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.0,
+          "NC": 0.0
+        },
+        "l1_retention": 0.5625,
+        "l6_retention": 0.625,
+        "security_pass_rate": {
+          "L1": 0.7083333333333333,
+          "L2": 0.45833333333333337,
+          "L3": 0.7916666666666666,
+          "L4": 0.41666666666666663,
+          "L5": 0.7083333333333333,
+          "L6": 0.7083333333333333,
+          "NC": 0.6666666666666667
+        },
+        "security_regressions": 61,
+        "seed": 0
+      },
+      {
+        "delta_ft_neural": 0.003125,
+        "ft_vs_L1": {
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.003125,
+          "NC": 0.0
+        },
+        "hidden_exact_match": {
+          "L1": 0.0,
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.003125,
+          "NC": 0.0
+        },
+        "l1_retention": 0.5625,
+        "l6_retention": 0.75,
+        "security_pass_rate": {
+          "L1": 0.7083333333333333,
+          "L2": 0.45833333333333337,
+          "L3": 0.7916666666666666,
+          "L4": 0.41666666666666663,
+          "L5": 0.7083333333333333,
+          "L6": 0.625,
+          "NC": 0.75
+        },
+        "security_regressions": 61,
+        "seed": 1
+      },
+      {
+        "delta_ft_neural": 0.00625,
+        "ft_vs_L1": {
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.00625,
+          "NC": 0.0
+        },
+        "hidden_exact_match": {
+          "L1": 0.0,
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.00625,
+          "NC": 0.0
+        },
+        "l1_retention": 0.5625,
+        "l6_retention": 0.75,
+        "security_pass_rate": {
+          "L1": 0.7083333333333333,
+          "L2": 0.45833333333333337,
+          "L3": 0.7916666666666666,
+          "L4": 0.41666666666666663,
+          "L5": 0.7083333333333333,
+          "L6": 0.6666666666666667,
+          "NC": 0.6666666666666667
+        },
+        "security_regressions": 62,
+        "seed": 2
+      },
+      {
+        "delta_ft_neural": 0.003125,
+        "ft_vs_L1": {
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.003125,
+          "NC": 0.0
+        },
+        "hidden_exact_match": {
+          "L1": 0.0,
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.003125,
+          "NC": 0.0
+        },
+        "l1_retention": 0.5625,
+        "l6_retention": 0.6875,
+        "security_pass_rate": {
+          "L1": 0.7083333333333333,
+          "L2": 0.45833333333333337,
+          "L3": 0.7916666666666666,
+          "L4": 0.41666666666666663,
+          "L5": 0.7083333333333333,
+          "L6": 0.75,
+          "NC": 0.75
+        },
+        "security_regressions": 58,
+        "seed": 3
+      },
+      {
+        "delta_ft_neural": 0.003125,
+        "ft_vs_L1": {
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.003125,
+          "NC": 0.0
+        },
+        "hidden_exact_match": {
+          "L1": 0.0,
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.003125,
+          "NC": 0.0
+        },
+        "l1_retention": 0.5625,
+        "l6_retention": 0.6875,
+        "security_pass_rate": {
+          "L1": 0.7083333333333333,
+          "L2": 0.45833333333333337,
+          "L3": 0.7916666666666666,
+          "L4": 0.41666666666666663,
+          "L5": 0.7083333333333333,
+          "L6": 0.6666666666666667,
+          "NC": 0.75
+        },
+        "security_regressions": 60,
+        "seed": 4
+      },
+      {
+        "delta_ft_neural": 0.0,
+        "ft_vs_L1": {
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.0,
+          "NC": 0.0
+        },
+        "hidden_exact_match": {
+          "L1": 0.0,
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.0,
+          "NC": 0.0
+        },
+        "l1_retention": 0.5625,
+        "l6_retention": 0.6875,
+        "security_pass_rate": {
+          "L1": 0.7083333333333333,
+          "L2": 0.45833333333333337,
+          "L3": 0.7916666666666666,
+          "L4": 0.41666666666666663,
+          "L5": 0.7083333333333333,
+          "L6": 0.5833333333333333,
+          "NC": 0.625
+        },
+        "security_regressions": 65,
+        "seed": 5
+      },
+      {
+        "delta_ft_neural": 0.003125,
+        "ft_vs_L1": {
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.003125,
+          "NC": 0.0
+        },
+        "hidden_exact_match": {
+          "L1": 0.0,
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.003125,
+          "NC": 0.0
+        },
+        "l1_retention": 0.5625,
+        "l6_retention": 0.75,
+        "security_pass_rate": {
+          "L1": 0.7083333333333333,
+          "L2": 0.45833333333333337,
+          "L3": 0.7916666666666666,
+          "L4": 0.41666666666666663,
+          "L5": 0.7083333333333333,
+          "L6": 0.6666666666666667,
+          "NC": 0.6666666666666667
+        },
+        "security_regressions": 62,
+        "seed": 6
+      },
+      {
+        "delta_ft_neural": 0.0,
+        "ft_vs_L1": {
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.0,
+          "NC": 0.0
+        },
+        "hidden_exact_match": {
+          "L1": 0.0,
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.0,
+          "NC": 0.0
+        },
+        "l1_retention": 0.5625,
+        "l6_retention": 0.8125,
+        "security_pass_rate": {
+          "L1": 0.7083333333333333,
+          "L2": 0.45833333333333337,
+          "L3": 0.7916666666666666,
+          "L4": 0.41666666666666663,
+          "L5": 0.7083333333333333,
+          "L6": 0.7083333333333333,
+          "NC": 0.625
+        },
+        "security_regressions": 62,
+        "seed": 7
+      },
+      {
+        "delta_ft_neural": 0.003125,
+        "ft_vs_L1": {
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.003125,
+          "NC": 0.0
+        },
+        "hidden_exact_match": {
+          "L1": 0.0,
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.003125,
+          "NC": 0.0
+        },
+        "l1_retention": 0.5625,
+        "l6_retention": 0.75,
+        "security_pass_rate": {
+          "L1": 0.7083333333333333,
+          "L2": 0.45833333333333337,
+          "L3": 0.7916666666666666,
+          "L4": 0.41666666666666663,
+          "L5": 0.7083333333333333,
+          "L6": 0.5833333333333333,
+          "NC": 0.7916666666666666
+        },
+        "security_regressions": 61,
+        "seed": 8
+      },
+      {
+        "delta_ft_neural": 0.0,
+        "ft_vs_L1": {
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.0,
+          "NC": 0.0
+        },
+        "hidden_exact_match": {
+          "L1": 0.0,
+          "L2": 0.0,
+          "L3": 0.0,
+          "L4": 0.0,
+          "L5": 0.0,
+          "L6": 0.0,
+          "NC": 0.0
+        },
+        "l1_retention": 0.5625,
+        "l6_retention": 0.6875,
+        "security_pass_rate": {
+          "L1": 0.7083333333333333,
+          "L2": 0.45833333333333337,
+          "L3": 0.7916666666666666,
+          "L4": 0.41666666666666663,
+          "L5": 0.7083333333333333,
+          "L6": 0.75,
+          "NC": 0.6666666666666667
+        },
+        "security_regressions": 60,
+        "seed": 9
+      }
+    ],
+    "reasons": [
+      "mean neural incremental FT (L6-L5) below preregistered minimum",
+      "only 6/10 seeds positive < 7",
+      "family-clustered CI lower bound 0.0000 <= 0.0"
+    ],
+    "reproduction_policy": {
+      "adapter_bitwise_required": false,
+      "metric_tolerance": 0.05,
+      "semantics": "statistical-equivalence"
+    },
+    "runner_decision_agreement": true,
+    "schema": "mini-agi-v16.2-campaign1-qualification-v1",
+    "scoring": "independently-recomputed-from-predictions"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "bundle": {
+    "arm": "L4",
+    "campaign_digest": "sha256:e9ecd87e2b731f255effc75e4ee3885bd635c010a59f2e8406a8a3b4b91a0167",
+    "cell": "L4",
+    "input_manifest_digest": "sha256:ceecc277866472aef4460d0ad8618d9f2177a8090d6c63fcb6d2f3a01947f131",
+    "metrics_reported": {
+      "arm_state_bytes": 9037,
+      "eval_seconds": 345.725,
+      "generated_tokens": 11181,
+      "hidden_exact_match": 0.0,
+      "retention": 0.75,
+      "security_regressions": 14,
+      "train_seconds": 0.0,
+      "trainable_params": 0,
+      "wall_seconds": 367.255
+    },
+    "predictions_digest": "sha256:062bae8952198e72a304275f24ed7a6a6ea7a8abfaa74850d550beebd548680f",
+    "protocol_digest": "sha256:653a6a5ac9c911f26b8b643e23fca056e7f03873fbbb141886091c2448987caf",
+    "schema": "mini-agi-v16.5-evaluation-bundle-v1",
+    "seed": 5
+  },
+  "receipt": {
+    "adapter_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "arm": "L4",
+    "campaign_digest": "sha256:e9ecd87e2b731f255effc75e4ee3885bd635c010a59f2e8406a8a3b4b91a0167",
+    "environment_digest": "sha256:9f60fd552ebbade0258daae9c7f5a8b5b264ef484aec27053039482a1096f3d3",
+    "evaluation_bundle_digest": "sha256:67afd4c3cc26ff1baefc076d174518421c632a9e57aa3133a49778391d45d9f0",
+    "evaluation_dataset_digest": "sha256:eb9ebbc466deb9ee9c07cb7f1601ef67879617191fefec50311612e25b367b06",
+    "evaluator_digest": "sha256:fb218771931064df6c19cd60c3d218dae625b9554c007a523546e93200f6c17c",
+    "input_manifest_digest": "sha256:ceecc277866472aef4460d0ad8618d9f2177a8090d6c63fcb6d2f3a01947f131",
+    "model_digest": "sha256:2a704ac027733e40c1f4e33f7fab466515f56a486513ff3e5d79e32c1e5e8b40",
+    "predictions_digest": "sha256:062bae8952198e72a304275f24ed7a6a6ea7a8abfaa74850d550beebd548680f",
+    "protocol_digest": "sha256:653a6a5ac9c911f26b8b643e23fca056e7f03873fbbb141886091c2448987caf",
+    "schema": "mini-agi-v16.5-evidence-receipt-v3",
+    "seed": 5,
+    "signature_b64": "yi5XGluaYbm5BO9IhuF1/JuKBrgbb3lNBcMR2g9W8zb7o/0IFbH0NuKtPO2QNwg/WFYxkyJBaQaqTCLAGaxnDg==",
+    "signer_key_id": "sha256:325e8917a648aa5ac",
+    "state_digest": "sha256:c4abd6f9716e9b4745c7aaa8650721bfddc76c181149f87ed96a5c95a0fb4d2b",
+    "tokenizer_digest": "sha256:a5c86e1255ad405bf0c9322c1f96b8cd5934dc9dca381bca6e1ed95f5b1e9f55"
+  }
+}
