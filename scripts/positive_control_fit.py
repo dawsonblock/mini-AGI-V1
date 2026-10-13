@@ -83,6 +83,21 @@ def main() -> int:
                          "responses (same permutation semantics as the "
                          "campaign NC arm). A fit gain under shuffled "
                          "labels is not learning.")
+    # Step 11 contrasts. Each isolates one causal factor; run only one
+    # of --examples-per-family / --total-examples per run.
+    ap.add_argument("--examples-per-family", type=int, default=None,
+                    help="Contrast B: hold examples PER FAMILY constant "
+                         "while breadth grows. Examples are repeated "
+                         "cyclically from the family's unique rows.")
+    ap.add_argument("--total-examples", type=int, default=None,
+                    help="Contrast A: hold the TOTAL training-example "
+                         "count constant while breadth grows, distributing "
+                         "the budget across families (as evenly as the "
+                         "count allows; the remainder is reported).")
+    ap.add_argument("--exposure", type=int, default=None,
+                    help="Contrast C: hold PRESENTATIONS PER EXAMPLE "
+                         "constant by setting steps = exposure x examples. "
+                         "Overrides --steps.")
     ap.add_argument("--run-root", default="results/campaign3b2/runs",
                     help="parent directory for immutable per-run outputs")
     ap.add_argument("--run-id", default=None,
@@ -113,9 +128,45 @@ def main() -> int:
     unknown = [f for f in families if f not in known]
     if unknown:
         raise SystemExit(f"unknown train families: {unknown} (have {known})")
-    subset = [r for r in train_all if r["family"] in families]
-    if not subset:
-        raise SystemExit(f"no train rows in families {families}")
+    if args.examples_per_family is not None and args.total_examples is not None:
+        raise SystemExit("--examples-per-family and --total-examples are "
+                         "different contrasts; pass only one")
+    if args.examples_per_family is not None and args.examples_per_family < 1:
+        raise SystemExit("--examples-per-family must be >= 1")
+    if args.total_examples is not None and args.total_examples < 1:
+        raise SystemExit("--total-examples must be >= 1")
+
+    unique_by_family = {fam: [r for r in train_all if r["family"] == fam]
+                        for fam in families}
+    for fam, rs in unique_by_family.items():
+        if not rs:
+            raise SystemExit(f"no train rows in family {fam!r}")
+
+    #: unique rows scored (a repeated row cannot be scored twice)
+    subset = [r for fam in families for r in unique_by_family[fam]]
+    #: rows actually trained on, after the contrast's allocation
+    if args.total_examples is not None:
+        base, extra = divmod(args.total_examples, len(families))
+        per_family = {fam: base + (1 if i < extra else 0)
+                      for i, fam in enumerate(families)}
+        allocation = "total-examples"
+    elif args.examples_per_family is not None:
+        per_family = {fam: args.examples_per_family for fam in families}
+        allocation = "examples-per-family"
+    else:
+        per_family = {fam: len(unique_by_family[fam]) for fam in families}
+        allocation = "all-unique"
+    train_rows = []
+    for fam in families:
+        uniq = unique_by_family[fam]
+        n = per_family[fam]
+        train_rows.extend(uniq[i % len(uniq)] for i in range(n))
+
+    if args.exposure is not None:
+        if args.exposure < 1:
+            raise SystemExit("--exposure must be >= 1")
+        args.steps = args.exposure * len(train_rows)
+
     hidden = [r for r in rows if r["split"] == "hidden"]
 
     # SCI-403: the contract is the ONLY source of the generation budget.
@@ -151,6 +202,17 @@ def main() -> int:
         "model_revision": cfg["model"]["revision"],
         "corpus": args.corpus, "config": args.config,
         "subset_rows": len(subset), "hidden_rows": len(hidden),
+        "contrast": {
+            "allocation": allocation,
+            "families": len(families),
+            "examples_per_family": dict(per_family),
+            "training_examples": len(train_rows),
+            "unique_scored_rows": len(subset),
+            "steps": args.steps,
+            "exposure_target": args.exposure,
+            "presentations_per_example": (args.steps / len(train_rows))
+            if train_rows else None,
+        },
         "prompt_contract_digest": contract.digest,
         "output_contract_digest": contract.output_contract_digest,
         "max_new_tokens": max_new,
@@ -223,8 +285,11 @@ def main() -> int:
                          == by[rid]["expected"].strip().casefold())
                 for rid, v in preds.items()}
 
-    print(f"fit subset: {families} -> {len(subset)} examples "
-          f"(of {len(train_all)} train rows)")
+    print(f"contrast : {allocation} | {len(families)} families | "
+          f"{len(train_rows)} training examples "
+          f"({len(subset)} unique scored) | {args.steps} steps | "
+          f"exposure "
+          f"{args.steps / len(train_rows) if train_rows else 0:.1f}/example")
 
     frozen = load_causal_lm(spec, purpose="research")
     frozen_subset = per_row(frozen, subset)
@@ -235,10 +300,12 @@ def main() -> int:
 
     if args.shuffle_labels:
         from minagi.v161.arms import shuffled_label_examples
-        examples = shuffled_label_examples(subset, args.seed)
+        # the derangement is over the TRAINED allocation, so the control
+        # sees the same number of examples as its matched condition
+        examples = shuffled_label_examples(train_rows, args.seed)
     else:
         examples = [{"prompt": str(r["prompt"]),
-                     "response": str(r["expected"])} for r in subset]
+                     "response": str(r["expected"])} for r in train_rows]
 
     model = load_causal_lm(spec, purpose="research")
     adapter_dir = staging / "adapter"
@@ -307,6 +374,16 @@ def main() -> int:
             "n_frozen_correct_hidden": sum(f_hid.values()),
             "destroyed_ids": destroyed, "n_destroyed": len(destroyed),
             "gained_ids": gained, "n_gained": len(gained)},
+        "contrast": run_config["contrast"],
+        "exposure_actual": {
+            "sample_presentations": receipt.get("sample_presentations"),
+            "optimizer_updates": receipt.get("optimizer_updates"),
+            "effective_batch_size": receipt.get("effective_batch_size"),
+            "training_examples": len(train_rows),
+            "presentations_per_example":
+                (receipt.get("sample_presentations") / len(train_rows))
+                if receipt.get("sample_presentations") and train_rows
+                else None},
         "training": {"loss_first": receipt["loss_first"],
                      "loss_last": receipt["loss_last"],
                      "grad_norm_mean": receipt["grad_norm_mean"],
