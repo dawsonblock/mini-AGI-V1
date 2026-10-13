@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from minagi.v161.prompt_contract import (  # noqa: E402
     LABEL_IGNORE, OutputContract, build_prompt_contract,
-    render_training_example)
+    encode_supervised)
 
 torch = pytest.importorskip("torch")
 tokenizers = pytest.importorskip("tokenizers")
@@ -66,7 +66,7 @@ def _qwen_tokenizer():
 
 def test_no_template_appends_and_supervises_eos():
     tok = _tokenizer(with_template=False)
-    enc = render_training_example(tok, "ask hello", "ans a1",
+    enc = encode_supervised(tok, "ask hello", "ans a1",
                                   build_prompt_contract(tok), max_length=64)
     supervised = [t for t in enc["labels"] if t != LABEL_IGNORE]
     assert enc["eos_supervised"] is True
@@ -76,7 +76,7 @@ def test_no_template_appends_and_supervises_eos():
 
 def test_chat_template_end_of_turn_is_supervised():
     tok = _qwen_tokenizer()
-    enc = render_training_example(tok, "ask hello", "ans a1",
+    enc = encode_supervised(tok, "ask hello", "ans a1",
                                   build_prompt_contract(tok), max_length=256)
     supervised = [t for t in enc["labels"] if t != LABEL_IGNORE]
     assert enc["eos_supervised"] is True

@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from minagi.v161.prompt_contract import (  # noqa: E402
     answer_only_output_contract, build_prompt_contract,
-    render_generation_input, render_prompt_text, render_training_example)
+    encode_generation, render_prompt_text, encode_supervised)
 
 torch = pytest.importorskip("torch")
 tokenizers = pytest.importorskip("tokenizers")
@@ -83,8 +83,8 @@ TASKS = [
 def _assert_parity(tokenizer, output=None):
     contract = build_prompt_contract(tokenizer, output)
     for task, response in TASKS:
-        gen_ids = render_generation_input(tokenizer, task, contract)
-        enc = render_training_example(tokenizer, task, response, contract,
+        gen_ids = encode_generation(tokenizer, task, contract)
+        enc = encode_supervised(tokenizer, task, response, contract,
                                       max_length=4096)
         prefix = enc["input_ids"][:enc["prompt_tokens"]]
         assert prefix == gen_ids, (
@@ -116,7 +116,7 @@ def test_historical_mismatch_is_real():
         contract = build_prompt_contract(tok)
         task = "Reverse the string 'hello'."
         raw = list(tok(task, add_special_tokens=False)["input_ids"])
-        rendered = render_generation_input(tok, task, contract)
+        rendered = encode_generation(tok, task, contract)
         assert raw != rendered, (
             f"{type(tok).__name__}: raw and rendered tokenization are "
             "identical — this tokenizer has no chat surface to miss")
@@ -159,7 +159,7 @@ def test_runner_generate_renders_through_the_contract():
     task = "ask hello"
     model = _RecordingModel([3, 4, 5])
     text, nt, eos_hit = runner.generate(model, tok, task, 8)
-    expected_ids = render_generation_input(tok, task, contract)
+    expected_ids = encode_generation(tok, task, contract)
     assert model.seen_input_ids == expected_ids
     assert nt == 3
     assert eos_hit is False
@@ -171,7 +171,7 @@ def test_runner_generate_honors_explicit_contract():
     contract = build_prompt_contract(tok, answer_only_output_contract())
     model = _RecordingModel([1, 2, 3])
     runner.generate(model, tok, "ask me", 8, contract)
-    assert model.seen_input_ids == render_generation_input(
+    assert model.seen_input_ids == encode_generation(
         tok, "ask me", contract)
-    assert model.seen_input_ids != render_generation_input(
+    assert model.seen_input_ids != encode_generation(
         tok, "ask me", build_prompt_contract(tok))

@@ -25,7 +25,7 @@ from minagi.v161.campaign_plan import ColabCampaignPlanV161
 from minagi.v161.executed_run import ExecutedRunReceiptV161
 from minagi.v161.runtime_closure3 import sha256_path
 from minagi.v161.prompt_contract import (build_prompt_contract,
-                                         render_generation_input)
+                                         encode_generation)
 
 ZERO="sha256:"+"0"*64
 
@@ -46,7 +46,7 @@ def generate(model,tokenizer,prompt,max_new_tokens):
         # SCI-301: inference renders through the shared prompt contract
         # (historical default surface) exactly as training does.
         contract=build_prompt_contract(tokenizer)
-        input_ids=render_generation_input(tokenizer,prompt,contract)
+        input_ids=encode_generation(tokenizer,prompt,contract)
         batch={"input_ids":torch.tensor([input_ids],device=device)}
         out=model.generate(**batch,max_new_tokens=max_new_tokens,do_sample=False,pad_token_id=tokenizer.eos_token_id)
         text=tokenizer.decode(out[0,len(input_ids):],skip_special_tokens=True).strip()

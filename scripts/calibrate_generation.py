@@ -43,7 +43,7 @@ from minagi.platforms.cuda.hf_runtime import (HFLoadSpec,  # noqa: E402
                                               load_tokenizer)
 from minagi.v161.prompt_contract import (  # noqa: E402
     OutputContract, answer_only_output_contract, build_prompt_contract,
-    generation_diagnostics, render_generation_input)
+    generation_diagnostics, encode_generation)
 
 #: Development splits this calibration may read.
 DEV_SPLITS = ("train", "validation")
@@ -86,7 +86,7 @@ def _generate(model, tokenizer, prompt: str, output: OutputContract,
         if raw:
             ids = list(tokenizer(prompt)["input_ids"])
         else:
-            ids = render_generation_input(
+            ids = encode_generation(
                 tokenizer, prompt, build_prompt_contract(tokenizer, output))
         batch = {"input_ids": torch.tensor([ids], device=device),
                  "attention_mask": torch.ones((1, len(ids)),

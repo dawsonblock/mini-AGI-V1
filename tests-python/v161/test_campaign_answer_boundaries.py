@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT / "src-python"))
 
 from minagi.v161.prompt_contract import (  # noqa: E402
     LABEL_IGNORE, answer_only_output_contract, build_prompt_contract,
-    compose_user_content, render_prompt_text, render_training_example)
+    compose_user_content, render_prompt_text, encode_supervised)
 
 tokenizers = pytest.importorskip("tokenizers")
 transformers = pytest.importorskip("transformers")
@@ -68,7 +68,7 @@ def _qwen_tokenizer():
 def test_boundaries_stub_and_qwen():
     for tok in (_tokenizer(), _qwen_tokenizer()):
         contract = build_prompt_contract(tok)
-        enc = render_training_example(tok, "ask hello", "ans a1", contract,
+        enc = encode_supervised(tok, "ask hello", "ans a1", contract,
                                       max_length=4096)
         ids, labels = enc["input_ids"], enc["labels"]
         n_prompt = enc["prompt_tokens"]
@@ -92,7 +92,7 @@ def test_answer_instruction_is_rendered_identically_for_training():
     prompt_text = render_prompt_text(tok, "ask hello", contract)
     assert output.instruction in prompt_text
     assert compose_user_content("ask hello", output) in prompt_text
-    enc = render_training_example(tok, "ask hello", "ans a1", contract,
+    enc = encode_supervised(tok, "ask hello", "ans a1", contract,
                                   max_length=4096)
     # masked prefix still exactly the prompt boundary
     assert enc["labels"][:enc["prompt_tokens"]] == \
@@ -102,7 +102,7 @@ def test_answer_instruction_is_rendered_identically_for_training():
 def test_specials_are_not_duplicated():
     tok = _tokenizer()
     contract = build_prompt_contract(tok)
-    enc = render_training_example(tok, "ask hello", "ans a1", contract,
+    enc = encode_supervised(tok, "ask hello", "ans a1", contract,
                                   max_length=4096)
     decoded_prompt = tok.decode(enc["input_ids"][:enc["prompt_tokens"]])
     decoded_full = tok.decode(enc["input_ids"])
@@ -134,7 +134,7 @@ def test_boundary_merge_is_refused():
             return {"input_ids": [7, 8]}
 
     with pytest.raises(ValueError, match="prefix-stable"):
-        render_training_example(_MergeAtBoundary(), "ask hello", "ans a1",
+        encode_supervised(_MergeAtBoundary(), "ask hello", "ans a1",
                                 build_prompt_contract(_MergeAtBoundary()),
                                 max_length=64)
 
@@ -142,7 +142,7 @@ def test_boundary_merge_is_refused():
 def test_truncation_keeps_response_tail():
     tok = _tokenizer()
     contract = build_prompt_contract(tok)
-    enc = render_training_example(tok, "ask hello world x y me ok", "ans a1",
+    enc = encode_supervised(tok, "ask hello world x y me ok", "ans a1",
                                   contract, max_length=3)
     assert len(enc["input_ids"]) == 3
     assert enc["n_supervised"] > 0
@@ -164,7 +164,7 @@ def test_response_without_tokens_rejected():
 
     tok = _NoResponseTokens()
     with pytest.raises(ValueError, match="no supervised tokens"):
-        render_training_example(tok, "ask hello", "ans a1",
+        encode_supervised(tok, "ask hello", "ans a1",
                                 build_prompt_contract(tok), max_length=64)
 
 
@@ -172,7 +172,7 @@ def test_empty_inputs_rejected():
     tok = _tokenizer()
     contract = build_prompt_contract(tok)
     with pytest.raises(ValueError):
-        render_training_example(tok, "", "ans a1", contract, max_length=64)
+        encode_supervised(tok, "", "ans a1", contract, max_length=64)
     with pytest.raises(ValueError):
-        render_training_example(tok, "ask hello", "  ", contract,
+        encode_supervised(tok, "ask hello", "  ", contract,
                                 max_length=64)

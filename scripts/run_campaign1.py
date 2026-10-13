@@ -56,9 +56,12 @@ from minagi.platforms.cuda.peft_trainer import LoraTrainSpec, train_lora
 from minagi.v161.prompt_contract import (build_prompt_contract,
                                          generation_diagnostics,
                                          output_contract_from_config,
-                                         render_generation_input)
-from minagi.v161.arms import (ARMS, ARM_IDS, ZERO_DIGEST, dir_size_bytes,
-                              shuffled_label_examples,
+                                         encode_generation)
+from minagi.v161.arms import (ADAPTER_REPLAY_ID, ARM_IDS,
+                              PARAMETRIC_ARM_IDS, SELF_VERIFIED_REPLAY_IDS,
+                              VERIFIED_REPLAY_ID, ARMS,
+                              OracleVerifiedReplayArm, ZERO_DIGEST,
+                              dir_size_bytes, shuffled_label_examples,
                               shuffled_label_texts)
 from minagi.v161.dataset_manifest import (DatasetMember,
                                           DatasetMembershipManifest,
@@ -103,7 +106,7 @@ def generate(model, tokenizer, prompt, max_new_tokens, contract=None):
     """Generate one answer under the shared prompt contract (SCI-301).
 
     Every inference path — baseline, arm-augmented, adapter, replay
-    practice and security — renders through `render_generation_input`,
+    practice and security — renders through `encode_generation`,
     the same function training uses to build its prompt prefix. Returns
     (text, generated_tokens, eos_hit); eos_hit is the precise
     observation that greedy decoding terminated on the tokenizer's
@@ -113,7 +116,7 @@ def generate(model, tokenizer, prompt, max_new_tokens, contract=None):
     with torch.inference_mode():
         device = next(model.parameters()).device
         contract = contract or build_prompt_contract(tokenizer)
-        input_ids = render_generation_input(tokenizer, prompt, contract)
+        input_ids = encode_generation(tokenizer, prompt, contract)
         batch = {"input_ids": torch.tensor([input_ids], device=device),
                  "attention_mask": torch.ones((1, len(input_ids)),
                                               dtype=torch.long,
@@ -812,15 +815,56 @@ def main() -> int:
             return metrics, {"hidden": h_out, "retention": ret_out,
                              "security": sec_out}, preds, diags
 
+        # ---- verified replay (L5b) state, shared with the L7 eval ----
+        # SCI-302: unlike the self-verified practice arm (L5a), L5b
+        # admits every TRAIN row's established label with recorded
+        # provenance — the comparator Campaign 3A's empty buffer could
+        # never be. The same instance/state is used by L7 (adapter +
+        # verified replay), so the primary 3B comparison (L7 - L5b)
+        # varies only the neural adaptation.
+        replay_arm = None
+
+        def ensure_verified_replay():
+            nonlocal replay_arm
+            if replay_arm is None:
+                replay_arm = OracleVerifiedReplayArm(
+                    k=int(protocol.replay_k if protocol is not None
+                          else cfg.get("replay_k", 2)))
+                replay_arm.token_counter = (
+                    lambda text: len(tokenizer(
+                        text, add_special_tokens=False)["input_ids"]))
+                sdir = arms_state_root / f"seed-{seed}" / VERIFIED_REPLAY_ID
+                replay_arm.build_state(sdir, train,
+                                       split_digest=parts.train.digest)
+                replay_arm.persist()
+                replay_arm.verify_state()
+                arm_state_dirs[VERIFIED_REPLAY_ID] = sdir
+            return replay_arm
+
+        def write_replay_manifest(arm_id, since):
+            if replay_arm is None:
+                return
+            doc = {"schema": "mini-agi-v16.6-replay-manifest-v1",
+                   "seed": int(seed), "arm": arm_id,
+                   "split_digest": replay_arm.split_digest,
+                   "verifier_digest": replay_arm.verifier_digest,
+                   "k": replay_arm.k,
+                   "max_block_chars": replay_arm.max_block_chars,
+                   "records": [asdict(r) for r in replay_arm.records],
+                   "rejected": replay_arm.rejected,
+                   "retrieval": replay_arm.retrieval_stats(since)}
+            (run_dir / f"REPLAY_MANIFEST-{arm_id}.json").write_text(
+                json.dumps(doc, indent=2, sort_keys=True))
+
         # ---- non-parametric arms on one base instance ----
         for arm_id in plan.arms:
-            if arm_id in ("L6", "NC"):
+            if arm_id in PARAMETRIC_ARM_IDS:
                 continue
             arm_t0 = time.time()
             if arm_id == "L1":
                 arm = None
                 sd = ZERO_DIGEST
-            elif arm_id == "L5":
+            elif arm_id in SELF_VERIFIED_REPLAY_IDS:
                 arm = ARMS["L5"]()
                 arm.k = int(protocol.replay_k if protocol is not None
                             else cfg.get("replay_k", 2))
@@ -835,13 +879,21 @@ def main() -> int:
                 arm.persist()
                 arm_state_dirs["L5"] = sdir
                 sd = sha256_path(sdir)
+            elif arm_id == VERIFIED_REPLAY_ID:
+                arm = ensure_verified_replay()
+                sd = sha256_path(arm_state_dirs[VERIFIED_REPLAY_ID])
             else:
                 arm = arm_instances[arm_id]
                 sd = sha256_path(arm_state_dirs[arm_id])
+            replay_since = (len(arm.retrieval_log)
+                            if arm_id == VERIFIED_REPLAY_ID else 0)
             metrics, outputs, preds, diags = run_eval_block(arm, arm_id)
             metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
             metrics["train_seconds"] = 0.0
             metrics["trainable_params"] = 0
+            if arm_id == VERIFIED_REPLAY_ID:
+                metrics["replay"] = replay_arm.retrieval_stats(replay_since)
+                write_replay_manifest(arm_id, replay_since)
             emit(arm_id, ZERO_DIGEST, sd, metrics, outputs, preds=preds,
                  diags=diags)
 
@@ -857,9 +909,10 @@ def main() -> int:
         train_examples = ([{"prompt": str(r["prompt"]),
                             "response": str(r["expected"])}
                            for r in train] if v3 else None)
-        for arm_id, texts, examples in (
-                ("L6", train_texts, train_examples),
-                ("NC", shuffled_label_texts(train, seed), nc_examples)):
+        for arm_id, texts, examples, uses_replay in (
+                ("L6", train_texts, train_examples, False),
+                ("NC", shuffled_label_texts(train, seed), nc_examples, False),
+                (ADAPTER_REPLAY_ID, train_texts, train_examples, True)):
             if arm_id not in plan.arms:
                 continue
             arm_t0 = time.time()
@@ -884,12 +937,25 @@ def main() -> int:
             free_model(model)
             model = load_causal_lm(spec, adapter_path=str(adir),
                                    purpose="research")
-            metrics, outputs, preds, diags = run_eval_block(None, arm_id)
+            # L7 evaluates the same adapter under the verified-replay
+            # context L5b uses; L6/NC evaluate with no augmentation.
+            eval_arm = None
+            replay_since = 0
+            state_digest = ZERO_DIGEST
+            if uses_replay:
+                eval_arm = ensure_verified_replay()
+                replay_since = len(eval_arm.retrieval_log)
+                state_digest = sha256_path(
+                    arm_state_dirs[VERIFIED_REPLAY_ID])
+            metrics, outputs, preds, diags = run_eval_block(eval_arm, arm_id)
             metrics["arm_state_bytes"] = dir_size_bytes(adir)
             metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
             metrics["train_seconds"] = train_secs
             metrics["trainable_params"] = trainable
-            emit(arm_id, adapter_digest, ZERO_DIGEST, metrics, outputs,
+            if uses_replay:
+                metrics["replay"] = eval_arm.retrieval_stats(replay_since)
+                write_replay_manifest(arm_id, replay_since)
+            emit(arm_id, adapter_digest, state_digest, metrics, outputs,
                  {"training": train_receipt}, preds=preds, diags=diags)
             free_model(model)
 
@@ -986,7 +1052,16 @@ def main() -> int:
     arm_sec_rate = {a: 1.0 - arm_mean(a, "security_regressions") / n_sec
                     for a in plan.arms}
     ft = {a: arm_hidden[a] - arm_hidden["L1"] for a in plan.arms if a != "L1"}
-    delta_neural = arm_hidden["L6"] - arm_hidden["L5"]
+    # Historical primary comparison (L6 - L5) when both arms exist; the
+    # 3B primary comparison is adapter+verified-replay vs verified
+    # replay (L7 - L5b) — the same context mechanism, neural adaptation
+    # varied.
+    delta_neural = (arm_hidden["L6"] - arm_hidden["L5"]
+                    if "L6" in arm_hidden and "L5" in arm_hidden else None)
+    delta_adapter_replay = (
+        arm_hidden[ADAPTER_REPLAY_ID] - arm_hidden[VERIFIED_REPLAY_ID]
+        if ADAPTER_REPLAY_ID in arm_hidden
+        and VERIFIED_REPLAY_ID in arm_hidden else None)
     nc_ft = ft.get("NC", 0.0)
     nc_violation = nc_ft > plan.negative_control_max_ft
 
@@ -1030,7 +1105,7 @@ def main() -> int:
 
     reasons = []
     if isinstance(plan, ColabCampaignPlanV164):
-        if delta_neural < plan.minimum_neural_incremental_ft:
+        if delta_neural is not None and delta_neural < plan.minimum_neural_incremental_ft:
             reasons.append(f"mean delta_ft_neural {delta_neural:.4f} < "
                            f"{plan.minimum_neural_incremental_ft}")
         if n_positive < plan.min_seeds_positive_ft:
@@ -1062,7 +1137,7 @@ def main() -> int:
             reasons.append(f"negative control FT {nc_ft:.4f} exceeded bound "
                            f"{plan.negative_control_max_ft} — pipeline suspect")
     elif isinstance(plan, ColabCampaignPlanV163):
-        if delta_neural < plan.minimum_neural_incremental_ft:
+        if delta_neural is not None and delta_neural < plan.minimum_neural_incremental_ft:
             reasons.append(f"mean delta_ft_neural {delta_neural:.4f} < "
                            f"{plan.minimum_neural_incremental_ft}")
         if n_positive < plan.min_seeds_positive_ft:
@@ -1084,7 +1159,7 @@ def main() -> int:
             reasons.append(f"negative control FT {nc_ft:.4f} exceeded bound "
                            f"{plan.negative_control_max_ft} — pipeline suspect")
     else:
-        if delta_neural < plan.minimum_neural_incremental_ft:
+        if delta_neural is not None and delta_neural < plan.minimum_neural_incremental_ft:
             reasons.append(f"neural incremental FT {delta_neural:.4f} < "
                            f"{plan.minimum_neural_incremental_ft}")
         if arm_ret["L6"] < plan.minimum_retention:
@@ -1143,6 +1218,7 @@ def main() -> int:
                "n_seeds_positive_ft": n_positive,
                "forward_transfer_vs_L1": ft,
                "delta_ft_neural_L6_minus_L5": delta_neural,
+               "delta_ft_neural_L7_minus_L5b": delta_adapter_replay,
                "negative_control_ft": nc_ft,
                "negative_control_violation": nc_violation,
                "decision": decision,
@@ -1160,7 +1236,8 @@ def main() -> int:
         l6_train_h = efficiency["L6"]["train_seconds_mean"] / 3600 or None
         summary["efficiency"] = efficiency
         summary["delta_ft_per_train_hour"] = (
-            round(delta_neural / l6_train_h, 4) if l6_train_h else None)
+            round(delta_neural / l6_train_h, 4)
+            if (l6_train_h and delta_neural is not None) else None)
         tp = efficiency["L6"]["trainable_params"]
         summary["delta_ft_per_10k_trainable_params"] = (
             round(delta_neural / (tp / 1e4), 6) if tp else None)

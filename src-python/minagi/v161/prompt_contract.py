@@ -12,9 +12,9 @@ near-zero incremental transfer.
 This module is the single rendering contract for every path that feeds
 tokens to the model:
 
-  * training examples (``render_training_example``),
+  * training examples (``encode_supervised``),
   * baseline, adapter, replay-practice and security inference
-    (``render_generation_input``),
+    (``encode_generation``),
   * diagnostic scoring of the generation contract
     (``generation_diagnostics``).
 
@@ -143,12 +143,21 @@ def tokenizer_identity_digest(tokenizer) -> str:
 
 @dataclass(frozen=True)
 class PromptContract:
-    """The immutable rendering contract bound to one campaign run."""
+    """The immutable rendering contract bound to one campaign run.
+
+    Field naming follows the 3B plan's PromptContract shape; ``schema``
+    is this repository's spelling of the plan's ``version``.
+    ``max_input_tokens`` is the supervised-sequence budget (0 =
+    unspecified); ``max_new_tokens`` mirrors the output contract's
+    generation limit.
+    """
     schema: str
     tokenizer_digest: str
     template_digest: str
     add_generation_prompt: bool
     output: OutputContract
+    max_input_tokens: int = 0
+    max_new_tokens: int = 0
 
     @property
     def output_contract_digest(self) -> str:
@@ -160,14 +169,18 @@ class PromptContract:
 
 
 def build_prompt_contract(tokenizer, output: OutputContract | None = None,
-                          add_generation_prompt: bool = True) -> PromptContract:
+                          add_generation_prompt: bool = True,
+                          max_input_tokens: int = 0) -> PromptContract:
     """Build the contract for one tokenizer/output pair."""
+    output = output or DEFAULT_OUTPUT_CONTRACT
     return PromptContract(
         schema=PROMPT_CONTRACT_SCHEMA,
         tokenizer_digest=tokenizer_identity_digest(tokenizer),
         template_digest=template_digest(tokenizer),
         add_generation_prompt=bool(add_generation_prompt),
-        output=output or DEFAULT_OUTPUT_CONTRACT)
+        output=output,
+        max_input_tokens=int(max_input_tokens),
+        max_new_tokens=int(output.max_new_tokens))
 
 
 def _canonical_json(doc: Mapping[str, Any]) -> bytes:
@@ -191,27 +204,41 @@ def _chat_template(tokenizer) -> str:
     return str(getattr(tokenizer, "chat_template", "") or "")
 
 
+def render_messages(task_prompt: str,
+                    contract: PromptContract) -> list[dict]:
+    """The message structure every path renders (plan: render_messages).
+
+    The answer instruction is composed into the user content — the
+    frozen calibration surface (docs/science/SCORING_CALIBRATION.md)
+    binds this rendering; a system-message variant would be a new,
+    separately calibrated contract.
+    """
+    return [{"role": "user",
+             "content": compose_user_content(task_prompt, contract.output)}]
+
+
 def render_prompt_text(tokenizer, task_prompt: str,
                        contract: PromptContract) -> str:
     """The model-facing prompt text for one task.
 
     With a chat template this is the rendered user turn (plus the
     generation prompt when the contract asks for it) — the exact surface
-    ``render_generation_input`` tokenizes and ``render_training_example``
-    uses as the supervised boundary.
+    ``encode_generation`` tokenizes and ``encode_supervised`` uses as
+    the supervised boundary.
     """
-    content = compose_user_content(task_prompt, contract.output)
+    messages = render_messages(task_prompt, contract)
     if _chat_template(tokenizer):
         return tokenizer.apply_chat_template(
-            [{"role": "user", "content": content}],
+            messages,
             add_generation_prompt=contract.add_generation_prompt,
             tokenize=False)
-    return content
+    return messages[0]["content"]
 
 
-def render_generation_input(tokenizer, task_prompt: str,
-                            contract: PromptContract) -> list[int]:
-    """The exact input token sequence generation consumes.
+def encode_generation(tokenizer, task_prompt: str,
+                      contract: PromptContract) -> list[int]:
+    """The exact input token sequence generation consumes (plan:
+    encode_generation).
 
     This is the single inference-side entry point: baseline, adapter,
     replay-practice and security paths all call it, so no runner can
@@ -224,9 +251,10 @@ def render_generation_input(tokenizer, task_prompt: str,
     return ids
 
 
-def render_training_example(tokenizer, task_prompt: str, response: str,
-                            contract: PromptContract, max_length: int) -> dict:
-    """Encode one supervised {task, response} pair under the contract.
+def encode_supervised(tokenizer, task_prompt: str, response: str,
+                      contract: PromptContract, max_length: int) -> dict:
+    """Encode one supervised {task, response} pair under the contract
+    (plan: encode_supervised).
 
     Chat-template tokenizers are encoded STRICTLY: the full text is
     tokenized once and the prompt tokenization must be a token-level
@@ -246,9 +274,8 @@ def render_training_example(tokenizer, task_prompt: str, response: str,
     if int(max_length) <= 0:
         raise ValueError("max_length must be positive")
     response = str(response)
-    content = compose_user_content(task_prompt, contract.output)
+    messages = render_messages(task_prompt, contract)
     if _chat_template(tokenizer):
-        messages = [{"role": "user", "content": content}]
         prompt_text = tokenizer.apply_chat_template(
             messages, add_generation_prompt=contract.add_generation_prompt,
             tokenize=False)
@@ -269,7 +296,7 @@ def render_training_example(tokenizer, task_prompt: str, response: str,
         input_ids = full_ids
         supervised_from = len(p_ids)
     else:
-        prompt_text = content
+        prompt_text = messages[0]["content"]
         eos = str(getattr(tokenizer, "eos_token", "") or "")
         p_ids = list(tokenizer(prompt_text,
                                add_special_tokens=False)["input_ids"])
@@ -330,6 +357,12 @@ def generation_diagnostics(expected: str, prediction: str, *,
     lines = [ln for ln in str(prediction).strip().splitlines() if ln.strip()]
     if eos_hit is None:
         eos_hit = int(generated_tokens) < int(max_new_tokens)
+    if eos_hit:
+        stop_reason = "end_of_message"
+    elif int(generated_tokens) >= int(max_new_tokens):
+        stop_reason = "max_tokens"
+    else:
+        stop_reason = "unknown"
     return {
         "strict_exact_match": float(pred == exp),
         "correct_first_line": float(bool(lines) and _normalize(lines[0]) == exp),
@@ -340,4 +373,5 @@ def generation_diagnostics(expected: str, prediction: str, *,
         "max_token_truncation": float(int(generated_tokens)
                                       >= int(max_new_tokens)),
         "generated_tokens": int(generated_tokens),
+        "stop_reason": stop_reason,
     }

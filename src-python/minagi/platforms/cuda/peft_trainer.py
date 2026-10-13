@@ -42,7 +42,7 @@ from egai.common.canonical import digest, sha256_bytes
 from minagi.v161.prompt_contract import (DEFAULT_OUTPUT_CONTRACT,
                                          PromptContract,
                                          build_prompt_contract,
-                                         render_training_example)
+                                         encode_supervised)
 
 LABEL_IGNORE = -100
 
@@ -103,8 +103,8 @@ def supervised_tokens(tokenizer, prompt: str, response: str,
     """
     if contract is None:
         contract = build_prompt_contract(tokenizer, DEFAULT_OUTPUT_CONTRACT)
-    return render_training_example(tokenizer, prompt, response, contract,
-                                   max_length)
+    return encode_supervised(tokenizer, prompt, response, contract,
+                             max_length)
 
 
 def _pad_batch(encoded, pad_token_id):
