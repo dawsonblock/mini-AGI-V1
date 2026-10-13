@@ -127,3 +127,49 @@ def test_unknown_families_are_refused_before_any_model_load():
         capture_output=True, text=True, cwd=str(ROOT))
     assert proc.returncode != 0
     assert "unknown train families" in (proc.stdout + proc.stderr)
+
+
+# ------------------------------------------------- Step 11 contrasts
+
+def test_the_three_contrasts_are_mutually_exclusive():
+    """--examples-per-family and --total-examples answer different causal
+    questions; accepting both would make a run unattributable."""
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), "--families", "pc-upper,pc-rev",
+         "--examples-per-family", "5", "--total-examples", "30",
+         "--steps", "1", "--run-root", "/tmp/c3b2-unused"],
+        capture_output=True, text=True, cwd=str(ROOT))
+    assert proc.returncode != 0
+    assert "different contrasts" in (proc.stdout + proc.stderr)
+
+
+def test_contrast_bounds_are_validated_before_any_model_load():
+    for bad in (["--examples-per-family", "0"], ["--total-examples", "0"],
+                ["--exposure", "0"]):
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "--families", "pc-upper,pc-rev",
+             *bad, "--steps", "1", "--run-root", "/tmp/c3b2-unused"],
+            capture_output=True, text=True, cwd=str(ROOT))
+        assert proc.returncode != 0, bad
+        assert "must be >= 1" in (proc.stdout + proc.stderr), bad
+
+
+def test_contrast_allocation_is_recorded_in_the_run_config():
+    """A run must state its assigned dataset, not just its score."""
+    src = _source()
+    for field in ("allocation", "examples_per_family", "training_examples",
+                  "unique_scored_rows", "presentations_per_example",
+                  "exposure_target"):
+        assert f'"{field}"' in src, f"the run config omits {field}"
+    # realised exposure must come from the receipt, not be assumed
+    assert "sample_presentations" in src and "optimizer_updates" in src
+    assert "exposure_actual" in src
+
+
+def test_negative_control_is_deranged_over_the_trained_allocation():
+    """A control must see the same example count as its matched condition,
+    otherwise the contrast is confounded by the control itself."""
+    src = _source()
+    assert "shuffled_label_examples(train_rows, args.seed)" in src, (
+        "the negative control must be deranged over train_rows, not the "
+        "unique subset, or it sees fewer examples than its matched run")
