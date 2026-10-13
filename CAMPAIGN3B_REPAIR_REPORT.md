@@ -115,7 +115,7 @@ trainable parameters, arm-state bytes).
 ## 7. Positive-control learnability (executed)
 
 The diagnostic ran end to end and produced a **REFUSED** outcome with
-7 readiness gates assessed, 5 passing. Headline: prompt parity,
+7 readiness gates assessed, 6 passing. Headline: prompt parity,
 supervised targets, numerical stability and adapter reload all pass;
 LoRA learns within-family (validation 0.222 → 0.444 against a 0.222
 frozen baseline) and the negative control collapses (0.067 train
@@ -187,12 +187,21 @@ Campaign 3A stays immutable. This release separates (1) the corrected
 (3) independently controlled sealed-confirmation evidence, each with
 its own inventory and SHA-256 verification.
 
-**Signing limitation, stated plainly:** no approved signing identity
-was available to this effort. The packaged archive is an **explicitly
-unsigned development artifact**; the repository's release signature
-file is the pre-existing one from the v16.4.10 envelope and does not
-cover the 3B additions. No new key was generated and presented as the
-authorized authority. See `REMAINING_DEFECTS.md` and
+**Signing status.** The envelope was reissued with the repository's
+existing release key (`~/.config/miniagi/release-ed25519.pem`, held
+outside the tree). The bundled `RELEASE_PUBLIC_KEY.pem` hashes to
+`a8cd5cb2…`, which is exactly the attestation's pinned
+`public_key_sha256`, and the reissue reported the same fingerprint — so
+this is the repository's release authority, not a newly minted key
+presented as one. `RELEASE_ATTESTATION.json` was reconciled
+(`manifest_sha256` + `reissued_utc` + a 56th `reissue_history` entry),
+following the workflow the previous 55 reissues used.
+
+**What the signature does and does not mean.** It establishes that this
+envelope was produced by the holder of the release key. It is a
+development-machine key, not an independently witnessed third-party
+attestation, and it says nothing about whether the scientific claims in
+this package are correct. See `REMAINING_DEFECTS.md` and
 `RELEASE_CHANGE_MANIFEST.json`.
 
 ## 13. Honest summary

@@ -1,5 +1,12 @@
 # Learnability report — Campaign 3B positive control (Step 13)
 
+> **Superseded.** This is the report from the first execution, which ran
+> against a 68-row corpus before the governed safety suite and the
+> delayed-retention probes were added. It is retained as the
+> implementation-time record. The current, reproducible result is
+> `LEARNABILITY_TEST_REPORT.md` at the repository root; the corpus is
+> now 80 rows and the run is reproducible from it.
+
 Status: **diagnostic executed** (CPU, one seed, pinned
 `Qwen/Qwen2.5-0.5B-Instruct` revision `7ae55760…`). Readiness:
 **5 of 7 gates pass — NOT YET**. The campaign decision is **REFUSED**,

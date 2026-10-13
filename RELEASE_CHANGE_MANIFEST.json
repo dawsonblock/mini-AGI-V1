@@ -4,151 +4,206 @@
     "repair_report": "docs/security/V16_4_8_REPAIR_REPORT.md",
     "threat_model": "docs/security/WORKER_THREAT_MODEL.md"
   },
-  "base_version": "16.4.9",
-  "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.6/16.4.7 (repairs SEC-301..SEC-504, VAL-501 remain in effect)",
+  "base_version": "16.4.10",
+  "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.10 (SEC-901..906, VAL-901/902, REL-901 remain in effect; this manifest ADDS the Campaign 3B scientific repairs and removes no runtime control)",
   "evidence": {
-    "gate_status": "G1-G4 + G10 verified on real Linux boundary (containered systemd 252 + cgroup v2 + NsJail, uid 65534 worker); G5-G9 verified by tests/envelope",
-    "linux_boundary": "test_v1648_linux_nsjail.py 7/7 PASS + test_v1649_real_model_nsjail.py 2/2 PASS (real GPT2+LoRA load/infer/cancel/switch inside the jail); strict preflight qualified=true; net:LISTENER connect-denied; rlimit_as cap found and replaced by cgroup MemoryMax",
-    "nsjail_binary": "pinned commit 4ff54a6e0d5b65a0e1633d6e2fd1425ba6c882ce; sha256:a9408ab22219cb71e9e6d8ff571a594983d098df0acf1e4447494cfa0c1b3af8",
-    "python_tests": "1067 passed / 18 skipped (local macOS); 62 v16.4.10 + 50 isolation/G10 in privileged Linux container; QUALIFICATION: PASS"
+    "governed_safety": "ENFORCED on the executed run: 0 undefined mandatory categories; 2 violations per adapted arm (frozen model obeys an embedded override and discloses the protected canary \u2014 a baseline property, not an adaptation regression). Suite digest sha256:70bc2a29...",
+    "native_ctest": "28/28 PASS \u2014 macOS CPU build (QW3_ENABLE_CUDA=OFF), 0 failed, 0 skipped",
+    "positive_control": "EXECUTED, REFUSED. 6 of 7 readiness gates pass. Corpus digest sha256:fe12aec4..., plan digest sha256:4830f2a1.... L6 train 0.767, validation 0.444 vs frozen 0.222, hidden 0.167 vs frozen 0.417; L7-L5b = -0.500; NC train 0.067. Evidence: LEARNABILITY_TEST_REPORT.md",
+    "python_tests": "1183 passed / 18 skipped / 0 failed (macOS dev, Python 3.12.0, torch 2.10.0)",
+    "runtime_security_surface": "unchanged \u2014 git diff over authority.py, runtime_admission.py, trusted_launcher.py, execution_sandbox.py, runtime_closure3.py, artifact_closure.py, experiment_budget.py is empty",
+    "sealed_confirmation": "NOT RUN \u2014 no independently held sealed set or evaluator custody was available. The workflow executes end to end on synthetic fixtures (19 tests). No candidate is reported as confirmed."
   },
   "file_changes": [
     {
-      "change": "SEC-701 CapEff honesty, SEC-705 Darwin-gated seatbelt, _unprivileged_userns, policy_digest",
-      "path": "src-python/minagi/runtime/worker_isolation.py"
+      "change": "new: versioned prompt + output contract (SCI-301/303)",
+      "path": "src-python/minagi/v161/prompt_contract.py"
     },
     {
-      "change": "new: frozen minagi-isolation-profile-v1 contract, strict from_doc, with_runtime whitelist, resolve_mounts with denied_paths",
-      "path": "src-python/minagi/runtime/isolation_profile.py"
+      "change": "new: governed safety & retention suite (SCI-306)",
+      "path": "src-python/minagi/v161/safety_regression.py"
     },
     {
-      "change": "new: deterministic nsjail textproto generator + config_digest",
-      "path": "src-python/minagi/runtime/nsjail_config.py"
+      "change": "new: evaluator-sealed confirmation executor (SCI-307/308)",
+      "path": "scripts/validation/run_sealed_confirmation.py"
     },
     {
-      "change": "new: WorkerExecutor protocol, LaunchedWorker, TerminationReport, DevelopmentWorkerExecutor",
-      "path": "src-python/minagi/runtime/worker_executor.py"
+      "change": "OracleVerifiedReplayArm (L5b), matched L7 context (SCI-302)",
+      "path": "src-python/minagi/v161/arms.py"
     },
     {
-      "change": "new: restricted launch broker \u2014 digest validation, nonce replay refusal, workspace, exact systemd-run argv, cgroup resolution, verified teardown",
-      "path": "src-python/minagi/runtime/worker_launch_broker.py"
+      "change": "NOT_ESTIMABLE undefined metrics, family-aware analysis (SCI-305/309)",
+      "path": "src-python/minagi/v161/stats.py"
     },
     {
-      "change": "new: production executor binding profile digest + manifest/artifact digests to the launch",
-      "path": "src-python/minagi/runtime/nsjail_executor.py"
+      "change": "contract-rendered supervision + readiness measurements (SCI-301/310)",
+      "path": "src-python/minagi/platforms/cuda/peft_trainer.py"
     },
     {
-      "change": "new: real-enforcement probe (in-jail identity, namespaces, fs, net, detached child) + grader",
-      "path": "src-python/minagi/runtime/isolation_preflight.py"
+      "change": "generation/scoring through the contract, governed safety rollup",
+      "path": "scripts/run_campaign1.py"
     },
     {
-      "change": "launch/teardown delegated to the executor; digest binding forwarded; _teardown preserves synthetic-handle tests",
-      "path": "src-python/minagi/runtime/worker_backend.py"
+      "change": "independent governed gate recomputation (gate reasons 17 -> 19)",
+      "path": "scripts/validation/qualify_campaign1.py"
     },
     {
-      "change": "--worker-executor/--isolation-profile/--nsjail-*/--worker-state-root/--worker-user-manager; production requires nsjail, refuses insecure fallbacks",
-      "path": "src-python/minagi/runtime/service.py"
+      "change": "governed probes + delayed-retention probes in the corpus",
+      "path": "scripts/generate_positive_control.py"
     },
     {
-      "change": "documented as development-executor path only",
-      "path": "src-python/minagi/runtime/worker_launcher.py"
+      "change": "new: frozen output-contract calibration on development rows",
+      "path": "scripts/calibrate_generation.py"
     },
     {
-      "change": "new: frozen production isolation profile",
-      "path": "configs/isolation/linux-production-offline-v1.json"
+      "change": "new: Step 13 readiness gates over the diagnostic",
+      "path": "scripts/positive_control_report.py"
     },
     {
-      "change": "new: 42 regression tests (SEC-701/703/705, profile, config, broker, executor, gating, preflight)",
-      "path": "tests-python/runtime/test_v1648_executor_isolation.py"
+      "change": "adds --no-sign for explicitly unsigned development artifacts",
+      "path": "scripts/validation/reissue_release.py"
     },
     {
-      "change": "new: 7 Linux-gated real-boundary tests (G1-G4)",
-      "path": "tests-python/runtime/test_v1648_linux_nsjail.py"
+      "change": "new: preregistered diagnostic campaign (sealed holdout bound)",
+      "path": "configs/campaign3b_positive_control.yaml"
     },
     {
-      "change": "new: host_check.sh, build_nsjail.sh (pinned), run_nsjail_qualification.sh",
-      "path": "scripts/qualification/"
+      "change": "new: positive-control corpus (80 rows)",
+      "path": "configs/positive_control_tasks.jsonl"
     },
     {
-      "change": "new: repair report, threat model, nsjail config, host qualification, adversarial results, real-model lifecycle, remaining defects, issue register",
-      "path": "docs/security/"
+      "change": "new: token-level parity and boundary refusal",
+      "path": "tests-python/v161/test_campaign_prompt_parity.py"
     },
     {
-      "change": "qualification: as-spelled mount dsts, non-absolute dst refused, nonexistent runtime srcs skipped, covered same-permission child mounts dropped, parents first",
-      "path": "src-python/minagi/runtime/isolation_profile.py"
+      "change": "new: Unicode/empty/punctuation/truncation/multi-turn boundaries",
+      "path": "tests-python/v161/test_campaign_answer_boundaries.py"
     },
     {
-      "change": "qualification: cgroup v2 occupancy reads cgroup.events.populated (cgroup.procs fallback); python_path_entries normalized + actually mounted",
-      "path": "src-python/minagi/runtime/worker_launch_broker.py"
+      "change": "new: EOS stop and bounded generation",
+      "path": "tests-python/v161/test_campaign_eos_behavior.py"
     },
     {
-      "change": "qualification: probe hold window for live-cgroup verification; detached child reports /proc/self/cgroup",
-      "path": "src-python/minagi/runtime/isolation_preflight.py"
+      "change": "new: strict vs diagnostic scoring separation",
+      "path": "tests-python/v161/test_campaign_output_scoring.py"
     },
     {
-      "change": "load() passes admitted snapshot root via executor.launch(extra_ro) into the jail mount set",
-      "path": "src-python/minagi/runtime/worker_backend.py"
+      "change": "new: verified replay operates",
+      "path": "tests-python/v161/test_replay_nonempty.py"
     },
     {
-      "change": "launch() gains extra_ro kwarg; dev executor ignores it (host-readable by design)",
-      "path": "src-python/minagi/runtime/worker_executor.py"
+      "change": "new: provenance and out-of-split refusal",
+      "path": "tests-python/v161/test_replay_provenance.py"
     },
     {
-      "change": "extra_ro merged into broker-screened ro mounts",
-      "path": "src-python/minagi/runtime/nsjail_executor.py"
+      "change": "new: empty denominator is NOT_ESTIMABLE",
+      "path": "tests-python/v161/test_false_activation_undefined.py"
     },
     {
-      "change": "recorded: containered-Linux qualification PASS + defects found/fixed",
-      "path": "docs/security/LINUX_HOST_QUALIFICATION.md"
+      "change": "new: family-aware uncertainty",
+      "path": "tests-python/v161/test_family_cluster_statistics.py"
     },
     {
-      "change": "v16.4.9: SEC-801 cgroup.events strict occupancy; SEC-803 launch refusal without verified cgroup + _abort_launch; stderr log capture; checked stop/kill rc; atomic nonce O_EXCL; strict authority digests; workspace 0711 traversal",
-      "path": "src-python/minagi/runtime/worker_launch_broker.py"
+      "change": "new: positive control + receipt readiness measurements",
+      "path": "tests-python/v161/test_positive_control_learning.py"
     },
     {
-      "change": "v16.4.9: SEC-802 ancestor-mount denial (src containing denied path refused); memory_mb docstring corrected (cgroup MemoryMax, not rlimit_as)",
-      "path": "src-python/minagi/runtime/isolation_profile.py"
+      "change": "new: sealed confirmation on synthetic fixtures",
+      "path": "tests-python/v161/test_sealed_confirmation_execution.py"
     },
     {
-      "change": "v16.4.9: rlimit_as_type INF (virtual-AS cap wrongly starves mmap-based model runtimes; MemoryMax is the authority); TOKENIZERS_PARALLELISM et al env allowlist",
-      "path": "src-python/minagi/runtime/nsjail_config.py"
+      "change": "new: sealed-label denial and sealed-lane governed parity",
+      "path": "tests-python/v161/test_confirmation_access_denial.py"
     },
     {
-      "change": "v16.4.9: SEC-804 strict grading \u2014 every mandatory property requires measured evidence; net:LISTENER positive control",
-      "path": "src-python/minagi/runtime/isolation_preflight.py"
+      "change": "new: governed suite properties and gate",
+      "path": "tests-python/v161/test_safety_regression_suite.py"
     },
     {
-      "change": "v16.4.9: real budget digest bound; worker launches require manifest digest (no zero fallback)",
-      "path": "src-python/minagi/runtime/nsjail_executor.py"
+      "change": "new: end-to-end enforcement through the real qualifier",
+      "path": "tests-python/v161/test_governed_safety_enforcement.py"
     },
     {
-      "change": "v16.4.9: G10 real HF/PEFT lifecycle inside the jail (Linux-gated)",
-      "path": "tests-python/runtime/test_v1649_real_model_nsjail.py"
+      "change": "new: dependency-ordered root cause analysis",
+      "path": "CAMPAIGN3A_ROOT_CAUSE_ANALYSIS.md"
     },
     {
-      "change": "v16.4.9: SEC-801..805 regression tests; FakeSystemd cgroup.events; zombie-aware teardown waits",
-      "path": "tests-python/runtime/test_v1648_executor_isolation.py"
+      "change": "new: repair report",
+      "path": "CAMPAIGN3B_REPAIR_REPORT.md"
+    },
+    {
+      "change": "new: contract specification",
+      "path": "PROMPT_CONTRACT_SPEC.md"
+    },
+    {
+      "change": "new: replay validation",
+      "path": "REPLAY_BASELINE_VALIDATION.md"
+    },
+    {
+      "change": "new: executed diagnostic report",
+      "path": "LEARNABILITY_TEST_REPORT.md"
+    },
+    {
+      "change": "new: scoring and statistics report",
+      "path": "SCORING_AND_STATISTICS_REPORT.md"
+    },
+    {
+      "change": "new: governed safety report",
+      "path": "SAFETY_AND_RETENTION_REPORT.md"
+    },
+    {
+      "change": "new: confirmation protocol",
+      "path": "SEALED_CONFIRMATION_PROTOCOL.md"
+    },
+    {
+      "change": "new: runtime integration report",
+      "path": "RUNTIME_INTEGRATION_REPORT.md"
+    },
+    {
+      "change": "new: executed test results",
+      "path": "TEST_RESULTS.md"
+    },
+    {
+      "change": "new: remaining defects register",
+      "path": "REMAINING_DEFECTS.md"
     }
   ],
-  "release": "mini-AGI-V1-v16.4.10-Containment-and-Authority-Closure",
+  "release": "mini-AGI-V1-Campaign3B-Full-Scientific-Hardening",
   "remaining_defects": {
-    "ipc_transport": "systemd-run --pipe (not a dedicated unix socket) \u2014 recorded decision",
-    "bare_metal_qualification": "qualified in privileged Linux container; intended bare-metal/cloud host still owes its own run",
-    "gpu": "GPU/CUDA and production-scale models unqualified",
-    "seccomp": "nsjail default policy; kafel policy is deployment-specific future work"
+    "campaign3a_provenance": "rests on the manifests the 3A archive ships with; no independent attestation available",
+    "gpu": "GPU/CUDA tests NOT RUN on this host (no CUDA device)",
+    "lint": "15 pre-existing F401 findings in src-python/minagi/runtime/*, none in a file this work changed",
+    "linux_isolation": "18 environment-gated tests skipped honestly (NsJail/systemd/cgroup/uid-demotion/RLIMIT_AS); none counted as passing",
+    "reference": "REMAINING_DEFECTS.md",
+    "research_question": "unanswered \u2014 the executed diagnostic is REFUSED (fit gate unmet, cross-family transfer negative); single seed, 30 training examples",
+    "sealed_confirmation": "NOT RUN \u2014 no independent evaluator custody available",
+    "sealed_delayed_retention": "inherited from the qualified research record by explicit declaration, not re-measured on the sealed lane",
+    "signing": "envelope signed with the repository's existing release key; not an independently witnessed third-party attestation"
   },
   "repairs": {
-    "SEC-901": "cgroup_populated: strict key=value parser; only explicit 'populated 0' is empty, everything else is UNKNOWN; cgroup.procs fallback removed",
-    "SEC-902": "shared ContainmentState (RUNNING/EMPTY/REMOVED_VERIFIED/UNKNOWN) used by broker status, executor status and teardown; populated 1 overrides inactive unit/exited client; InvocationID-bound teardown prevents unit-name reuse",
-    "SEC-903": "worker ids w-<hex32> broker-generated via secrets; prepare() refuses caller-supplied ids; workspace creation descriptor-relative under pinned state root, stale dirs and symlink tricks refused",
-    "SEC-904": "validate_host: 'or os.geteuid()==0' removed; capability_preflight (CapEff/unprivileged userns) vs enforcement_qualification (real probe) separated",
-    "SEC-905": "AuthorizedLaunchRecord signed by runtime authority; broker independently verifies envelope, signer authorization, expiry, revocation epoch floor, exact backend-manifest/profile/budget bindings, resolver-backed approved records; signed nonce = atomic single-use reservation",
-    "SEC-906": "production startup runs real run_preflight through the executor and persists a host-bound qualification record (boot/kernel/nsjail digest/profile digest/result)",
-    "VAL-901": "mid-generation cancellation proven: cancel arrives during live decode inside the jail; metrics.cancelled + terminated worker",
-    "VAL-902": "signed A->B activation through supervisor+router+NsJail executor with per-launch authorization; rollback to A; cold restart with revoked B cannot restore"
+    "SCI-301": "shared prompt/tokenization contract; training_input_ids[:prompt_length] == inference_prompt_input_ids asserted per example; boundary merges refused instead of concatenating independently tokenized strings",
+    "SCI-302": "OracleVerifiedReplayArm (L5b): train-only, provenance-bound replay records; hidden/validation/holdout labels refused and never persisted; L5a preserved and reported INACTIVE when empty (Campaign 3A admitted zero traces across ten seeds)",
+    "SCI-303": "frozen answer-only output contract bound by digest into signed metrics and the training receipt; strict exact match primary; correct-first-line, answer-prefix, format validity, generation length and finish reason recorded as diagnostics only; max-token truncation detected explicitly",
+    "SCI-305": "false_activation_rate conditions on the baseline-correct population; an empty denominator returns rate=null with status NOT_ESTIMABLE and the qualifier refuses, instead of reporting 0.0 for an unmeasurable safety claim",
+    "SCI-306": "governed safety and retention regression suite: eight mandatory categories with allowlisted declarative predicates; a category with no scorable evidence is UNDEFINED and blocks; a single violation blocks (binary safety property); the literal-marker evaluator is retained and labelled a smoke test; the qualifier recomputes the rollup from persisted predictions rather than trusting worker-reported metrics",
+    "SCI-307": "sealed confirmation executor: freeze -> eligibility -> artifact verification against signed receipts -> load sealed rows -> real generation -> frozen scoring -> family-level uncertainty, retention and safety -> signed QUALIFIED/REFUSED -> append-only ledger. A dataset digest alone is never treated as a completed confirmation",
+    "SCI-308": "research-side denial of sealed confirmation data: MINAGI_RESEARCH_WORKER refuses load_sealed before any filesystem access; a sealed set under the research storage is refused; tests prove the record and ledger carry no sealed content",
+    "SCI-309": "family-aware uncertainty: cluster bootstrap over task families, leave-one-family-out sensitivity, worst-family degradation and positive-family counts, so repeated seeds over the same templates are not treated as independent evidence",
+    "SCI-310": "training receipt readiness measurements: supervised-token counts, adapter weight delta (L2 and relative) with changed-parameter count, train seconds and peak accelerator bytes \u2014 a run whose weights never moved is now visible as a numerical failure rather than a learning result",
+    "SCI-311": "delayed-retention probes generated for the positive-control corpus: without them the delayed-retention metric was never computed and the campaign could never qualify"
   },
-  "schema": "mini-agi-v16.4.10-change-manifest-v1",
-  "source_archive": "dist-v1646/mini-AGI-V1-v16.4.7-Runtime-Isolation-Enforcement.zip",
-  "summary": "Independent-audit corrective release: SEC-901 strict cgroup.events parsing (fail-closed, no procs fallback), SEC-902 shared ContainmentState evaluator (populated 1 can never certify empty), SEC-903 opaque broker-generated worker ids (w-hex32) + traversal-safe root-constrained workspaces, SEC-904 root-UID privilege fallback removed, SEC-905 signed AuthorizedLaunchRecord independently bound to exact manifest/profile/budget/artifact/nonces at the broker, SEC-906 mandatory real preflight probe at production startup. VAL-901 mid-generation cancellation and VAL-902 signed A->B activation/rollback/cold-recovery/revocation qualified inside the jail.",
-  "version": "16.4.10"
+  "schema": "mini-agi-v16.6-campaign3b-change-manifest-v1",
+  "signing_status": {
+    "attestation_public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
+    "attestation_reconciled": "manifest_sha256 + reissued_utc updated and a reissue_history entry appended (56 entries), matching the repository's established envelope-reissue workflow",
+    "key": "~/.config/miniagi/release-ed25519.pem (release machine, outside the repository)",
+    "limitation": "The signature establishes that this envelope was produced by the holder of the release key. It is a development-machine key, not an independently witnessed third-party attestation, and it says nothing about the correctness of the scientific claims in this package.",
+    "manifest_sha256": "76356dd02e6ebc21e836ca16adf889d962ff0a1c24fb714e069dc9084a0baa7c",
+    "public_key_pem_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
+    "status": "signed-development-envelope",
+    "verified": "the bundled RELEASE_PUBLIC_KEY.pem hash equals the attestation's pinned public_key_sha256, and the reissue reported the same fingerprint \u2014 this is the repository's existing release authority, not a new key"
+  },
+  "source_archive": "mini-AGI-V1-Campaign3B-Full-Scientific-Hardening.zip",
+  "summary": "Campaign 3B scientific repair: shared versioned prompt/tokenization contract proving training/inference token parity; frozen answer-only output contract with strict exact match primary and format/termination diagnostics recorded separately; oracle-verified training replay (L5b) as an operational non-neural baseline with L5a preserved as the honest negative; family-aware statistics with undefined metrics reported as NOT_ESTIMABLE rather than zero; a governed eight-category safety and retention suite with fail-closed promotion gating; and an evaluator-sealed confirmation executor that generates and scores real predictions under frozen rules. The executed positive control is REFUSED (6 of 7 readiness gates pass): the pipeline is mechanically correct and LoRA learns within-family, but it does not fit to the 95% bar and degrades the held-out families. No improvement claim is made.",
+  "version": "16.4.10+campaign3b"
 }

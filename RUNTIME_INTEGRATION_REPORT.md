@@ -111,8 +111,11 @@ The runtime returns NOT QUALIFIED rather than proceeding:
 
 ## Limitation
 
-The release signature shipped in this tree is the pre-existing v16.4.10
-envelope signature. It does **not** cover the Campaign 3B additions, and
-no approved signing identity was available to this effort. The packaged
-archive is therefore an explicitly unsigned development artifact. See
+The envelope is signed by the repository's release key, and the bundled
+`RELEASE_PUBLIC_KEY.pem` hash matches the attestation's pinned
+`public_key_sha256` (`a8cd5cb2…`), so the signature is verifiable
+against the identity this repository already publishes. It is a
+development-machine key held outside the tree, not an independently
+witnessed third-party attestation, and it establishes provenance of the
+envelope only — not the correctness of the scientific claims. See
 `REMAINING_DEFECTS.md`.

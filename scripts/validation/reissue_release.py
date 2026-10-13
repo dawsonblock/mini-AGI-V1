@@ -58,6 +58,13 @@ def main() -> int:
                          "release — a fresh key cannot satisfy the pinned "
                          "release fingerprint and must not silently become "
                          "release authority.")
+    ap.add_argument("--no-sign", action="store_true",
+                    help="regenerate the manifest inventory WITHOUT signing. "
+                         "Use when no approved signing identity is available: "
+                         "the package is then an explicitly unsigned "
+                         "development artifact, verifiable by SHA-256 "
+                         "inventory only. Never re-signs, never touches "
+                         "RELEASE_SIGNATURE.bin / RELEASE_PUBLIC_KEY.pem.")
     args = ap.parse_args()
 
     from cryptography.hazmat.primitives import serialization
@@ -74,6 +81,24 @@ def main() -> int:
     doc = {"schema_version": 1, "hash_algorithm": "sha256",
            "release": args.release, "files": files}
     body = canonical(doc)
+
+    if args.no_sign:
+        # Unsigned development artifact: the inventory is regenerated, the
+        # signature envelope is deliberately left untouched. No key is
+        # loaded, none is minted, and no authority is claimed.
+        import hashlib
+        print(json.dumps({
+            "files": len(files),
+            "manifest_sha256": hashlib.sha256(body).hexdigest(),
+            "signing_status": "unsigned-development-artifact",
+            "dry_run": args.dry_run,
+        }, indent=2, sort_keys=True))
+        if not args.dry_run:
+            (ROOT / "SOURCE_MANIFEST.json").write_text(
+                json.dumps(doc, indent=2, sort_keys=True) + "\n")
+            print("wrote SOURCE_MANIFEST.json (unsigned; signature "
+                  "envelope untouched)")
+        return 0
 
     key_path = Path(args.key)
     if key_path.is_file():

@@ -18,22 +18,28 @@ rules). Real confirmation is **NOT RUN**.
 calling it independent would be theatre: the same operator would hold
 both the candidate and the labels.
 
-## RD-2 — The release is unsigned
+## RD-2 — The envelope is signed, but not independently attested
 
-No approved signing identity was available. The packaged archive is an
-**explicitly unsigned development artifact**. The
-`RELEASE_SIGNATURE.bin` / `RELEASE_PUBLIC_KEY.pem` in this tree are the
-pre-existing v16.4.10 envelope pair and do **not** cover the Campaign 3B
-additions.
+The envelope was reissued with the repository's existing release key and
+`RELEASE_ATTESTATION.json` was reconciled. The bundled
+`RELEASE_PUBLIC_KEY.pem` hashes to `a8cd5cb2…`, matching the
+attestation's pinned `public_key_sha256`, and the reissue reported the
+same fingerprint — so the signature verifies against the identity this
+repository already publishes, and no new key was minted.
 
-**Why no key was generated.** Producing a fresh key would imply it is
-the previously authorized authority. It is not, and no such claim is
-made.
+**The limitation that remains:** the key lives on a development machine
+(`~/.config/miniagi/release-ed25519.pem`) and is not an independently
+witnessed third-party attestation. The signature establishes that the
+envelope was produced by the holder of that key; it says nothing about
+whether the scientific claims are correct.
 
-**Consequence.** `RELEASE_CHANGE_MANIFEST.json` records
-`signing_status: unsigned-development-artifact`. Integrity is provided
-by SHA-256 inventories, which detect corruption and substitution but do
-not establish who produced the archive.
+**Note on a mid-flight correction.** An earlier draft of this release
+reported the envelope as unsigned, on the mistaken belief that the
+attestation's `public_key_sha256` (`a8cd5cb2…`) disagreed with the
+bundled key. It does not: `public_key_sha256` is the hash of the **PEM
+file bytes**, and that is exactly what the bundled key hashes to. The
+earlier claim was wrong and has been corrected in every document that
+carried it.
 
 ## RD-3 — The research question is unanswered
 
@@ -110,13 +116,18 @@ safety and does not cover adversarial cases outside its probes.
 ## RD-10 — Diagnostic reproducibility after the corpus change
 
 The Step 13 diagnostic was first executed against a 68-row corpus whose
-security block held four smoke lures. The governed suite replaced those
-with ten probes plus the retained lures (78 rows), so that first run is
-not byte-reproducible from the current corpus.
+security block held four smoke lures and whose retention block had no
+delayed probes. The governed suite replaced the lures with ten probes
+plus the retained lures, and the delayed probes were added — so that
+first run is not reproducible from the current corpus, and it could
+never have qualified (the delayed-retention gate would always have
+refused).
 
-**Resolution:** the diagnostic is re-run against the committed corpus,
-and `LEARNABILITY_TEST_REPORT.md` reports the re-run's numbers. The
-sealed holdout digest is unchanged
+**Resolved.** The diagnostic was re-run against the committed 80-row
+corpus and `LEARNABILITY_TEST_REPORT.md` reports the re-run's numbers
+(corpus digest `sha256:fe12aec4…`, plan digest `sha256:4830f2a1…`). The
+superseded run is retained in `docs/science/LEARNABILITY_REPORT.md` and
+marked as such. The sealed holdout digest is unchanged
 (`sha256:11ea116394fdc1cfffb7d63153dec44c5a8802f344f65a425d7037c9094dcf63`)
 and the generated campaign config is byte-identical, so the sealed
 binding was not disturbed by the corpus change.
@@ -132,7 +143,7 @@ does not assume a missing document.
 | id | class | status |
 |---|---|---|
 | RD-1 | confirmation not executed | **NOT RUN** |
-| RD-2 | unsigned artifact | **limitation declared** |
+| RD-2 | signed envelope, not independently attested | **limitation declared** |
 | RD-3 | research question unanswered | **negative result reported** |
 | RD-4 | single-seed diagnostic | limitation |
 | RD-5 | sealed delayed retention inherited | documented |
