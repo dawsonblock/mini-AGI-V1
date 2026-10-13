@@ -167,7 +167,22 @@ map to `arms.py`. Verified against the real evidence: the qualifier now
 completes the full chain and returns REFUSED with
 `runner_decision_agreement: true`.
 
-## RD-13 — OPEN: the adapter's effect size is unmeasured
+## RD-13 — PARTIALLY RESOLVED: fit experiment run, ablations still open
+
+Step 4 has now been executed (`CAMPAIGN3B1_FIT_EXPERIMENT.md`): four
+runs with matched negative controls. Findings — fixed-rank LoRA reaches
+1.000 subset fit at both 2 and 6 families; at **2** families it
+generalizes *positively* (hidden 0.417 → 0.583, control 0.000, so the
+gain is learning); at **6** families it shows **no measurable benefit
+over the shuffled-label control** (0.250 vs 0.250).
+
+**Still open:** the 2-family and 6-family runs differ in example count
+(10 vs 30) and steps (300 vs 600), so breadth is not isolated from data
+volume. A 6-family run at 300 steps, or a 2-family run at 600, is the
+obvious next ablation and it is cheap. One seed, one rank, one learning
+rate, 12 hidden rows — direction well-supported, magnitudes provisional.
+
+## RD-13b — ORIGINAL TEXT: the adapter's effect size is unmeasured
 
 The Campaign 3B.1 interference diagnosis
 (`CAMPAIGN3B1_INTERFERENCE_DIAGNOSIS.md`) establishes the *mechanism*
@@ -206,5 +221,5 @@ this is a reporting asymmetry rather than a correctness gap.
 | RD-10 | first diagnostic not reproducible | re-run |
 | RD-11 | unused defect id | cosmetic |
 | RD-12 | qualifier could not qualify L5b/L7 | **CLOSED** |
-| RD-13 | adapter effect size unmeasured | open (3B.1 steps 4-7) |
+| RD-13 | adapter effect size unmeasured | **step 4 executed**; breadth-vs-volume ablation open |
 | RD-14 | runner reports a single violation count | open (reporting) |
