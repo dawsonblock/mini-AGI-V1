@@ -26,7 +26,7 @@ LoRA); L7/L5b are reported when their artifacts exist. Gates (Step 13):
 Usage:
   python3 scripts/positive_control_report.py \
       --storage <campaign storage> --campaign-id campaign3b-positive-control \
-      --root <repo> [--corpus configs/positive_control_tasks.jsonl] \
+      [--corpus configs/positive_control_tasks.jsonl] \
       --output POSITIVE_CONTROL_REPORT.json
 """
 from __future__ import annotations
@@ -218,14 +218,15 @@ def main() -> int:
         metrics["accuracy"][arm_id] = acc
         if arm_id == "L6":
             metrics["stability"] = receipt_stability(adir)
-            # gate 7: reload the adapter and re-generate a sample
-            del model
+            # gate 7: reload the adapter and re-generate a sample; the
+            # reload must reproduce the in-memory adapter's outputs
             model2, _ = evaluate_adapter(arm_id, str(adir))
             for row in groups["train"][:args.sample]:
                 a = generate(model, str(row["prompt"]))
                 b = generate(model2, str(row["prompt"]))
                 metrics["reload"]["checked"] += 1
                 metrics["reload"]["mismatches"] += int(a != b)
+            del model2
         del model
 
     passed, checks = readiness_gates(metrics)
