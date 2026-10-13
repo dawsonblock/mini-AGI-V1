@@ -124,11 +124,12 @@ class Custody:
             "schema": TOOL.SUBMISSION_SCHEMA, "campaign_id": CID,
             "plan_digest": plan_digest_override or self.plan.digest,
             "model_id": "synthetic-model", "model_revision": "rev1",
+            "model_digest": self.plan.model_digest,
             "tokenizer_digest": self.plan.tokenizer_digest,
             "prompt_contract_digest": digest("contract"),
+            "max_input_tokens": 0,
             "output_contract": {"instruction": "", "max_new_tokens": 8,
-                                "stop_on_eos": True},
-            "adapters": {"L6": "unused", "NC": "unused"}}
+                                "stop_on_eos": True}}
         self.signers = {}
         from egai.common.crypto import Ed25519Signer
         for role in ("evaluation", "qualification"):
@@ -253,3 +254,72 @@ def test_confirmation_requires_evaluator_keys(tmp_path):
     (c.storage / ".keys" / "qualification.pem").unlink()
     with pytest.raises(TOOL.ConfirmationRefused, match="unavailable"):
         TOOL._load_signers(c.storage)
+
+
+def test_submission_requires_model_identity(tmp_path):
+    c = Custody(tmp_path)
+    c.submission.pop("model_digest")
+    with pytest.raises(TOOL.ConfirmationRefused, match="model_digest"):
+        c.run(_executor())
+
+
+def _bind_candidate_artifacts(c):
+    """Create per-seed artifact dirs and research cell receipts binding
+    their digests, exactly as the runner's evidence would."""
+    from minagi.v161.runtime_closure3 import sha256_path
+    for seed in SEEDS:
+        run_dir = c.cdir / f"seed-{seed}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        for arm in ARMS:
+            adapter_dir = c.storage / "adapters" / CID / arm / f"seed-{seed}"
+            state_dir = (c.storage / "arms" / CID / f"seed-{seed}" /
+                         ("L5" if arm in ("L5", "L5a") else arm))
+            if arm in ("L6", "NC"):
+                adapter_dir.mkdir(parents=True, exist_ok=True)
+                (adapter_dir / "adapter_model.safetensors").write_bytes(
+                    b"adapter-weights")
+            if arm in ("L5", "L5b"):
+                state_dir.mkdir(parents=True, exist_ok=True)
+                (state_dir / "REPLAY.json").write_text("{}")
+            adapter_d = (sha256_path(str(adapter_dir))
+                         if arm in ("L6", "NC") else TOOL.ZERO_DIGEST)
+            state_d = (sha256_path(str(state_dir))
+                       if arm in ("L5", "L5b") else TOOL.ZERO_DIGEST)
+            (run_dir / f"{arm}.json").write_text(json.dumps(
+                {"receipt": {"adapter_digest": adapter_d,
+                             "state_digest": state_d}}))
+
+
+def test_candidate_artifacts_are_verified_against_receipts(tmp_path):
+    """Step 21: every artifact the confirmation loads must match the
+    digest the research receipt bound; one substituted byte refuses."""
+    c = Custody(tmp_path)
+    _bind_candidate_artifacts(c)
+    report = TOOL.verify_candidate_artifacts(c.storage, CID, c.plan)
+    assert report["checked"] >= 3  # L5 state + L6 and NC adapters
+    tampered = (c.storage / "adapters" / CID / "L6" / "seed-0" /
+                "adapter_model.safetensors")
+    tampered.write_bytes(b"x")
+    with pytest.raises(TOOL.ConfirmationRefused, match="artifact verification"):
+        TOOL.verify_candidate_artifacts(c.storage, CID, c.plan)
+
+
+def test_replay_arm_context_is_reconstructed(tmp_path):
+    """The confirmation reproduces the research-time replay context,
+    not the bare model."""
+    from minagi.v161.arms import OracleVerifiedReplayArm
+    c = Custody(tmp_path)
+    sdir = c.storage / "arms" / CID / "seed-0" / "L5b"
+    arm = OracleVerifiedReplayArm(k=2)
+    arm.build_state(sdir, [{"id": "t-1", "family": "f", "split": "train",
+                            "prompt": "SEALED-PROMPT-0",
+                            "expected": "SEALED-ANSWER-0"}],
+                    split_digest=digest("split"))
+    arm.persist()
+    rebuilt = TOOL.build_arm(c.storage, CID, c.plan, 0, "L5b")
+    augmented = rebuilt.augment("SEALED-PROMPT-0", "f")
+    assert augmented != "SEALED-PROMPT-0"
+    assert "SEALED-ANSWER-0" in augmented
+    # arms without their own context stay bare
+    assert TOOL.build_arm(c.storage, CID, c.plan, 0, "L1") is None
+    assert TOOL.build_arm(c.storage, CID, c.plan, 0, "L6") is None

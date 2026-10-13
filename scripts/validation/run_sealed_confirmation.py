@@ -23,10 +23,13 @@ Usage (evaluator host):
       [--ledger <path>]
 
 The submission binds what is being confirmed: campaign, plan digest,
-model/tokenizer identity, the frozen output contract and per-arm
-adapter paths. The tool refuses an incomplete or non-qualified research
-record, a sealed set whose manifest digest does not match the plan's
-bound holdout, a sealed design without the required blocks and family
+model/tokenizer identity, the frozen output contract and the input
+budget. Candidate artifacts (per-seed adapters and arm states) are
+derived from the storage and verified against the signed research
+receipts — a submission cannot point the evaluator at unverified bytes.
+The tool refuses an incomplete or non-qualified research record, a
+sealed set whose manifest digest does not match the plan's bound
+holdout, a sealed design without the required blocks and family
 coverage, and any candidate identity that disagrees with the signed
 plan.
 """
@@ -49,6 +52,7 @@ from minagi.v161.dataset_manifest import (DatasetMember,  # noqa: E402
 from minagi.v161.evaluators import (containment_match,  # noqa: E402
                                     exact_match, retention_score,
                                     security_regression)
+from minagi.v161.runtime_closure3 import sha256_path  # noqa: E402
 from minagi.v161.stats import (cluster_bootstrap_ci,  # noqa: E402
                                family_delta_analysis)
 
@@ -56,10 +60,10 @@ CONFIRMATION_SCHEMA = "mini-agi-v16.6-confirmation-record-v1"
 SUBMISSION_SCHEMA = "mini-agi-v16.6-confirmation-submission-v1"
 LEDGER_SCHEMA = "mini-agi-v16.6-confirmation-ledger-v1"
 
+ZERO_DIGEST = "sha256:" + "0" * 64
+
 #: The preregistered primary comparisons, strongest first.
 PRIMARY_COMPARISONS = (("L7", "L5b"), ("L6", "L5"))
-
-BLOCKS = ("hidden", "retention", "security")
 
 
 class ConfirmationRefused(Exception):
@@ -88,30 +92,39 @@ def load_sealed(path: Path) -> list[dict]:
     return rows
 
 
+SUBMISSION_FIELDS = ("campaign_id", "plan_digest", "model_id",
+                     "model_revision", "model_digest", "tokenizer_digest",
+                     "prompt_contract_digest", "max_input_tokens",
+                     "output_contract")
+
+
+def require_submission_fields(doc: dict) -> dict:
+    for key in SUBMISSION_FIELDS:
+        if doc.get(key) is None:
+            raise ConfirmationRefused(f"submission missing {key!r}")
+    return doc
+
+
 def load_submission(path: Path) -> dict:
     doc = json.loads(path.read_text())
     if doc.get("schema") != SUBMISSION_SCHEMA:
         raise ConfirmationRefused(
             f"submission schema must be {SUBMISSION_SCHEMA!r}")
-    for key in ("campaign_id", "plan_digest", "model_id", "model_revision",
-                "tokenizer_digest", "prompt_contract_digest",
-                "output_contract", "adapters"):
-        if not doc.get(key):
-            raise ConfirmationRefused(f"submission missing {key!r}")
-    return doc
+    return require_submission_fields(doc)
 
 
 def submission_identity(submission: dict) -> str:
     return digest({k: submission.get(k) for k in
                    ("schema", "campaign_id", "plan_digest", "model_id",
-                    "model_revision", "tokenizer_digest",
-                    "prompt_contract_digest", "output_contract",
-                    "adapters")})
+                    "model_revision", "model_digest", "tokenizer_digest",
+                    "prompt_contract_digest", "max_input_tokens",
+                    "output_contract")})
 
 
 def verify_eligibility(storage: Path, plan, submission: dict) -> dict:
     """Freeze step: the research record must be complete and qualified,
     and the submission must agree with the signed plan."""
+    require_submission_fields(submission)
     rec_path = storage / "QUALIFICATION_RECORD.json"
     if not rec_path.is_file():
         raise ConfirmationRefused(
@@ -132,6 +145,9 @@ def verify_eligibility(storage: Path, plan, submission: dict) -> dict:
                                                  None):
         raise ConfirmationRefused(
             "submission tokenizer identity disagrees with the plan")
+    if submission["model_digest"] != getattr(plan, "model_digest", None):
+        raise ConfirmationRefused(
+            "submission model identity disagrees with the plan")
     return {"research_record_sha256": sha256_bytes(rec_path.read_bytes()),
             "research_decision": value.get("decision"),
             "research_plan_digest": value.get("campaign_plan_digest")}
@@ -166,6 +182,92 @@ def verify_sealed(plan, rows, submission: dict) -> dict:
     return {"manifest_digest": got,
             "blocks": {k: len(v) for k, v in sorted(blocks.items())},
             "hidden_families": families}
+
+
+def verify_candidate_artifacts(storage: Path, campaign_id: str,
+                               plan) -> dict:
+    """Step 21 verify-candidate: every artifact the confirmation will
+    load must match the digests the research receipts bound.
+
+    Parametric arms: the adapter directory digest must equal the seed
+    receipt's ``adapter_digest``. Stateful arms: the arm-state directory
+    digest must equal the receipt's ``state_digest``. One substituted
+    byte refuses the whole confirmation before any generation runs.
+    """
+    adapters_root = storage / "adapters" / campaign_id
+    arms_root = storage / "arms" / campaign_id
+    checked, problems = [], []
+    for seed in plan.seeds:
+        run_dir = storage / "campaigns" / campaign_id / f"seed-{seed}"
+        for arm_id in plan.arms:
+            cell = run_dir / f"{arm_id}.json"
+            if not cell.is_file():
+                problems.append(f"seed-{seed}/{arm_id}: no research cell")
+                continue
+            rec = json.loads(cell.read_text()).get("receipt") or {}
+            dir_name = "L5" if arm_id in ("L5", "L5a") else arm_id
+            for kind, path, bound in (
+                    ("adapter", adapters_root / arm_id / f"seed-{seed}",
+                     rec.get("adapter_digest") or ZERO_DIGEST),
+                    ("state", arms_root / f"seed-{seed}" / dir_name,
+                     rec.get("state_digest") or ZERO_DIGEST)):
+                if bound == ZERO_DIGEST:
+                    continue
+                if not path.exists():
+                    problems.append(
+                        f"seed-{seed}/{arm_id}: {kind} dir missing at {path}")
+                    continue
+                got = sha256_path(str(path))
+                if got != bound:
+                    problems.append(
+                        f"seed-{seed}/{arm_id}: {kind} digest {got} != "
+                        f"receipt's {bound}")
+                else:
+                    checked.append({"seed": seed, "arm": arm_id,
+                                    "kind": kind, "digest": got})
+    if problems:
+        raise ConfirmationRefused(
+            "candidate artifact verification failed: "
+            + "; ".join(problems[:3]))
+    return {"checked": len(checked), "artifacts": checked}
+
+
+def build_arm(storage: Path, campaign_id: str, plan, seed: int, arm_id: str):
+    """Reconstruct an arm's prompt augmentation from its persisted
+    state, so the confirmation reproduces the research-time context
+    (a replay/retrieval arm is not the bare model)."""
+    from minagi.v161.arms import (ARMS, GroundedReplayArm,  # noqa: E402
+                                  LexicalIndex, OracleVerifiedReplayArm)
+    arms_root = storage / "arms" / campaign_id / f"seed-{seed}"
+    if arm_id == "L1" or arm_id in ("L6", "L7", "NC"):
+        return None
+    if arm_id in ("L5", "L5a"):
+        doc = json.loads((arms_root / "L5" / "REPLAY.json").read_text())
+        arm = GroundedReplayArm(k=int(doc.get("k", 2)))
+        arm.traces = list(doc.get("traces") or [])
+        arm.index = LexicalIndex(arm.traces) if arm.traces else None
+        return arm
+    if arm_id == "L5b":
+        doc = json.loads((arms_root / "L5b" / "REPLAY.json").read_text())
+        arm = OracleVerifiedReplayArm(
+            k=int(doc.get("k", 2)),
+            max_block_chars=int(doc.get("max_block_chars", 2000)))
+        arm.entries = list(doc.get("entries") or [])
+        arm.split_digest = str(doc.get("split_digest", ""))
+        arm.verifier_digest = str(doc.get("verifier_digest", ""))
+        arm.index = LexicalIndex(arm.entries) if arm.entries else None
+        return arm
+    if arm_id in ("L2", "L3", "L4"):
+        import tempfile
+        rows = [json.loads(line) for line in
+                (ROOT / str(plan.dataset_path)).read_text().splitlines()
+                if line.strip()]
+        train = [r for r in rows if str(r.get("split")) == "train"]
+        arm = ARMS[arm_id]()
+        with tempfile.TemporaryDirectory() as td:
+            arm.build_state(Path(td), train)
+        return arm
+    return None
 
 
 def primary_arms(plan_arms) -> tuple[str, str]:
@@ -276,15 +378,19 @@ def run_confirmation(*, storage: Path, plan, submission, sealed_rows,
                      execute_arm, signers: dict,
                      retention_scorer: str = "retention_score",
                      bootstrap_resamples: int = 2000,
-                     ci_alpha: float = 0.05) -> dict:
+                     ci_alpha: float = 0.05,
+                     verify_artifacts=None) -> dict:
     """The whole evaluator-side flow with an injected executor.
 
     ``execute_arm(seed, arm_id, rows) -> {task_id: output}`` runs one
     arm for one seed; the CLI supplies the model-backed implementation,
-    tests supply deterministic stubs.
+    tests supply deterministic stubs. ``verify_artifacts`` (optional)
+    runs the step-21 candidate verification before any execution and
+    its result is recorded in the signed record.
     """
     eligibility = verify_eligibility(storage, plan, submission)
     sealed = verify_sealed(plan, sealed_rows, submission)
+    artifacts = verify_artifacts() if verify_artifacts is not None else None
     arms = tuple(str(a) for a in plan.arms)
     outputs_by_seed = [(seed, {a: execute_arm(seed, a, sealed_rows)
                                for a in arms}) for seed in plan.seeds]
@@ -299,6 +405,7 @@ def run_confirmation(*, storage: Path, plan, submission, sealed_rows,
             "submission_digest": submission_identity(submission),
             "eligibility": eligibility,
             "sealed": sealed,
+            "artifacts": artifacts,
             "arms": list(arms),
             "seeds": list(plan.seeds),
             "scores": scores,
@@ -371,9 +478,13 @@ def _load_signers(storage: Path) -> dict:
     return signers
 
 
-def _model_executor(submission: dict, protocol):
-    """The real execution path: pinned model + per-arm adapters, greedy
-    decoding under the submission's frozen output contract."""
+def _model_executor(storage: Path, campaign_id: str, plan, submission: dict,
+                    protocol):
+    """The real execution path: pinned model + verified per-seed
+    adapters, replay/retrieval context reconstructed from persisted
+    state, greedy decoding under the submission's frozen output
+    contract. The loaded model's identity is re-verified against the
+    signed plan before any generation."""
     import torch
     from minagi.platforms.cuda.hf_runtime import (HFLoadSpec,
                                                   load_causal_lm,
@@ -389,22 +500,45 @@ def _model_executor(submission: dict, protocol):
     spec = HFLoadSpec(submission["model_id"], submission["model_revision"],
                       "float32", "none", False)
     tokenizer = load_tokenizer(spec)
-    contract = build_prompt_contract(tokenizer, output_contract)
+    contract = build_prompt_contract(
+        tokenizer, output_contract,
+        max_input_tokens=int(submission["max_input_tokens"]))
     if contract.digest != submission["prompt_contract_digest"]:
         raise ConfirmationRefused(
             "rebuilt prompt contract digest disagrees with the submission "
             "— the frozen surface cannot be reproduced")
 
+    def _identity(model) -> str:
+        cfg = getattr(model, "config", None)
+        cfgdoc = cfg.to_dict() if cfg is not None and hasattr(cfg, "to_dict") \
+            else {}
+        commit = str(getattr(cfg, "_commit_hash", "") or spec.revision)
+        return digest({"model_id": spec.model_id,
+                       "resolved_revision": commit, "config": cfgdoc})
+
     def execute_arm(seed, arm_id, rows):
-        adapter = submission["adapters"].get(arm_id)
-        model = load_causal_lm(spec, adapter_path=adapter,
+        adapter_dir = None
+        if arm_id in ("L6", "L7", "NC"):
+            adapter_dir = str(storage / "adapters" / campaign_id / arm_id /
+                              f"seed-{seed}")
+        model = load_causal_lm(spec, adapter_path=adapter_dir,
                                purpose="research")
+        if _identity(model) != getattr(plan, "model_digest", None):
+            raise ConfirmationRefused(
+                f"loaded model identity disagrees with the signed plan "
+                f"(seed-{seed}/{arm_id})")
+        context_arm = build_arm(
+            storage, campaign_id, plan, seed,
+            "L5b" if arm_id == "L7" else arm_id)
         out = {}
         with torch.inference_mode():
             device = next(model.parameters()).device
             for row in rows:
-                ids = encode_generation(tokenizer, str(row["prompt"]),
-                                        contract)
+                prompt = str(row["prompt"])
+                if context_arm is not None:
+                    prompt = context_arm.augment(
+                        prompt, str(row.get("family", "")))
+                ids = encode_generation(tokenizer, prompt, contract)
                 batch = {"input_ids": torch.tensor([ids], device=device),
                          "attention_mask": torch.ones(
                              (1, len(ids)), dtype=torch.long, device=device)}
@@ -441,15 +575,16 @@ def main() -> int:
         from minagi.v161.experiment_protocol import ExperimentProtocolV1
         protocol = ExperimentProtocolV1(**json.loads(
             proto_path.read_text())["value"])
-    execute_arm = _model_executor(submission, protocol)
+    execute_arm = _model_executor(storage, args.campaign_id, plan,
+                                  submission, protocol)
 
-    record = run_confirmation(storage=storage, plan=plan,
-                              submission=submission,
-                              sealed_rows=sealed_rows,
-                              execute_arm=execute_arm, signers=signers,
-                              retention_scorer=str(
-                                  getattr(protocol, "retention_scorer",
-                                          "retention_score")))
+    record = run_confirmation(
+        storage=storage, plan=plan, submission=submission,
+        sealed_rows=sealed_rows, execute_arm=execute_arm, signers=signers,
+        retention_scorer=str(getattr(protocol, "retention_scorer",
+                                     "retention_score")),
+        verify_artifacts=lambda: verify_candidate_artifacts(
+            storage, args.campaign_id, plan))
     out_path = Path(args.output)
     out_path.write_text(json.dumps(record, indent=2, sort_keys=True))
     ledger = Path(args.ledger) if args.ledger else \

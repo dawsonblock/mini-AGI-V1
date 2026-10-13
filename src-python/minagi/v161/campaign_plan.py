@@ -98,7 +98,10 @@ class ColabCampaignPlanV162:
         if unknown:
             raise ValueError(f"unknown arms: {unknown}")
         for required in ("L1", "L5", "L6", "NC"):
-            if required not in arms:
+            # L5a is the v16.6 spelling of the self-verified replay arm
+            # and satisfies the L5 requirement.
+            if required not in arms and not (required == "L5"
+                                             and "L5a" in arms):
                 raise ValueError(f"required arm {required} missing from plan")
         if self.negative_control_arm not in arms:
             raise ValueError("negative control arm not in plan arms")
