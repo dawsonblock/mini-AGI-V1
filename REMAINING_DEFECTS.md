@@ -18,6 +18,17 @@ rules). Real confirmation is **NOT RUN**.
 calling it independent would be theatre: the same operator would hold
 both the candidate and the labels.
 
+**Custody control, corrected (reviewer finding).** The
+`MINAGI_RESEARCH_WORKER` marker is an environment variable: a research
+worker that controls its own environment can unset it, and an
+in-process caller can simply not pass it. It is a **cooperative guard,
+not isolation**, and earlier drafts described it too generously. The
+enforceable control is now filesystem permission — the sealed set must
+be owner-only and owned by the evaluating uid — and
+`sealed_custody_report` records which controls were actually enforced
+in the signed record, stating plainly that a run without enforced
+permissions did **not** establish independent isolation.
+
 ## RD-2 — The envelope is signed, but not independently attested
 
 The envelope was reissued with the repository's existing release key and
@@ -138,6 +149,47 @@ The Campaign 3B register runs SCI-301, SCI-302, SCI-303, SCI-305.
 SCI-304 was never assigned to a defect. Cosmetic; recorded so a reader
 does not assume a missing document.
 
+## RD-12 — CLOSED: the qualifier could not qualify an L5b/L7 campaign
+
+The qualifier resolved an arm's non-parametric state directory with a
+rule that hardcoded `L5` as the only per-seed arm. L5b and L7 carry
+per-seed replay state, so the Campaign 3B **primary** comparison could
+never be qualified — every attempt returned `INVALID_EVIDENCE` with
+"arm state dir missing".
+
+Invisible until the qualifier was actually run against executed
+evidence: the runner's own summary was unaffected, so nothing else
+caught it. Found by the independent qualification run of 2026-10-13.
+
+**Fixed** with an explicit arm → state-directory map that also records
+that L7 shares L5b's directory by design, plus a sync test pinning the
+map to `arms.py`. Verified against the real evidence: the qualifier now
+completes the full chain and returns REFUSED with
+`runner_decision_agreement: true`.
+
+## RD-13 — OPEN: the adapter's effect size is unmeasured
+
+The Campaign 3B.1 interference diagnosis
+(`CAMPAIGN3B1_INTERFERENCE_DIAGNOSIS.md`) establishes the *mechanism*
+with every context control verified identical, but the *effect size*
+rests on 4 held-out families × 3 rows × 1 seed. The −0.500 is 6 rows;
+the strongest single signal (`pc-len` collapsing 3/3 → 0/3 while the
+shuffled-label control retains 3/3) is 3 rows.
+
+**Consequence.** Treat the mechanism as a well-supported hypothesis and
+the magnitude as unknown until steps 4-7 run at a larger scale. Step 4
+in particular — proving the adapter can fit a small verified subset to
+≥95% — must precede any transfer claim, because the current run never
+cleared that bar and the "generalization failure" may partly be an
+under-fitting failure.
+
+## RD-14 — OPEN: safety failures are not yet separated by cause in the runner
+
+The qualifier now reports absolute versus adaptation-induced safety
+failures (`violation_classes`). The runner's provisional summary still
+reports a single violation count. The qualifier is the authority, so
+this is a reporting asymmetry rather than a correctness gap.
+
 ## Summary
 
 | id | class | status |
@@ -153,3 +205,6 @@ does not assume a missing document.
 | RD-9 | safety suite is a probe set | scope limit |
 | RD-10 | first diagnostic not reproducible | re-run |
 | RD-11 | unused defect id | cosmetic |
+| RD-12 | qualifier could not qualify L5b/L7 | **CLOSED** |
+| RD-13 | adapter effect size unmeasured | open (3B.1 steps 4-7) |
+| RD-14 | runner reports a single violation count | open (reporting) |
