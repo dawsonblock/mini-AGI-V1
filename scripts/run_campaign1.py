@@ -53,6 +53,10 @@ from minagi.platforms.colab.environment import probe_environment
 from minagi.platforms.colab.storage import ColabStorage
 from minagi.platforms.cuda.hf_runtime import HFLoadSpec, load_tokenizer, load_causal_lm
 from minagi.platforms.cuda.peft_trainer import LoraTrainSpec, train_lora
+from minagi.v161.prompt_contract import (build_prompt_contract,
+                                         generation_diagnostics,
+                                         output_contract_from_config,
+                                         render_generation_input)
 from minagi.v161.arms import (ARMS, ARM_IDS, ZERO_DIGEST, dir_size_bytes,
                               shuffled_label_examples,
                               shuffled_label_texts)
@@ -95,43 +99,83 @@ def member(row):
                          str(row.get("source", "local")), str(row.get("generator", "manual")))
 
 
-def generate(model, tokenizer, prompt, max_new_tokens):
+def generate(model, tokenizer, prompt, max_new_tokens, contract=None):
+    """Generate one answer under the shared prompt contract (SCI-301).
+
+    Every inference path — baseline, arm-augmented, adapter, replay
+    practice and security — renders through `render_generation_input`,
+    the same function training uses to build its prompt prefix. Returns
+    (text, generated_tokens, eos_hit); eos_hit is the precise
+    observation that greedy decoding terminated on the tokenizer's
+    end-of-turn token.
+    """
     import torch
     with torch.inference_mode():
         device = next(model.parameters()).device
-        batch = tokenizer(prompt, return_tensors="pt")
-        batch = {k: v.to(device) for k, v in batch.items()}
+        contract = contract or build_prompt_contract(tokenizer)
+        input_ids = render_generation_input(tokenizer, prompt, contract)
+        batch = {"input_ids": torch.tensor([input_ids], device=device),
+                 "attention_mask": torch.ones((1, len(input_ids)),
+                                              dtype=torch.long,
+                                              device=device)}
         out = model.generate(**batch, max_new_tokens=max_new_tokens,
                              do_sample=False, pad_token_id=tokenizer.eos_token_id)
-        new_tokens = int(out.shape[1] - batch["input_ids"].shape[1])
-        text = tokenizer.decode(out[0, batch["input_ids"].shape[1]:],
+        new_tokens = int(out.shape[1] - len(input_ids))
+        text = tokenizer.decode(out[0, len(input_ids):],
                                 skip_special_tokens=True).strip()
-        return text, new_tokens
+        eos_id = getattr(tokenizer, "eos_token_id", None)
+        eos_hit = bool(eos_id is not None and new_tokens > 0
+                       and int(out[0, -1].item()) == int(eos_id))
+        return text, new_tokens, eos_hit
+
+
+def _aggregate_diagnostics(diags):
+    """Mean rates over one arm's per-row generation diagnostics."""
+    keys = ("strict_exact_match", "correct_first_line",
+            "correct_answer_prefix", "valid_answer_format",
+            "eos_termination", "max_token_truncation")
+    n = len(diags)
+    if not n:
+        return {"n": 0}
+    out = {"n": n}
+    for k in keys:
+        out[k] = sum(float(d.get(k, 0.0)) for d in diags) / n
+    out["generated_tokens"] = sum(int(d.get("generated_tokens", 0))
+                                  for d in diags)
+    return out
 
 
 def evaluate(model, tokenizer, rows, max_new_tokens, scorer, arm=None,
-             block=None):
+             block=None, contract=None):
     """Evaluate rows; when `block` is given, also return canonical v3
     prediction records (input digest + output + status, no expected
     answers — scoring joins against the corpus at qualification time).
+    Every row also yields contract diagnostics (SCI-303), recorded
+    alongside — never instead of — the strict score.
     """
-    scores, outputs, tokens, preds = [], [], 0, []
+    scores, outputs, tokens, preds, diags = [], [], 0, [], []
     t0 = time.time()
     for row in rows:
         prompt = str(row["prompt"])
         if arm is not None:
             prompt = arm.augment(prompt, str(row.get("family", "")))
-        pred, nt = generate(model, tokenizer, prompt, max_new_tokens)
+        pred, nt, eos_hit = generate(model, tokenizer, prompt,
+                                     max_new_tokens, contract)
         tokens += nt
         score = float(score_row(row, pred, scorer))
         scores.append(score)
         outputs.append({"id": row["id"], "prediction": pred,
                         "expected": row["expected"], "score": score})
+        diags.append({"id": str(row["id"]), "block": block or "eval",
+                      **generation_diagnostics(
+                          str(row.get("expected", "")), pred,
+                          generated_tokens=nt,
+                          max_new_tokens=max_new_tokens, eos_hit=eos_hit)})
         if block is not None:
             preds.append(prediction_record(
                 str(row["id"]), block, prompt, pred, nt, max_new_tokens))
     mean = sum(scores) / len(scores) if scores else 0.0
-    return mean, outputs, tokens, time.time() - t0, preds
+    return mean, outputs, tokens, time.time() - t0, preds, diags
 
 
 def model_identity(model, spec):
@@ -228,20 +272,26 @@ def physical_identity_digests(spec: HFLoadSpec):
 
 
 def security_eval(model, tokenizer, rows, max_new_tokens, security_fn,
-                  arm=None):
-    outputs, count, tokens, preds = [], 0, 0, []
+                  arm=None, contract=None):
+    outputs, count, tokens, preds, diags = [], 0, 0, [], []
     for row in rows:
         prompt = str(row["prompt"])
         if arm is not None:
             prompt = arm.augment(prompt, str(row.get("family", "")))
-        pred, nt = generate(model, tokenizer, prompt, max_new_tokens)
+        pred, nt, eos_hit = generate(model, tokenizer, prompt,
+                                     max_new_tokens, contract)
         tokens += nt
         flag = int(score_row(row, pred, security_fn))
         count += flag
         outputs.append({"id": row["id"], "prediction": pred, "flagged": flag})
+        diags.append({"id": str(row["id"]), "block": "security",
+                      **generation_diagnostics(
+                          str(row.get("expected", "")), pred,
+                          generated_tokens=nt,
+                          max_new_tokens=max_new_tokens, eos_hit=eos_hit)})
         preds.append(prediction_record(
             str(row["id"]), "security", prompt, pred, nt, max_new_tokens))
-    return count, outputs, tokens, preds
+    return count, outputs, tokens, preds, diags
 
 
 def free_model(model):
@@ -666,6 +716,12 @@ def main() -> int:
             stale.unlink()
         random.seed(seed)
         tokenizer = load_tokenizer(spec)
+        # SCI-301: one rendering contract for training, baseline,
+        # adapter, replay and security inference. The config's
+        # output_contract freezes the answer surface; absent it, the
+        # historical default (no instruction) is preserved.
+        prompt_contract = build_prompt_contract(
+            tokenizer, output_contract_from_config(cfg, max_new))
         model = load_causal_lm(spec, purpose="research")
         if isinstance(plan, ColabCampaignPlanV164):
             model_digest, tok_digest = plan.model_digest, plan.tokenizer_digest
@@ -675,8 +731,15 @@ def main() -> int:
         seed_receipts = {}
 
         def emit(arm_id, adapter_digest, state_digest, metrics, outputs,
-                 extra=None, out_name=None, preds=None):
+                 extra=None, out_name=None, preds=None, diags=None):
             name = out_name or arm_id
+            if diags:
+                # Per-row contract diagnostics (SCI-303) — additive
+                # evidence, enumerated by COMMIT_MANIFEST like every
+                # other published file.
+                (run_dir / f"DIAGNOSTICS-{name}.jsonl").write_text(
+                    "\n".join(json.dumps(d, sort_keys=True)
+                              for d in diags) + "\n")
             if v3:
                 # Evidence receipt v3: predictions inside the signed
                 # payload — write canonical records, build the bundle,
@@ -723,24 +786,31 @@ def main() -> int:
 
         def run_eval_block(arm, arm_id):
             v3 = isinstance(plan, ColabCampaignPlanV165)
-            h_em, h_out, h_tok, h_sec, h_preds = evaluate(
+            h_em, h_out, h_tok, h_sec, h_preds, h_diags = evaluate(
                 model, tokenizer, hidden, max_new, score_fn, arm,
-                "hidden" if v3 else None)
-            ret, ret_out, r_tok, r_sec, r_preds = evaluate(
+                "hidden" if v3 else None, prompt_contract)
+            ret, ret_out, r_tok, r_sec, r_preds, r_diags = evaluate(
                 model, tokenizer, retention_eval_rows,
                 max_new, retention_fn, arm,
-                "retention" if v3 else None)
-            sec_n, sec_out, s_tok, s_preds = security_eval(
-                model, tokenizer, security_rows, max_new, security_fn, arm)
+                "retention" if v3 else None, prompt_contract)
+            sec_n, sec_out, s_tok, s_preds, s_diags = security_eval(
+                model, tokenizer, security_rows, max_new, security_fn, arm,
+                prompt_contract)
+            diags = h_diags + r_diags + s_diags
             metrics = {"hidden_exact_match": h_em, "retention": ret,
                        "security_regressions": sec_n,
                        "eval_seconds": round(h_sec + r_sec, 3),
                        "generated_tokens": h_tok + r_tok + s_tok,
+                       "prompt_contract_digest": prompt_contract.digest,
+                       "output_contract_digest":
+                           prompt_contract.output_contract_digest,
+                       "generation_diagnostics":
+                           _aggregate_diagnostics(diags),
                        "arm_state_bytes": dir_size_bytes(arm_state_dirs[arm_id])
                        if arm_id in arm_state_dirs else 0}
             preds = (h_preds + r_preds + s_preds) if v3 else None
             return metrics, {"hidden": h_out, "retention": ret_out,
-                             "security": sec_out}, preds
+                             "security": sec_out}, preds, diags
 
         # ---- non-parametric arms on one base instance ----
         for arm_id in plan.arms:
@@ -758,7 +828,9 @@ def main() -> int:
                 arm.build_state(sdir, train)
                 # labeled practice phase: replay only verified train traces
                 for prow in practice_rows:
-                    pred, _ = generate(model, tokenizer, str(prow["prompt"]), max_new)
+                    pred, _, _ = generate(model, tokenizer,
+                                          str(prow["prompt"]), max_new,
+                                          prompt_contract)
                     arm.add_trace(prow, pred, float(score_fn(pred, str(prow["expected"]))))
                 arm.persist()
                 arm_state_dirs["L5"] = sdir
@@ -766,11 +838,12 @@ def main() -> int:
             else:
                 arm = arm_instances[arm_id]
                 sd = sha256_path(arm_state_dirs[arm_id])
-            metrics, outputs, preds = run_eval_block(arm, arm_id)
+            metrics, outputs, preds, diags = run_eval_block(arm, arm_id)
             metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
             metrics["train_seconds"] = 0.0
             metrics["trainable_params"] = 0
-            emit(arm_id, ZERO_DIGEST, sd, metrics, outputs, preds=preds)
+            emit(arm_id, ZERO_DIGEST, sd, metrics, outputs, preds=preds,
+                 diags=diags)
 
         free_model(model)
 
@@ -798,7 +871,8 @@ def main() -> int:
             model, train_receipt = train_lora(model=model, tokenizer=tokenizer,
                                               texts=(None if v3 else texts),
                                               examples=examples,
-                                              output_dir=adir, spec=ts)
+                                              output_dir=adir, spec=ts,
+                                              prompt_contract=prompt_contract)
             adapter_digest = sha256_path(adir)
             adapter_dirs[arm_id] = adir
             train_secs = round(
@@ -810,13 +884,13 @@ def main() -> int:
             free_model(model)
             model = load_causal_lm(spec, adapter_path=str(adir),
                                    purpose="research")
-            metrics, outputs, preds = run_eval_block(None, arm_id)
+            metrics, outputs, preds, diags = run_eval_block(None, arm_id)
             metrics["arm_state_bytes"] = dir_size_bytes(adir)
             metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
             metrics["train_seconds"] = train_secs
             metrics["trainable_params"] = trainable
             emit(arm_id, adapter_digest, ZERO_DIGEST, metrics, outputs,
-                 {"training": train_receipt}, preds=preds)
+                 {"training": train_receipt}, preds=preds, diags=diags)
             free_model(model)
 
         # ---- v164 delayed-retention probes (persistence check) ----
@@ -829,28 +903,28 @@ def main() -> int:
             v3 = isinstance(plan, ColabCampaignPlanV165)
             dblock = "retention_delayed" if v3 else None
             model = load_causal_lm(spec, purpose="research")
-            d1, d1_out, _, _, d1_preds = evaluate(
+            d1, d1_out, _, _, d1_preds, d1_diags = evaluate(
                 model, tokenizer, delayed_rows, max_new, retention_fn,
-                block=dblock)
+                block=dblock, contract=prompt_contract)
             free_model(model)
             delayed_metrics["L1"] = d1
             emit("L1", ZERO_DIGEST, ZERO_DIGEST,
                  {"retention_delayed": d1}, {"retention_delayed": d1_out},
                  {"probe_kind": "delayed"}, out_name="L1_delayed",
-                 preds=d1_preds)
+                 preds=d1_preds, diags=d1_diags)
             if "L6" in adapter_dirs:
                 model = load_causal_lm(spec,
                                        adapter_path=str(adapter_dirs["L6"]),
                                        purpose="research")
-                d6, d6_out, _, _, d6_preds = evaluate(
+                d6, d6_out, _, _, d6_preds, d6_diags = evaluate(
                     model, tokenizer, delayed_rows, max_new, retention_fn,
-                    block=dblock)
+                    block=dblock, contract=prompt_contract)
                 free_model(model)
                 delayed_metrics["L6"] = d6
                 emit("L6", sha256_path(adapter_dirs["L6"]), ZERO_DIGEST,
                      {"retention_delayed": d6}, {"retention_delayed": d6_out},
                      {"probe_kind": "delayed"}, out_name="L6_delayed",
-                     preds=d6_preds)
+                     preds=d6_preds, diags=d6_diags)
 
         # ---- seed summary ----
         def _reported_metrics(arm):
