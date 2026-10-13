@@ -89,7 +89,7 @@ identical — they get different subsets right and land on the same total
 |---|---|
 | part **under-fitting** | 6 families at fit 0.767 → hidden 0.167; at fit 1.000 → 0.250 |
 | part **supervision-independent damage** | at 6 families, correct (0.250) = shuffled (0.250) — the loss is the adapter's presence, not what it learned |
-| part **genuine capacity limit** | at 2 families the same rank and schedule generalizes *positively* (+0.583 over control) |
+| part **genuine capacity limit** | at 2 families the same rank and schedule generalizes *positively* (+0.583 over control), and duration is irrelevant (300 = 600 steps) |
 
 So the Campaign 3B "adapter destroys held-out families" is real, but the
 mechanism is not over-fitting to labels and not wrong supervision. At
@@ -123,12 +123,15 @@ approach out:
   destroys *everything*, breaking all 5 frozen-correct rows. That is
   consistent with a model confidently applying a wrong mapping, but it
   is one run.
-- **Breadth is isolated from training duration but not from example
-  count.** The 2×2 above holds steps constant across breadth, so
-  duration is ruled out. 2 families still means 10 examples against 30,
-  so "breadth" here is "breadth and volume together"; separating them
-  needs a 2-family run with the 6-family example count (repeating the
-  two families' examples) — cheap, and the last confound standing.
+- **Example count is not a confound, and the reason is checkable.** The
+  trainer samples training indices *with replacement*
+  (`peft_trainer.py`: `rnd.randrange(len(encoded))` per microbatch), so
+  300 steps draw 300 examples from the pool regardless of pool size. The
+  2-family run therefore gives each of its 10 examples ~30 repetitions;
+  the 6-family run gives each of its 30 examples ~10. The 6-family
+  condition is the one with *fewer* repetitions per example, so it
+  cannot be the "more data" condition. The variable that differs is the
+  number of distinct transformations the adapter must represent.
 - **The Campaign 3B primary verdict is unchanged.** Neural adaptation
   still loses to the verified-replay baseline on the held-out families
   (L7 − L5b = −0.500). This experiment explains *why*, and shows the
@@ -138,19 +141,16 @@ approach out:
 ## Reproduce
 
 ```sh
-python3 scripts/positive_control_fit.py \
-    --families pc-upper,pc-rev --steps 300 \
-    --output run1.json
-python3 scripts/positive_control_fit.py \
-    --families pc-upper,pc-rev --steps 300 --shuffle-labels \
-    --output nc1.json
-python3 scripts/positive_control_fit.py \
-    --families pc-rev,pc-upper,pc-rot1,pc-sort,pc-swap,pc-delim \
-    --steps 600 --output run2.json
-python3 scripts/positive_control_fit.py \
-    --families pc-rev,pc-upper,pc-rot1,pc-sort,pc-swap,pc-delim \
-    --steps 600 --shuffle-labels --output nc2.json
+F2=pc-upper,pc-rev
+F6=pc-rev,pc-upper,pc-rot1,pc-sort,pc-swap,pc-delim
+
+python3 scripts/positive_control_fit.py --families $F2 --steps 300 --output run1.json
+python3 scripts/positive_control_fit.py --families $F2 --steps 600 --output run4.json
+python3 scripts/positive_control_fit.py --families $F2 --steps 300 --shuffle-labels --output nc1.json
+python3 scripts/positive_control_fit.py --families $F6 --steps 300 --output run3.json
+python3 scripts/positive_control_fit.py --families $F6 --steps 600 --output run2.json
+python3 scripts/positive_control_fit.py --families $F6 --steps 600 --shuffle-labels --output nc2.json
 ```
 
-All four exit 0 only when the fit gate passes; `nc1`/`nc2` exit 2, which
-is the expected negative-control outcome.
+The script exits 0 only when the fit gate passes; `nc1`/`nc2` exit 2,
+which is the expected negative-control outcome.
