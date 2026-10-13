@@ -87,7 +87,7 @@
     "qualification": "macOS suite green; Linux boundary run pending",
     "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
   },
-  "manifest_sha256": "1bc8331edeacd498cb8d77c4c049f373bfb5864c35167e2b65cecbaf2e0bb421",
+  "manifest_sha256": "3f5a27c9163a593c48b6956e1ed55fb09dad0ded3e9a66dfde890fd8bf299c3f",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "1067 passed, 18 skipped, 0 failed (macOS); container: 62/62 v16.4.10 + 50/50 executor-isolation + 2/2 G10",
@@ -403,9 +403,14 @@
       "manifest_sha256": "1bc8331edeacd498cb8d77c4c049f373bfb5864c35167e2b65cecbaf2e0bb421",
       "reason": "Campaign 3B.1: interference diagnosis, qualifier L5b/L7 repair, enforceable custody control, violation classification",
       "utc": "2026-10-13T08:41:49Z"
+    },
+    {
+      "manifest_sha256": "3f5a27c9163a593c48b6956e1ed55fb09dad0ded3e9a66dfde890fd8bf299c3f",
+      "reason": "Campaign 3B.1 Step 4: fit experiment + breadth-vs-steps ablation",
+      "utc": "2026-10-13T09:30:25Z"
     }
   ],
-  "reissued_utc": "2026-10-13T08:41:49Z",
+  "reissued_utc": "2026-10-13T09:30:25Z",
   "reissues": [
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
