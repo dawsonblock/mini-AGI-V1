@@ -67,6 +67,49 @@ def cluster_bootstrap_ci(samples, clusters, resamples: int, alpha: float,
             "rng_seed": int(rng_seed)}
 
 
+def family_delta_analysis(pairs, families, *, arm_scores=None) -> dict:
+    """Per-family paired deltas (3B Step 15).
+
+    pairs[i] pairs with families[i] (the row's task family). Reports
+    the per-family mean delta, the fraction of families with positive
+    improvement, the worst family and leave-one-family-out means —
+    repeated rows within a family are one cluster, never independent
+    evidence. When ``arm_scores`` is supplied (the adapted arm's
+    per-row strict scores), per-family strict accuracy is reported too.
+    """
+    if len(pairs) != len(families):
+        raise ValueError("pairs and families must align")
+    if arm_scores is not None and len(arm_scores) != len(pairs):
+        raise ValueError("arm_scores must align with pairs")
+    by_fam: dict = {}
+    acc_fam: dict = {}
+    for i, (p, f) in enumerate(zip(pairs, families)):
+        by_fam.setdefault(str(f), []).append(float(p))
+        if arm_scores is not None:
+            acc_fam.setdefault(str(f), []).append(float(arm_scores[i]))
+    if not by_fam:
+        return {"n_families": 0}
+    fam_mean = {f: sum(v) / len(v) for f, v in by_fam.items()}
+    positive = [f for f, m in fam_mean.items() if m > 0]
+    loo = {}
+    for f in sorted(fam_mean):
+        rest = [m for g, m in fam_mean.items() if g != f]
+        loo[f] = (sum(rest) / len(rest)) if rest else None
+    worst = min(fam_mean, key=fam_mean.get)
+    out = {"n_families": len(fam_mean),
+           "family_mean_delta": {f: fam_mean[f] for f in sorted(fam_mean)},
+           "family_row_counts": {f: len(v) for f, v in sorted(by_fam.items())},
+           "families_positive": len(positive),
+           "fraction_families_positive": len(positive) / len(fam_mean),
+           "worst_family": worst,
+           "worst_family_delta": fam_mean[worst],
+           "leave_one_family_out_mean": loo}
+    if arm_scores is not None:
+        out["arm_strict_accuracy_by_family"] = {
+            f: sum(v) / len(v) for f, v in sorted(acc_fam.items())}
+    return out
+
+
 def false_activation_rate(base_outputs: dict, arm_outputs: dict,
                           golds: dict, scorer) -> dict:
     """Rows where adaptation fired in error — conditioned on the

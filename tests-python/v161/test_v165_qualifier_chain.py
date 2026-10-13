@@ -402,6 +402,11 @@ def test_v166_clean_matrix_still_qualifies(tmp_path):
     assert proc.returncode == 0, proc.stderr
     doc = json.loads(out.read_text())
     assert _decision(doc) == "QUALIFIED"
+    # family-aware analysis is reported (3B Step 15)
+    fam = doc["value"]["delta_ft_neural_stats"]["family_analysis"]
+    assert fam["n_families"] == 1
+    assert fam["worst_family_delta"] == 0.5
+    assert fam["arm_strict_accuracy_by_family"]["fam-hid"] == 1.0
 
 
 def test_tampered_prediction_fails_closed(tmp_path):

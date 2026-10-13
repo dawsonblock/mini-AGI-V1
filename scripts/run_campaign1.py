@@ -1062,6 +1062,18 @@ def main() -> int:
         arm_hidden[ADAPTER_REPLAY_ID] - arm_hidden[VERIFIED_REPLAY_ID]
         if ADAPTER_REPLAY_ID in arm_hidden
         and VERIFIED_REPLAY_ID in arm_hidden else None)
+
+    # Descriptive cost per correct result (worker-reported; never a
+    # qualification input): generated tokens and wall+train seconds per
+    # correct hidden answer, per arm.
+    cost_per_correct = {}
+    for a in plan.arms:
+        acc = float(arm_hidden.get(a, 0.0))
+        toks = arm_mean(a, "generated_tokens")
+        secs = arm_mean(a, "train_seconds") + arm_mean(a, "wall_seconds")
+        cost_per_correct[a] = {
+            "generated_tokens_per_correct": (toks / acc) if acc > 0 else None,
+            "seconds_per_correct": (secs / acc) if acc > 0 else None}
     nc_ft = ft.get("NC", 0.0)
     nc_violation = nc_ft > plan.negative_control_max_ft
 
@@ -1219,6 +1231,7 @@ def main() -> int:
                "forward_transfer_vs_L1": ft,
                "delta_ft_neural_L6_minus_L5": delta_neural,
                "delta_ft_neural_L7_minus_L5b": delta_adapter_replay,
+               "cost_per_correct": cost_per_correct,
                "negative_control_ft": nc_ft,
                "negative_control_violation": nc_violation,
                "decision": decision,

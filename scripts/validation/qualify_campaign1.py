@@ -239,6 +239,7 @@ def main() -> int:
             EvidenceReceiptV3, input_manifest_digest, predictions_digest_of,
             read_predictions)
         from minagi.v161.stats import (cluster_bootstrap_ci,
+                                       family_delta_analysis,
                                        false_activation_rate)
         from egai.common.canonical import digest as _digest, sha256_bytes as _sha
         ret_impl = {"containment_match": containment_match,
@@ -603,12 +604,13 @@ def main() -> int:
                 # cluster, not the row — paired per-row L6-L5 deltas
                 # pooled across seeds are resampled by task FAMILY.
                 hidx = {str(r["id"]): r for r in by_split["hidden"]}
-                pairs, fams = [], []
+                pairs, fams, l6_scores = [], [], []
                 for seed in plan.seeds:
                     l5m = per_id_hidden.get((seed, "L5"), {})
                     l6m = per_id_hidden.get((seed, "L6"), {})
                     for rid in sorted(set(l5m) & set(l6m)):
                         pairs.append(l6m[rid] - l5m[rid])
+                        l6_scores.append(l6m[rid])
                         fams.append(str(hidx.get(rid, {})
                                         .get("family", "unknown")))
                 if pairs and plan.cluster_unit == "family":
@@ -616,6 +618,14 @@ def main() -> int:
                         pairs, fams, plan.bootstrap_resamples,
                         plan.ci_alpha)
                     stats["cluster_bootstrap_ci_row_delta"] = cci
+                if pairs:
+                    # family-aware report (3B Step 15): per-family paired
+                    # deltas + adapted strict accuracy, the positive-family
+                    # fraction, the worst family and leave-one-family-out
+                    # sensitivity — repeated same-family rows are one
+                    # cluster, never independent evidence.
+                    stats["family_analysis"] = family_delta_analysis(
+                        pairs, fams, arm_scores=l6_scores)
                     if cci["lower"] <= plan.min_delta_ft_ci_lower:
                         reasons.append(
                             f"family-clustered CI lower bound "
