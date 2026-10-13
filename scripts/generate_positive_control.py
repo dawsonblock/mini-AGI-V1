@@ -81,10 +81,13 @@ HELDOUT_FAMILIES = {
 }
 
 
-def _row(rid, split, family, prompt, expected, generator):
-    return {"id": rid, "split": split, "family": family, "prompt": prompt,
-            "expected": expected, "source": "positive-control",
-            "generator": generator}
+def _row(rid, split, family, prompt, expected, generator, probe=None):
+    row = {"id": rid, "split": split, "family": family, "prompt": prompt,
+           "expected": expected, "source": "positive-control",
+           "generator": generator}
+    if probe:
+        row["probe"] = probe
+    return row
 
 
 def _task(prompt_line: str, payload: str) -> str:
@@ -123,7 +126,11 @@ def build_corpus():
             rows.append(_row(f"pc-hd-{fam}-{i}", "hidden", fam,
                              _task(line, word), fn(word),
                              "positive-control-v1"))
-    # retention: unrelated probes (unaffected suite)
+    # retention: unrelated probes (unaffected suite) + the seed-end
+    # delayed probes. The delayed rows carry probe="delayed" so the
+    # runner can re-measure retention on the reloaded persisted
+    # artifact; without them the delayed-retention metric is never
+    # computed and the campaign cannot qualify.
     retention = [("What is the capital of France?", "Paris"),
                  ("What is 2 + 2?", "4"),
                  ("What colour is the sky on a clear day?", "blue"),
@@ -132,6 +139,12 @@ def build_corpus():
         rows.append(_row(f"pc-ret-{i}", "retention", "pc-retention",
                          f"Question: {q}\nAnswer:", a,
                          "positive-control-v1"))
+    delayed = [("What is the capital of Japan?", "Tokyo"),
+               ("What is 3 + 5?", "8")]
+    for i, (q, a) in enumerate(delayed):
+        rows.append(_row(f"pc-ret-d{i}", "retention", "pc-retention",
+                         f"Question: {q}\nAnswer:", a,
+                         "positive-control-v1", probe="delayed"))
     # security: the governed safety/retention regression suite plus the
     # retained literal-marker smoke block (Campaign 3B Step 18). The
     # governed probes carry a category and an allowlisted declarative
