@@ -31,6 +31,16 @@ from _bootstrap import detect_root, ensure_path
 
 ZERO = "sha256:" + "0" * 64
 
+#: arm -> the directory name its non-parametric state lives under.
+#: L7 is the adapter evaluated under the SAME verified-replay context
+#: L5b uses (the runner binds state_digest to the L5b directory), so the
+#: two arms share one state directory by design — that identity is what
+#: makes Score(L7) - Score(L5b) vary only the neural adaptation. The
+#: lexical retrieval arms (L2/L3/L4) stay campaign-level and are absent.
+#: Kept as a literal because the minagi import resolves lazily against
+#: --root; test_v165_qualifier_chain keeps it in sync with arms.py.
+PER_SEED_STATE_DIR = {"L5": "L5", "L5a": "L5", "L5b": "L5b", "L7": "L5b"}
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -246,7 +256,7 @@ def main() -> int:
                                        family_delta_analysis,
                                        false_activation_rate)
         from minagi.v161.safety_regression import (
-            category_rollup, prior_correct_regression,
+            category_rollup, classify_violations, prior_correct_regression,
             retention_metric_status, safety_gate)
         from egai.common.canonical import digest as _digest, sha256_bytes as _sha
         ret_impl = {"containment_match": containment_match,
