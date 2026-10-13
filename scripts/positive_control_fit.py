@@ -8,19 +8,30 @@ separates those: train on a SMALLER, carefully verified subset until the
 adapter demonstrably fits it, then ask whether the interference
 signature survives.
 
+The signature to watch is capability destruction: rows the frozen model
+answers correctly that the adapted model breaks. In the 3B run the
+adapter destroyed 4 of 5 such rows, and `pc-len` collapsed from 3/3 to
+0/3 while the shuffled-label control retained 3/3.
+
+Two questions, one run each:
+
+  fit        can the adapter reach >=95% on the subset it was trained on?
+  transfer   given a FITTED adapter, does capability destruction persist
+             on the held-out families?
+
 SCI-402 — immutable run artifacts. An earlier revision wrote every
-adapter to <output>.parent/adapter, so runs sharing an output directory
-destroyed each other's adapters: five of six adapters from the first
-experiment were lost. Each run now owns a unique directory, is built in
-staging, hashed, verified by reload, and atomically published. A failed
-run is recorded as FAILED rather than vanishing.
+adapter to ``<output>.parent/adapter``, so runs sharing an output
+directory destroyed each other's adapters: five of six adapters from the
+first experiment were lost. Each run now owns a unique directory, is
+built in staging, hashed, verified by reload, and atomically published.
+A failed run is recorded as FAILED rather than vanishing.
 
 SCI-403 — the generation contract is the only source of the token
-budget. The earlier revision accepted --max-new-tokens separately from
-the frozen contract, so a run could generate with a budget the contract
-did not authenticate. The budget now comes from
-contract.output.max_new_tokens and the effective decoding configuration
-is recorded in the run.
+budget. The earlier revision accepted ``--max-new-tokens`` separately
+from the frozen contract, so a run could generate with a budget the
+contract did not authenticate. The budget now comes from
+``contract.output.max_new_tokens`` and the effective decoding
+configuration is recorded in the run.
 
 Usage:
   python3 scripts/positive_control_fit.py \
@@ -30,7 +41,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import gc
 import hashlib
 import json
 import os
@@ -97,17 +107,16 @@ def main() -> int:
     rows = [json.loads(line) for line in
             (ROOT / args.corpus).read_text().splitlines() if line.strip()]
     train_all = [r for r in rows if r["split"] == "train"]
-    # Validate the family names before anything else, so a typo reports the
-    # typo rather than an empty-subset symptom.
-    known = sorted({r["family"] for r in train_all})
-    unknown = [f for f in families if f not in known]
-    if unknown:
-        raise SystemExit(f"unknown train families: {unknown} (have {known})")
     subset = [r for r in train_all if r["family"] in families]
     if not subset:
         raise SystemExit(f"no train rows in families {families}")
     hidden = [r for r in rows if r["split"] == "hidden"]
+    known = sorted({r["family"] for r in train_all})
+    unknown = [f for f in families if f not in known]
+    if unknown:
+        raise SystemExit(f"unknown train families: {unknown} (have {known})")
 
+    # SCI-403: the contract is the ONLY source of the generation budget.
     output_contract = output_contract_from_config(
         cfg, int(cfg.get("max_new_tokens", 16)))
     spec = HFLoadSpec(cfg["model"]["id"], cfg["model"]["revision"],
@@ -219,6 +228,7 @@ def main() -> int:
     frozen_subset = per_row(frozen, subset)
     frozen_hidden = per_row(frozen, hidden)
     del frozen
+    import gc
     gc.collect()
 
     if args.shuffle_labels:
@@ -236,7 +246,7 @@ def main() -> int:
             model=model, tokenizer=tokenizer, examples=examples,
             output_dir=adapter_dir, spec=train_spec,
             prompt_contract=contract)
-    except Exception as exc:
+    except Exception as exc:                       # noqa: BLE001
         return fail(f"training raised {type(exc).__name__}: {exc}")
     train_secs = time.time() - t0
     (staging / "TRAINING_RECEIPT.json").write_text(
@@ -248,6 +258,8 @@ def main() -> int:
     in_memory_sample = {rid: adapted_hidden[rid]["output"]
                         for rid in sorted(adapted_hidden)[:3]}
 
+    # The adapter must reload from disk and reproduce the in-memory
+    # outputs, or the published artifact does not describe the run.
     del model
     gc.collect()
     reloaded = load_causal_lm(spec, adapter_path=str(adapter_dir),
@@ -304,18 +316,18 @@ def main() -> int:
                      "trainable_params": receipt["trainable_params"],
                      "rejected_examples": receipt["rejected_examples"],
                      "train_seconds": round(train_secs, 3)},
-        "effective_decoding": {
-            "max_new_tokens": max_new, "do_sample": False,
-            "pad_token_id": tokenizer.eos_token_id,
-            "stop_on_eos": bool(contract.output.stop_on_eos),
-            "source": "contract.output.max_new_tokens"},
+        "effective_decoding": {"max_new_tokens": max_new, "do_sample": False,
+                               "pad_token_id": tokenizer.eos_token_id,
+                               "stop_on_eos": bool(contract.output.stop_on_eos),
+                               "source": "contract.output.max_new_tokens"},
     }
     (staging / "METRICS.json").write_text(
         json.dumps(metrics, indent=2, sort_keys=True) + "\n")
     (staging / "ADAPTER_MANIFEST.json").write_text(json.dumps({
         "run_id": run_id, "adapter_dir": "adapter",
         "files": dir_inventory(adapter_dir),
-        "reload_verified": True, "reload_sample": reload_sample,
+        "reload_verified": True,
+        "reload_sample": reload_sample,
         "prompt_contract_digest": contract.digest,
         "output_contract_digest": contract.output_contract_digest,
     }, indent=2, sort_keys=True) + "\n")

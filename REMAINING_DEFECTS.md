@@ -198,6 +198,33 @@ in particular — proving the adapter can fit a small verified subset to
 cleared that bar and the "generalization failure" may partly be an
 under-fitting failure.
 
+## RD-15 — UNRESOLVED: the review's test counts do not match this tree
+
+The Campaign 3B.2 review reports **1,111 passed / 47 skipped** for the
+Python regression. This tree reports **1,206 passed / 18 skipped** after
+the 3B.2 repairs (1,191 / 18 before them). That is 51 more tests
+collected and 29 fewer skips.
+
+This is not explained by the 3B.2 changes and I am not claiming either
+number is wrong — the review may have run a different commit, a
+different test scope, or a different environment. The most plausible
+cause is an environment without the `ml` extras: 59 tests live in files
+that import `torch`/`transformers`/`peft` at module level, and a host
+without them would collect fewer tests and report more skips. That is a
+hypothesis, not a finding.
+
+**Both numbers are reproducible from the same command**, which is the
+point:
+
+```sh
+python3 -m pytest tests-python -q     # 1206 passed, 18 skipped here
+```
+
+**Needs:** the review's commit SHA, environment (torch present?) and
+exact pytest invocation, so the two runs can be reconciled before either
+count is quoted in a release document. Until then, quote this tree's
+number and note it is host-specific.
+
 ## RD-14 — OPEN: safety failures are not yet separated by cause in the runner
 
 The qualifier now reports absolute versus adaptation-induced safety
@@ -223,3 +250,4 @@ this is a reporting asymmetry rather than a correctness gap.
 | RD-12 | qualifier could not qualify L5b/L7 | **CLOSED** |
 | RD-13 | adapter effect size unmeasured | **step 4 executed**; breadth-vs-volume ablation open |
 | RD-14 | runner reports a single violation count | open (reporting) |
+| RD-15 | review's test counts differ from this tree | **unresolved** — needs their env + commit |

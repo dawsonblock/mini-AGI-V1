@@ -138,19 +138,72 @@ approach out:
   pipeline is capable of a positive result under a narrower task set —
   it does not overturn the campaign's REFUSED decision.
 
+## Reproducibility repair (SCI-402 / SCI-403)
+
+External review found two defects in the runner that produced the table
+above. Both were real and both are fixed; the experiment was then re-run
+in full.
+
+**SCI-402 — adapters were destroyed.** Every run wrote its adapter to
+``<output>.parent/adapter``. All six runs shared one output directory,
+so five of the six adapters were overwritten and lost — only the JSON
+summaries survived. The numbers above were still reproducible from the
+summaries, but the artifacts behind them were not. Runs now own an
+immutable directory built in staging and atomically published:
+
+```
+results/campaign3b2/runs/<run-id>/
+    CONFIG.json  TRAINING_RECEIPT.json  ADAPTER_MANIFEST.json
+    adapter/     PREDICTIONS-{FROZEN,ADAPTED,SUBSET}.jsonl
+    METRICS.json RUN_COMMIT.json
+```
+
+An existing destination is refused, a failed run is recorded as FAILED
+rather than dropped, every file is hashed into ``RUN_COMMIT.json``, and
+the adapter must reload from disk and reproduce the in-memory outputs
+before the run publishes.
+
+**SCI-403 — the generation budget was not the contract's.** The runner
+accepted ``--max-new-tokens`` independently, and generation used the CLI
+value while the contract recorded its own. The two happened to agree
+(both 16) in every executed run, so no result here is invalid — but the
+mechanism would have diverged silently. The flag is gone; the budget
+comes from ``contract.output.max_new_tokens``, and the effective
+decoding configuration is recorded in every run.
+
+### The re-run reproduces every number
+
+All six runs were re-executed under the repaired runner:
+
+| run | fit | hidden | destroyed | gained | vs original |
+|---|---|---|---|---|---|
+| run1 | 1.000 | 0.583 | 2 | 4 | **identical** |
+| run4 | 1.000 | 0.583 | 2 | 4 | **identical** |
+| nc1 | 0.000 | 0.000 | 5 | 0 | **identical** |
+| run3 | 1.000 | 0.250 | 3 | 1 | **identical** |
+| run2 | 1.000 | 0.250 | 3 | 1 | **identical** |
+| nc2 | 0.000 | 0.250 | 3 | 1 | **identical** |
+
+All six adapters now exist with **distinct** weight hashes, every run
+carries 12 hashed files, and every adapter is reload-verified. So the
+findings above are reproduced from complete evidence rather than from
+summaries of destroyed artifacts.
+
 ## Reproduce
 
 ```sh
 F2=pc-upper,pc-rev
 F6=pc-rev,pc-upper,pc-rot1,pc-sort,pc-swap,pc-delim
+R="--run-root results/campaign3b2/runs"
 
-python3 scripts/positive_control_fit.py --families $F2 --steps 300 --output run1.json
-python3 scripts/positive_control_fit.py --families $F2 --steps 600 --output run4.json
-python3 scripts/positive_control_fit.py --families $F2 --steps 300 --shuffle-labels --output nc1.json
-python3 scripts/positive_control_fit.py --families $F6 --steps 300 --output run3.json
-python3 scripts/positive_control_fit.py --families $F6 --steps 600 --output run2.json
-python3 scripts/positive_control_fit.py --families $F6 --steps 600 --shuffle-labels --output nc2.json
+python3 scripts/positive_control_fit.py --families $F2 --steps 300 --run-id run1 $R
+python3 scripts/positive_control_fit.py --families $F2 --steps 600 --run-id run4 $R
+python3 scripts/positive_control_fit.py --families $F2 --steps 300 --shuffle-labels --run-id nc1 $R
+python3 scripts/positive_control_fit.py --families $F6 --steps 300 --run-id run3 $R
+python3 scripts/positive_control_fit.py --families $F6 --steps 600 --run-id run2 $R
+python3 scripts/positive_control_fit.py --families $F6 --steps 600 --shuffle-labels --run-id nc2 $R
 ```
 
 The script exits 0 only when the fit gate passes; `nc1`/`nc2` exit 2,
-which is the expected negative-control outcome.
+which is the expected negative-control outcome. Re-running with an
+existing `--run-id` is refused: a committed run is never modified.
