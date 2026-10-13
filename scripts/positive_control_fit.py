@@ -107,14 +107,16 @@ def main() -> int:
     rows = [json.loads(line) for line in
             (ROOT / args.corpus).read_text().splitlines() if line.strip()]
     train_all = [r for r in rows if r["split"] == "train"]
-    subset = [r for r in train_all if r["family"] in families]
-    if not subset:
-        raise SystemExit(f"no train rows in families {families}")
-    hidden = [r for r in rows if r["split"] == "hidden"]
+    # Validate the family names before anything else, so a typo reports the
+    # typo rather than an empty-subset symptom.
     known = sorted({r["family"] for r in train_all})
     unknown = [f for f in families if f not in known]
     if unknown:
         raise SystemExit(f"unknown train families: {unknown} (have {known})")
+    subset = [r for r in train_all if r["family"] in families]
+    if not subset:
+        raise SystemExit(f"no train rows in families {families}")
+    hidden = [r for r in rows if r["split"] == "hidden"]
 
     # SCI-403: the contract is the ONLY source of the generation budget.
     output_contract = output_contract_from_config(
