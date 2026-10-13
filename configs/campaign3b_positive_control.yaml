@@ -24,7 +24,7 @@ retrieval_k: 3
 memory_k: 2
 replay_k: 2
 retention_samples: 4
-retention_scorer: retention_score
+retention_scorer: containment_match
 
 # ---- preregistered gates (diagnostic thresholds, Step 13) ----
 minimum_neural_incremental_ft: 0.20
