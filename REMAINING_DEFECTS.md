@@ -168,7 +168,22 @@ map to `arms.py`. Verified against the real evidence: the qualifier now
 completes the full chain and returns REFUSED with
 `runner_decision_agreement: true`.
 
-## RD-13 — PARTIALLY RESOLVED: fit experiment run, ablations still open
+## RD-13 — CLOSED: the adapter effect size and its causes are now measured
+
+The rank ladder (`RANK_LADDER_REPORT.md`, 28 runs on the v2 benchmark)
+closes the open question. Rank 4→32 moves the held-out mean by ~0.05 and
+is **not monotone**; family composition moves it by ~0.23. Fit is 1.000
+at rank 4, so training capacity is not merely unsupported but refuted.
+
+Effect sizes on one benchmark: composition ~0.23-0.54, rank ~0.05,
+exposure 0.000, steps 0.000. **Composition is the only large effect in
+the campaign.**
+
+One caveat retained: the ladder varied rank at one learning rate and one
+schedule, so a rank x learning-rate interaction is not excluded. What is
+excluded is rank as a standalone explanation.
+
+## RD-13 (original text, retained for the record)
 
 Step 4 has now been executed (`CAMPAIGN3B1_FIT_EXPERIMENT.md`): four
 runs with matched negative controls. Findings — fixed-rank LoRA reaches
@@ -291,7 +306,7 @@ record agree on the distinction. Both still block promotion.
 | RD-10 | first diagnostic not reproducible | re-run |
 | RD-11 | unused defect id | **CLOSED** (non-issue) |
 | RD-12 | qualifier could not qualify L5b/L7 | **CLOSED** |
-| RD-13 | adapter effect size unmeasured | **step 4 executed**; breadth-vs-volume ablation open |
+| RD-13 | adapter effect size unmeasured | **CLOSED** — rank ladder executed, composition dominates |
 | RD-14 | runner reports a single violation count | **CLOSED** |
 | RD-15 | review's test counts differ from this tree | **unresolved** — needs their env + commit |
 | RD-16 | breadth confounded with family composition | **CLOSED** — conclusion withdrawn and replaced |
