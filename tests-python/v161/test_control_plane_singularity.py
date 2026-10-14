@@ -149,3 +149,72 @@ def test_the_live_authority_does_not_use_the_decoy_names():
         assert f"class {cls}" not in src, (
             f"{cls} is now defined in the live authority as well; the two "
             "are no longer distinguishable")
+
+
+# ------------------------------------------- the signed manifest
+
+def test_control_plane_manifest_verifies_and_declares_one_authority():
+    """The answer to "which authority is authoritative" must be a signed
+    artifact, not something only available by running a tool or reading a
+    report."""
+    import base64
+    import hashlib
+    import json as _json
+    from cryptography.hazmat.primitives import serialization
+
+    mp = ROOT / "CONTROL_PLANE_MANIFEST.json"
+    assert mp.is_file(), "the signed control-plane manifest is missing"
+    doc = _json.loads(mp.read_text())
+    assert doc["live_authority"] == LIVE_AUTHORITY
+
+    body = {k: v for k, v in doc.items()
+            if k not in ("manifest_sha256", "signing", "signature_b64",
+                         "public_key_pem_sha256")}
+    canonical = _json.dumps(body, sort_keys=True, separators=(",", ":"),
+                            ensure_ascii=False).encode()
+    assert hashlib.sha256(canonical).hexdigest() == doc["manifest_sha256"], \
+        "the manifest body no longer matches its recorded digest"
+
+    if doc.get("signing") == "Ed25519":
+        pem = (ROOT / "CONTROL_PLANE_PUBLIC_KEY.pem").read_bytes()
+        key = serialization.load_pem_public_key(pem)
+        key.verify(base64.b64decode(doc["signature_b64"]), canonical)
+
+
+def test_declared_superseded_modules_are_not_reachable():
+    """If a live path starts reaching a superseded implementation, the
+    manifest is lying and the build must fail."""
+    import json as _json
+    doc = _json.loads((ROOT / "CONTROL_PLANE_MANIFEST.json").read_text())
+    superseded = set(doc["superseded"])
+    assert superseded >= KNOWN_ORPHAN_AUTHORITIES, (
+        "the manifest no longer declares every documented orphan")
+    for mod in superseded:
+        p = ROOT / "src-python" / (mod.replace(".", "/") + ".py")
+        assert p.is_file(), f"declared superseded module vanished: {mod}"
+        text = p.read_text()
+        assert "NOT THE LIVE CONTROL PLANE" in text, (
+            f"{mod} is declared superseded but carries no in-module "
+            "notice; a reader could still mistake it for the authority")
+
+
+def test_deployment_entry_point_is_declared_and_launchable():
+    """The isolation chain is operator-launched. Static analysis cannot
+    decide whether production runs it, so the entry point is DECLARED —
+    and this proves it is at least launchable, which is the part the tree
+    can establish."""
+    import json as _json
+    import subprocess
+    doc = _json.loads((ROOT / "CONTROL_PLANE_MANIFEST.json").read_text())
+    dep = doc["deployment_entry_point"]
+    assert dep["module"] == "minagi.runtime.service"
+    assert "NOT VERIFIED" in dep["status"], (
+        "the manifest must not claim the deployment path is verified; "
+        "nothing in this tree establishes that")
+    proc = subprocess.run(
+        [sys.executable, "-m", dep["module"], "--help"],
+        capture_output=True, text=True, cwd=str(ROOT),
+        env={**__import__("os").environ, "PYTHONPATH": str(ROOT / "src-python")})
+    assert proc.returncode == 0, (
+        f"{dep['module']} is declared the deployment entry point but does "
+        f"not run: {proc.stderr[-300:]}")

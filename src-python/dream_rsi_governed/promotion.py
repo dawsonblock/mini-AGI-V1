@@ -1,5 +1,20 @@
 from __future__ import annotations
 
+"""NOT THE LIVE CONTROL PLANE.
+
+This module implements a competing PromotionAuthority class, which no live path reaches. It is retained
+for provenance and for packaging coverage, but it is NOT the authority
+that governs promotions.
+
+The single live authority is `minagi.v161.authority`; the live promotion
+path is `scripts/promote.py` -> `minagi.v161.authority`. The successor to
+this module is `scripts/promote.py (minagi.v161.authority)`.
+
+See CONTROL_PLANE_MAP.md and CONTROL_PLANE_MANIFEST.json. Do not import
+this module into a live path without recording that decision.
+"""
+
+
 from datetime import datetime, timezone
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
