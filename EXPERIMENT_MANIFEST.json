@@ -1,18 +1,18 @@
 {
   "breadth_summary_correct_labels": {
     "2": {
-      "above_frozen": 5,
+      "above_frozen": 9,
       "max": 0.5833333333333334,
-      "mean": 0.4761904761904762,
-      "min": 0.25,
-      "n": 7
+      "mean": 0.37719298245614036,
+      "min": 0.0,
+      "n": 19
     },
     "4": {
-      "above_frozen": 0,
-      "max": 0.25,
-      "mean": 0.2,
+      "above_frozen": 3,
+      "max": 0.5833333333333334,
+      "mean": 0.3229166666666667,
       "min": 0.08333333333333333,
-      "n": 5
+      "n": 8
     },
     "6": {
       "above_frozen": 0,
@@ -24,11 +24,319 @@
   },
   "corpus": "configs/positive_control_tasks.jsonl",
   "frozen_hidden_baseline": 0.4166666666666667,
-  "n_correct_label_runs": 16,
-  "n_runs": 21,
+  "indexes": "the research-evidence package, not files in this source repository: results/ is gitignored by convention. If this manifest and the evidence package disagree, the package wins and this manifest is stale.",
+  "n_correct_label_runs": 36,
+  "n_runs": 41,
   "n_shuffled_control_runs": 5,
   "run_root": "results/campaign3b2/runs",
   "runs": [
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791939004-7a96634d",
+      "config_digest": "sha256:a997e5f1fe2a5c7d6d42af8ef1889e7e34cd2b0806aa7e68af53bc0c74b06eba",
+      "created_utc": "2026-10-14T00:52:13Z",
+      "destroyed": 2,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-upper",
+        "pc-rev",
+        "pc-swap",
+        "pc-delim"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 3,
+      "gained_ids": [
+        "pc-hd-pc-dup-0",
+        "pc-hd-pc-dup-2",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.5,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 4,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 15.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "4fam_norot1-s0",
+      "seed": 0,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 98.781,
+      "training_examples": 20,
+      "unique_scored_rows": 20
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791939139-b5fb2325",
+      "config_digest": "sha256:c319153abc14c80837b92aab8476f0c3805d93ede59bb1bc1ed7d5132eee2528",
+      "created_utc": "2026-10-14T00:54:46Z",
+      "destroyed": 2,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-upper",
+        "pc-rev",
+        "pc-swap",
+        "pc-delim"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 3,
+      "gained_ids": [
+        "pc-hd-pc-dup-0",
+        "pc-hd-pc-dup-2",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.5,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 4,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 15.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "4fam_norot1-s1",
+      "seed": 1,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 119.493,
+      "training_examples": 20,
+      "unique_scored_rows": 20
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791939292-f8bdd7df",
+      "config_digest": "sha256:b362e67e6c0e19284f788c5f57a55834d7903c82d501cc35720863d4657d3d1b",
+      "created_utc": "2026-10-14T00:57:03Z",
+      "destroyed": 2,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-upper",
+        "pc-rev",
+        "pc-swap",
+        "pc-delim"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 4,
+      "gained_ids": [
+        "pc-hd-pc-dup-0",
+        "pc-hd-pc-dup-2",
+        "pc-hd-pc-vowels-0",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.5833333333333334,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 4,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 15.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "4fam_norot1-s2",
+      "seed": 2,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 103.338,
+      "training_examples": 20,
+      "unique_scored_rows": 20
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791939428-5f22c494",
+      "config_digest": "sha256:314a68866e21db585f0dc489d7012857011a48471bb7efc853d66b229e674e30",
+      "created_utc": "2026-10-14T00:59:11Z",
+      "destroyed": 2,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-rev",
+        "pc-upper",
+        "pc-sort",
+        "pc-swap",
+        "pc-delim"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 1,
+      "gained_ids": [
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.3333333333333333,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 5,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 12.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "5fam_norot1-s0",
+      "seed": 0,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 97.831,
+      "training_examples": 25,
+      "unique_scored_rows": 25
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791939556-ada66d00",
+      "config_digest": "sha256:278e49ad1f6d570eda21274dc3fe7d68ae401516a2c39a423c188dd5ac5e66eb",
+      "created_utc": "2026-10-14T01:01:15Z",
+      "destroyed": 2,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-rev",
+        "pc-upper",
+        "pc-sort",
+        "pc-swap",
+        "pc-delim"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 1,
+      "gained_ids": [
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.3333333333333333,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 5,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 12.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "5fam_norot1-s1",
+      "seed": 1,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 96.913,
+      "training_examples": 25,
+      "unique_scored_rows": 25
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791939680-6555b29a",
+      "config_digest": "sha256:a2a565e306bd284ff3cefc66de0b6d6b0885e0642dda96a16cdcb011382c18a6",
+      "created_utc": "2026-10-14T01:03:32Z",
+      "destroyed": 2,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-rev",
+        "pc-upper",
+        "pc-sort",
+        "pc-swap",
+        "pc-delim"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 4,
+      "gained_ids": [
+        "pc-hd-pc-dup-0",
+        "pc-hd-pc-dup-2",
+        "pc-hd-pc-vowels-0",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.5833333333333334,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 5,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 12.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "5fam_norot1-s2",
+      "seed": 2,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 103.721,
+      "training_examples": 25,
+      "unique_scored_rows": 25
+    },
     {
       "allocation": "total-examples",
       "attempt_id": "1791930931-ea8d25a6",
@@ -569,6 +877,682 @@
       "train_seconds": 96.852,
       "training_examples": 30,
       "unique_scored_rows": 30
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791937295-54923c27",
+      "config_digest": "sha256:4168c882127804813d828473aaa45cd5fe44fdf49aeb7fe3e46387b18f3fbcbe",
+      "created_utc": "2026-10-14T00:23:55Z",
+      "destroyed": 5,
+      "destroyed_ids": [
+        "pc-hd-pc-dup-1",
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-1",
+        "pc-hd-pc-len-2",
+        "pc-hd-pc-vowels-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-rot1",
+        "pc-sort"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 0,
+      "gained_ids": [],
+      "hidden_adapted": 0.0,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcrot1_pcsort-s0",
+      "seed": 0,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 117.607,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791937441-d8b8051f",
+      "config_digest": "sha256:07884d94c4051b474d6dfdfa3966985f6612e7e670f3ed147cca13a2282add60",
+      "created_utc": "2026-10-14T00:27:02Z",
+      "destroyed": 3,
+      "destroyed_ids": [
+        "pc-hd-pc-dup-1",
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-1"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-rot1",
+        "pc-sort"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 0,
+      "gained_ids": [],
+      "hidden_adapted": 0.16666666666666666,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcrot1_pcsort-s1",
+      "seed": 1,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 155.889,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791937629-3823a1c0",
+      "config_digest": "sha256:47514eba2e4e152ed278239dbda493fe5c0133f97983f075ded381e97c93bda3",
+      "created_utc": "2026-10-14T00:29:25Z",
+      "destroyed": 3,
+      "destroyed_ids": [
+        "pc-hd-pc-dup-1",
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-vowels-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-rot1",
+        "pc-sort"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 0,
+      "gained_ids": [],
+      "hidden_adapted": 0.16666666666666666,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcrot1_pcsort-s2",
+      "seed": 2,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 112.697,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791937771-e2e074ab",
+      "config_digest": "sha256:26a775ccb084d6156aded1cd27c9deee443997f37af86f8bf60b381d5b8b31a8",
+      "created_utc": "2026-10-14T00:31:35Z",
+      "destroyed": 3,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-1",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-swap",
+        "pc-delim"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 3,
+      "gained_ids": [
+        "pc-hd-pc-dup-0",
+        "pc-hd-pc-vowels-0",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.4166666666666667,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcswap_pcdelim-s0",
+      "seed": 0,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 105.083,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791937900-7b715148",
+      "config_digest": "sha256:4ce60ff8b7a75cc5cb8393f8154e5a14ec2eb784a369dbcb9a7431308909c071",
+      "created_utc": "2026-10-14T00:33:35Z",
+      "destroyed": 3,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-1",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-swap",
+        "pc-delim"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 4,
+      "gained_ids": [
+        "pc-hd-pc-dup-0",
+        "pc-hd-pc-dup-2",
+        "pc-hd-pc-vowels-0",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.5,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcswap_pcdelim-s1",
+      "seed": 1,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 98.273,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791938020-9171057e",
+      "config_digest": "sha256:c9216a0b8b3b32e5bd7d675ed957044faf8e2d0f3a12ea12fd6115efa44d432b",
+      "created_utc": "2026-10-14T00:35:36Z",
+      "destroyed": 3,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-1",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-swap",
+        "pc-delim"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 3,
+      "gained_ids": [
+        "pc-hd-pc-dup-0",
+        "pc-hd-pc-dup-2",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.4166666666666667,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcswap_pcdelim-s2",
+      "seed": 2,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 98.221,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791936874-2b38da66",
+      "config_digest": "sha256:9134219dbea466cc594feb400711149e2eb146cced4782211eb16015feabdc82",
+      "created_utc": "2026-10-14T00:16:46Z",
+      "destroyed": 1,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-upper",
+        "pc-rev"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 2,
+      "gained_ids": [
+        "pc-hd-pc-dup-0",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.5,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcupper_pcrev-s0",
+      "seed": 0,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 106.293,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791937012-f4c70038",
+      "config_digest": "sha256:8fa4d48261adc86800e7334fee75fa1e1021348daefd84129a5df64c038926e5",
+      "created_utc": "2026-10-14T00:19:17Z",
+      "destroyed": 2,
+      "destroyed_ids": [
+        "pc-hd-pc-len-1",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-upper",
+        "pc-rev"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 3,
+      "gained_ids": [
+        "pc-hd-pc-dup-0",
+        "pc-hd-pc-dup-2",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.5,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcupper_pcrev-s1",
+      "seed": 1,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 126.546,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791937164-36d75738",
+      "config_digest": "sha256:bb76ffca2e7034723ade6f2950f4c343db2a195f25f539c1e62cb60ee1afd227",
+      "created_utc": "2026-10-14T00:21:29Z",
+      "destroyed": 1,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-upper",
+        "pc-rev"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 2,
+      "gained_ids": [
+        "pc-hd-pc-dup-2",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.5,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcupper_pcrev-s2",
+      "seed": 2,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 101.116,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791938141-b244aa06",
+      "config_digest": "sha256:f713dd15b477d5aab789a8bcd17a1aeed7fd88d0d304819417d84ad6cae821d6",
+      "created_utc": "2026-10-14T00:37:42Z",
+      "destroyed": 4,
+      "destroyed_ids": [
+        "pc-hd-pc-dup-1",
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-1",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-upper",
+        "pc-rot1"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 2,
+      "gained_ids": [
+        "pc-hd-pc-vowels-0",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.25,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcupper_pcrot1-s0",
+      "seed": 0,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 104.742,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791938268-c8c086a3",
+      "config_digest": "sha256:4e1e916cfe3c2832922de53bed628ceabaef3e71934fee2624ad0c650e3c9cac",
+      "created_utc": "2026-10-14T00:39:52Z",
+      "destroyed": 4,
+      "destroyed_ids": [
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-1",
+        "pc-hd-pc-len-2",
+        "pc-hd-pc-vowels-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-upper",
+        "pc-rot1"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 2,
+      "gained_ids": [
+        "pc-hd-pc-vowels-0",
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.25,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcupper_pcrot1-s1",
+      "seed": 1,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 103.266,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791938398-9fb502fe",
+      "config_digest": "sha256:3e9db8a7c21489024c94c2a958a85dea716e45e603e874da0eafc9760952d0ca",
+      "created_utc": "2026-10-14T00:41:55Z",
+      "destroyed": 4,
+      "destroyed_ids": [
+        "pc-hd-pc-dup-1",
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-1",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-upper",
+        "pc-rot1"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 1,
+      "gained_ids": [
+        "pc-hd-pc-vowels-1"
+      ],
+      "hidden_adapted": 0.16666666666666666,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 2,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 30.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "pcupper_pcrot1-s2",
+      "seed": 2,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 100.109,
+      "training_examples": 10,
+      "unique_scored_rows": 10
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791939818-3f8f11bf",
+      "config_digest": "sha256:5d142558486594ec032e1ed5e2c543c5098aa7c7e8bc692f4412d223af0124bd",
+      "created_utc": "2026-10-14T01:05:36Z",
+      "destroyed": 5,
+      "destroyed_ids": [
+        "pc-hd-pc-dup-1",
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-1",
+        "pc-hd-pc-len-2",
+        "pc-hd-pc-vowels-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-rot1"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 0,
+      "gained_ids": [],
+      "hidden_adapted": 0.0,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 1,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 60.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "rot1only-s0",
+      "seed": 0,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 103.662,
+      "training_examples": 5,
+      "unique_scored_rows": 5
+    },
+    {
+      "allocation": "examples-per-family",
+      "attempt_id": "1791939942-14d19343",
+      "config_digest": "sha256:4ddcaa94ba1ac369d7cd4c3de3fd1940c22e45caa267b4af01d623c3500375ca",
+      "created_utc": "2026-10-14T01:07:41Z",
+      "destroyed": 4,
+      "destroyed_ids": [
+        "pc-hd-pc-dup-1",
+        "pc-hd-pc-len-0",
+        "pc-hd-pc-len-1",
+        "pc-hd-pc-len-2"
+      ],
+      "effective_decoding": {
+        "do_sample": false,
+        "max_new_tokens": 16,
+        "pad_token_id": 151645,
+        "source": "contract.output.max_new_tokens",
+        "stop_on_eos": true
+      },
+      "exposure_target": null,
+      "families": [
+        "pc-rot1"
+      ],
+      "fit_accuracy": 1.0,
+      "fit_passed": true,
+      "gained": 0,
+      "gained_ids": [],
+      "hidden_adapted": 0.08333333333333333,
+      "hidden_frozen": 0.4166666666666667,
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "n_families": 1,
+      "output_contract_digest": "sha256:6f0f361c8cbce9cc4619d967e1817189ef445d9b1ec88408795ad175de104724",
+      "presentations_per_example": 60.0,
+      "prompt_contract_digest": "sha256:d65f3ecf14762d9d1450fe307a728b21b8a991fbd744b493ec9d8bcd5f81ded5",
+      "realised_optimizer_updates": 300,
+      "realised_sample_presentations": 300,
+      "run_id": "rot1only-s1",
+      "seed": 1,
+      "status": "COMPLETE",
+      "steps": 300,
+      "supervision": "correct",
+      "train_seconds": 103.702,
+      "training_examples": 5,
+      "unique_scored_rows": 5
     },
     {
       "allocation": null,
