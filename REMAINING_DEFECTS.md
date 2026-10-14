@@ -143,11 +143,12 @@ marked as such. The sealed holdout digest is unchanged
 and the generated campaign config is byte-identical, so the sealed
 binding was not disturbed by the corpus change.
 
-## RD-11 — Minor: defect id SCI-304 is unused
+## RD-11 — CLOSED (non-issue): defect id SCI-304 is unused
 
-The Campaign 3B register runs SCI-301, SCI-302, SCI-303, SCI-305.
-SCI-304 was never assigned to a defect. Cosmetic; recorded so a reader
-does not assume a missing document.
+The register runs SCI-301, SCI-302, SCI-303, SCI-305, SCI-306..
+SCI-304 was never assigned. There is no missing document and no gap in
+the register; the id is simply unallocated. Recorded here only so a
+reader does not go looking for it. Closed as a non-issue.
 
 ## RD-12 — CLOSED: the qualifier could not qualify an L5b/L7 campaign
 
@@ -288,7 +289,7 @@ record agree on the distinction. Both still block promotion.
 | RD-8 | GPU / Linux isolation not run here | **NOT RUN** |
 | RD-9 | safety suite is a probe set | scope limit |
 | RD-10 | first diagnostic not reproducible | re-run |
-| RD-11 | unused defect id | cosmetic |
+| RD-11 | unused defect id | **CLOSED** (non-issue) |
 | RD-12 | qualifier could not qualify L5b/L7 | **CLOSED** |
 | RD-13 | adapter effect size unmeasured | **step 4 executed**; breadth-vs-volume ablation open |
 | RD-14 | runner reports a single violation count | **CLOSED** |

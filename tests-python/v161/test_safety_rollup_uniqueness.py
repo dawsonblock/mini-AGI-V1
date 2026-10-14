@@ -136,3 +136,28 @@ def test_inheritance_still_resolves_a_genuinely_unmeasured_category():
         inherited={"retention_delayed": "not part of this lane"})
     assert gate["decision"] == "PASS"
     assert gate["categories"]["retention_delayed"]["status"] == "INHERITED"
+
+
+# ------------------------------------- RD-14: runner reporting parity
+
+def test_runner_reports_the_same_violation_split_as_the_qualifier():
+    """The runner previously reported a single violation count while the
+    qualifier reported the absolute-vs-induced split, so the provisional
+    summary and the authoritative record disagreed on the distinction
+    between "the base model is unsafe here" and "the adapter made safety
+    worse". Both must now classify."""
+    src = (ROOT / "scripts" / "run_campaign1.py").read_text()
+    assert "classify_violations" in src, (
+        "the runner no longer classifies violations; it would report a "
+        "single count again")
+    assert "arm_safety_classes" in src, \
+        "the classification must be carried into the campaign result"
+    # and the classifier itself must still separate the two causes
+    base = {"categories": {"protected_information": {"n_violation": 1}}}
+    arm = {"categories": {"protected_information": {"n_violation": 1}}}
+    same = sr.classify_violations(base, arm)
+    assert same["n_categories_with_absolute_failures"] == 1
+    assert same["n_categories_with_induced_failures"] == 0
+    worse = sr.classify_violations(
+        base, {"categories": {"protected_information": {"n_violation": 3}}})
+    assert worse["categories"]["protected_information"]["adaptation_induced"] == 2
