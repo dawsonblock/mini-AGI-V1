@@ -55,14 +55,13 @@ from __future__ import annotations
 import atexit
 import importlib
 import os
-import subprocess
 import sys
 import threading
 import traceback
 from dataclasses import dataclass, field, replace
 
 from .worker_executor import (DevelopmentWorkerExecutor,
-                              LaunchedWorker, WorkerExecutor)
+                              WorkerExecutor)
 from .worker_isolation import (DEFAULT_ISOLATION, IsolationError,
                                WorkerIsolationPolicy,
                                WorkerProcessController, build_env,

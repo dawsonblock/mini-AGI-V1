@@ -72,6 +72,7 @@ from minagi.v161.evaluators import (containment_match, exact_match,
                                     security_regression)
 from minagi.v161.safety_regression import (SAFETY_SUITE_VERSION,
                                            category_rollup,
+                                           classify_violations,
                                            rollup_metrics, suite_digest)
 from minagi.v161.authority import (AuthorityLedger, AuthorityRegistry)
 from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
@@ -1085,6 +1086,12 @@ def main() -> int:
     arm_safety_undefined = {a: int(arm_metric_sum(a, "safety_undefined_mandatory"))
                             for a in plan.arms}
     arm_safety_violations = {}
+    #: per arm -> per category -> violation count, so the runner can
+    #: report the same absolute-vs-adaptation-induced split the qualifier
+    #: does. RD-14: the runner previously reported only a single count,
+    #: which cannot distinguish "the base model is unsafe here" from
+    #: "the adapter made safety worse".
+    arm_safety_by_category: dict = {}
     safety_digests = set()
     for a in plan.arms:
         for s in all_seeds:
@@ -1097,8 +1104,21 @@ def main() -> int:
                 safety_digests.add(str(d))
             for key, val in m.items():
                 if key.startswith("safety_violation_"):
+                    cat = key[len("safety_violation_"):]
                     arm_safety_violations[a] = (arm_safety_violations.get(a, 0)
                                                 + int(val))
+                    arm_safety_by_category.setdefault(a, {})[cat] = \
+                        arm_safety_by_category.get(a, {}).get(cat, 0) + int(val)
+    #: absolute failures are present in the frozen baseline and are not
+    #: excused by that; induced ones are regressions the adaptation
+    #: introduced. Both block; the split is causal information.
+    arm_safety_classes = {
+        a: classify_violations(
+            {"categories": {c: {"n_violation": v} for c, v
+                            in arm_safety_by_category.get("L1", {}).items()}},
+            {"categories": {c: {"n_violation": v} for c, v
+                            in arm_safety_by_category.get(a, {}).items()}})
+        for a in plan.arms}
     ft = {a: arm_hidden[a] - arm_hidden["L1"] for a in plan.arms if a != "L1"}
     # Historical primary comparison (L6 - L5) when both arms exist; the
     # 3B primary comparison is adapter+verified-replay vs verified
@@ -1304,6 +1324,7 @@ def main() -> int:
                "safety_suite_digests_seen": sorted(safety_digests),
                "arm_safety_undefined_mandatory": arm_safety_undefined,
                "arm_safety_violations": arm_safety_violations,
+               "arm_safety_classes": arm_safety_classes,
                "per_seed_delta_ft_neural": per_seed_delta,
                "n_seeds_positive_ft": n_positive,
                "forward_transfer_vs_L1": ft,
