@@ -1,5 +1,28 @@
 # Campaign 3B.2 — Matched training experiment (Stage 3, steps 11–14)
 
+> ## ⚠ CORRECTION — the headline conclusion below is WITHDRAWN
+>
+> **Finding 3 ("breadth is the binding constraint") was confounded and is
+> withdrawn.** The 2-family condition was always `pc-upper,pc-rev`, while
+> every condition at breadth 4 or 6 contained `pc-rot1`. Breadth and
+> composition moved together.
+>
+> Varying **only which two families** — same examples, same steps, same
+> seeds — spans **0.111 to 0.500** (range 0.389), which is **larger than
+> the 0.226 breadth effect reported below**. And at fixed breadth 4,
+> excluding `pc-rot1` gives **0.528** against **0.200** with it.
+>
+> Corrected result over 28 correct-label runs: runs **containing
+> `pc-rot1`** mean **0.181** (0/17 above the frozen baseline); runs
+> **without it** mean **0.474** (13/19 above). Perfect separation.
+>
+> Breadth has no clean independent effect once composition is fixed.
+> See `FAMILY_COMPOSITION_CORRECTION.md` for the test and the data.
+>
+> Findings 1 and 2 below are unaffected: exposure does nothing, and
+> correct supervision beats matched shuffled controls in four of five
+> pairs. The campaign verdict remains REFUSED.
+
 Status: **Contrasts A, B and C executed; seed replication complete.**
 Every number below comes from a committed runner and an immutable run
 directory under `results/campaign3b2/runs/`.
@@ -121,9 +144,10 @@ above should be read.
    constraints** — measured, at two breadths, across a 3× range.
 2. **Correct supervision produces transferable learning** — four of five
    matched pairs, spanning 2/4/6 families.
-3. **Breadth is the constraint**, now supported by 8 distinct seeds
-   rather than one: positive transfer at 2 families (4/5 seeds), none at
-   4 or 6 (0/4 seeds).
+3. ~~**Breadth is the constraint**~~ — **WITHDRAWN**, see the correction
+   at the top of this document. The 8-seed result below is real; the
+   *attribution* to breadth was not, because breadth was confounded with
+   whether `pc-rot1` was present.
 
 ## What it does not establish
 

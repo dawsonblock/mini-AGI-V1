@@ -198,6 +198,28 @@ in particular — proving the adapter can fit a small verified subset to
 cleared that bar and the "generalization failure" may partly be an
 under-fitting failure.
 
+## RD-16 — CLOSED: breadth was confounded with family composition
+
+The 3B.2 Stage 3 conclusion "breadth is the binding constraint" was an
+artifact. The 2-family condition was always `pc-upper,pc-rev` while every
+breadth-4/6 condition contained `pc-rot1`, so breadth and composition
+moved together.
+
+External review warned about exactly this ("family breadth is also
+associated with which particular transformations are included") and
+asked for composition to be balanced. That warning was correct.
+
+**Closed** by `FAMILY_COMPOSITION_CORRECTION.md`: varying only which two
+families spans 0.111–0.500, and at fixed breadth 4, excluding `pc-rot1`
+gives 0.528 against 0.200 with it. Over 28 correct-label runs, presence
+of `pc-rot1` separates perfectly (mean 0.181, 0/17 above frozen) from
+absence (mean 0.474, 13/19 above). The published report now carries a
+withdrawal notice at the top.
+
+**Lesson recorded:** the original design changed breadth and composition
+together. Any future breadth claim must vary family composition
+explicitly or hold it fixed.
+
 ## RD-15 — UNRESOLVED: the review's test counts do not match this tree
 
 The Campaign 3B.2 review reports **1,111 passed / 47 skipped** for the
@@ -251,3 +273,4 @@ this is a reporting asymmetry rather than a correctness gap.
 | RD-13 | adapter effect size unmeasured | **step 4 executed**; breadth-vs-volume ablation open |
 | RD-14 | runner reports a single violation count | open (reporting) |
 | RD-15 | review's test counts differ from this tree | **unresolved** — needs their env + commit |
+| RD-16 | breadth confounded with family composition | **CLOSED** — conclusion withdrawn and replaced |
