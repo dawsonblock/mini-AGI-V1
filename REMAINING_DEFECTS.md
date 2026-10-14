@@ -87,16 +87,16 @@ a measured failure still blocks. This is documented rather than
 silently skipped, but it is a genuine reduction in what the final
 confirmation independently measures.
 
-## RD-6 — Pre-existing lint findings outside the enforced scope
+## RD-6 — CLOSED: enforced-lint gap (four unused imports, one of them mine)
 
-`ruff` over the full tree reports 15 `F401` unused-import findings in
-`src-python/minagi/runtime/*` (`worker_backend.py`,
-`worker_executor.py`, and others). **None is in a file this work
-changed**, and the repository's own release gate
-(`scripts/release/host_gate.sh`) does not run ruff. They are recorded
-here rather than fixed, because editing the worker backend for a lint
-finding is not a change this campaign should make to the containment
-surface.
+**Closed.** The repository's enforced lint contract
+(`select = ["E4","E7","E9","F"]`) was violated by four unused imports —
+three pre-existing in `src-python/minagi/runtime/`, one mine
+(`typing.Iterable`, orphaned when a dead helper was removed). Each was
+verified unused *in its own file* before removal. Hygiene-only: removing
+an unused import cannot change behaviour, and it was verified rather than
+asserted — full suite 1225 passed / 0 failed and native CTest 28/28,
+both re-run after the edits. `ruff check src-python/` is now clean.
 
 ## RD-7 — Campaign 3A archive provenance is only as good as its own manifests
 
@@ -267,12 +267,12 @@ exact pytest invocation, so the two runs can be reconciled before either
 count is quoted in a release document. Until then, quote this tree's
 number and note it is host-specific.
 
-## RD-14 — OPEN: safety failures are not yet separated by cause in the runner
+## RD-14 — CLOSED: safety failures are now separated by cause in the runner
 
-The qualifier now reports absolute versus adaptation-induced safety
-failures (`violation_classes`). The runner's provisional summary still
-reports a single violation count. The qualifier is the authority, so
-this is a reporting asymmetry rather than a correctness gap.
+**Closed.** The runner now computes the same absolute-vs-adaptation-
+induced classification from its per-arm per-category metrics
+(`arm_safety_classes`), so the provisional summary and the authoritative
+record agree on the distinction. Both still block promotion.
 
 ## Summary
 
@@ -283,7 +283,7 @@ this is a reporting asymmetry rather than a correctness gap.
 | RD-3 | research question unanswered | **negative result reported** |
 | RD-4 | single-seed diagnostic | limitation |
 | RD-5 | sealed delayed retention inherited | documented |
-| RD-6 | pre-existing lint findings | recorded, not fixed |
+| RD-6 | enforced-lint gap | **CLOSED** |
 | RD-7 | 3A archive provenance | limitation |
 | RD-8 | GPU / Linux isolation not run here | **NOT RUN** |
 | RD-9 | safety suite is a probe set | scope limit |
@@ -291,7 +291,7 @@ this is a reporting asymmetry rather than a correctness gap.
 | RD-11 | unused defect id | cosmetic |
 | RD-12 | qualifier could not qualify L5b/L7 | **CLOSED** |
 | RD-13 | adapter effect size unmeasured | **step 4 executed**; breadth-vs-volume ablation open |
-| RD-14 | runner reports a single violation count | open (reporting) |
+| RD-14 | runner reports a single violation count | **CLOSED** |
 | RD-15 | review's test counts differ from this tree | **unresolved** — needs their env + commit |
 | RD-16 | breadth confounded with family composition | **CLOSED** — conclusion withdrawn and replaced |
 | RD-17 | pc-rev and pc-swap are the same function | **OPEN** — recorded, deliberately not fixed |
