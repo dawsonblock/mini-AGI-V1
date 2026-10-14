@@ -88,7 +88,7 @@
     "qualification": "macOS suite green; Linux boundary run pending",
     "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
   },
-  "manifest_sha256": "2ff6d0e08c358e6b906ad8c285e6f4efe6ae59fe0aab37c540cf1d818001de0d",
+  "manifest_sha256": "7687a104256d62d8574b5060e7395f129abc587d8de6e7109e08bd5f5a5fff78",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "1067 passed, 18 skipped, 0 failed (macOS); container: 62/62 v16.4.10 + 50/50 executor-isolation + 2/2 G10",
@@ -439,9 +439,14 @@
       "manifest_sha256": "2ff6d0e08c358e6b906ad8c285e6f4efe6ae59fe0aab37c540cf1d818001de0d",
       "reason": "Campaign 3B.2 final: benchmark-grouped manifest roll-ups",
       "utc": "2026-10-14T08:31:00Z"
+    },
+    {
+      "manifest_sha256": "7687a104256d62d8574b5060e7395f129abc587d8de6e7109e08bd5f5a5fff78",
+      "reason": "Campaign 3B.3 Priority 1: signed control-plane manifest, superseded implementations marked, deployment path declared",
+      "utc": "2026-10-14T21:28:31Z"
     }
   ],
-  "reissued_utc": "2026-10-14T08:31:00Z",
+  "reissued_utc": "2026-10-14T21:28:31Z",
   "reissues": [
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
