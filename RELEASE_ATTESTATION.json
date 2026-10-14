@@ -88,7 +88,7 @@
     "qualification": "macOS suite green; Linux boundary run pending",
     "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
   },
-  "manifest_sha256": "95a272b0ba84134774334db82d3c319709268406707958e1173ab8c4efad5490",
+  "manifest_sha256": "07ed2fcdefee889b7d62d35ff79f832e93127e1194449ecab1654c193941f34c",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "1067 passed, 18 skipped, 0 failed (macOS); container: 62/62 v16.4.10 + 50/50 executor-isolation + 2/2 G10",
@@ -429,9 +429,14 @@
       "manifest_sha256": "95a272b0ba84134774334db82d3c319709268406707958e1173ab8c4efad5490",
       "reason": "Campaign 3B.2: manifests reindexed to all 41 runs so the source archive and the evidence package agree",
       "utc": "2026-10-14T01:14:59Z"
+    },
+    {
+      "manifest_sha256": "07ed2fcdefee889b7d62d35ff79f832e93127e1194449ecab1654c193941f34c",
+      "reason": "Campaign 3B.2 final: rank ladder, single-family diagnostic, v2 benchmark, enforced-lint and reporting fixes",
+      "utc": "2026-10-14T08:30:34Z"
     }
   ],
-  "reissued_utc": "2026-10-14T01:14:59Z",
+  "reissued_utc": "2026-10-14T08:30:34Z",
   "reissues": [
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",

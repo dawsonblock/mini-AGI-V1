@@ -1,5 +1,5 @@
 {
-  "adapters": 41,
+  "adapters": 80,
   "artifacts": [
     {
       "bytes": 904,
@@ -2264,6 +2264,2190 @@
       "sha256": "c410c5274c86eb423bbb9b456f710db8ff46e31f24da9fa262f55423800d6c68"
     },
     {
+      "bytes": 900,
+      "path": "r16_f2_s0/ADAPTER_MANIFEST.json",
+      "run_id": "r16_f2_s0",
+      "sha256": "111cb837089f8702def5cdf619d0c9d9e79a804905478c5519f600307c44f188"
+    },
+    {
+      "bytes": 1197,
+      "path": "r16_f2_s0/CONFIG.json",
+      "run_id": "r16_f2_s0",
+      "sha256": "45cfe59130b255820c3488f0506cf20ceb38f2416e7881dc4c7c71a38197f0f4"
+    },
+    {
+      "bytes": 9157,
+      "path": "r16_f2_s0/METRICS.json",
+      "run_id": "r16_f2_s0",
+      "sha256": "ab95607b6ce4f7c56d93d4f414772ce513971691d917cf64ae0908a880c34eec"
+    },
+    {
+      "bytes": 22985,
+      "path": "r16_f2_s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r16_f2_s0",
+      "sha256": "3c9dbc4ed595c91a22c96c871b13bcbe2bf656e300aecaa7d9e529c414b30a2c"
+    },
+    {
+      "bytes": 23058,
+      "path": "r16_f2_s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r16_f2_s0",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r16_f2_s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r16_f2_s0",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1425,
+      "path": "r16_f2_s0/RUN_COMMIT.json",
+      "run_id": "r16_f2_s0",
+      "sha256": "48726ce574e6da3b63fa861b4170f90d17c654877f42c6ecc00f0048a4f2a04d"
+    },
+    {
+      "bytes": 17288,
+      "path": "r16_f2_s0/TRAINING_RECEIPT.json",
+      "run_id": "r16_f2_s0",
+      "sha256": "d961fde0ff436e5ea1948dab63302ebdeb449dca7ff939973c5c32ae817015fb"
+    },
+    {
+      "bytes": 5206,
+      "path": "r16_f2_s0/adapter/README.md",
+      "run_id": "r16_f2_s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17287,
+      "path": "r16_f2_s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r16_f2_s0",
+      "sha256": "8fb46ab79c8e822d8251e8ca6009d7dc2473ed79c3d029496a81c927dce7ab15"
+    },
+    {
+      "bytes": 402,
+      "path": "r16_f2_s0/adapter/TRAINING_SPEC.json",
+      "run_id": "r16_f2_s0",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "r16_f2_s0/adapter/adapter_config.json",
+      "run_id": "r16_f2_s0",
+      "sha256": "1fb6408e23fbec99eaee7907e1abddfa2035e06c01fb5451d457e13d94ef1666"
+    },
+    {
+      "bytes": 8676008,
+      "path": "r16_f2_s0/adapter/adapter_model.safetensors",
+      "run_id": "r16_f2_s0",
+      "sha256": "6a197d668343c21b7f93ee85cd6a4a26f1d5a3715f68d8c5cbac0424cd257717"
+    },
+    {
+      "bytes": 903,
+      "path": "r16_f2_s1/ADAPTER_MANIFEST.json",
+      "run_id": "r16_f2_s1",
+      "sha256": "622bd958effd4c4da36e0c396aa97159c24522029b496b9adcd3a59fb936fd71"
+    },
+    {
+      "bytes": 1197,
+      "path": "r16_f2_s1/CONFIG.json",
+      "run_id": "r16_f2_s1",
+      "sha256": "db46f0a0a8ad5b84d24dfaad36404e76696ba3f79e1e3b05ee3bd5e5055b9154"
+    },
+    {
+      "bytes": 9659,
+      "path": "r16_f2_s1/METRICS.json",
+      "run_id": "r16_f2_s1",
+      "sha256": "c351f7ac3f91de1fe6ca80bfad69d2f3d022fb67928da2fe43dab58868d1cd00"
+    },
+    {
+      "bytes": 23037,
+      "path": "r16_f2_s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r16_f2_s1",
+      "sha256": "eb66f81aae97514edd59189c58dd0dbd13df08a8b273076d16f0f0ed98dd72be"
+    },
+    {
+      "bytes": 23058,
+      "path": "r16_f2_s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r16_f2_s1",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r16_f2_s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r16_f2_s1",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1425,
+      "path": "r16_f2_s1/RUN_COMMIT.json",
+      "run_id": "r16_f2_s1",
+      "sha256": "208a6e47355e60a10d26a15ef54adeb16e4ab61f5ba7a0faa75f17bff5e8ec2c"
+    },
+    {
+      "bytes": 17325,
+      "path": "r16_f2_s1/TRAINING_RECEIPT.json",
+      "run_id": "r16_f2_s1",
+      "sha256": "e597f79cc5095f33acfb346f12ac996dafe2f6672bbe3723e5660931f6a96516"
+    },
+    {
+      "bytes": 5206,
+      "path": "r16_f2_s1/adapter/README.md",
+      "run_id": "r16_f2_s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17324,
+      "path": "r16_f2_s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r16_f2_s1",
+      "sha256": "3c9408e11b52a4e34155fb9f4f9623d3cba89030137572f33ae77d0ea265097b"
+    },
+    {
+      "bytes": 402,
+      "path": "r16_f2_s1/adapter/TRAINING_SPEC.json",
+      "run_id": "r16_f2_s1",
+      "sha256": "ca6eb5ad653655980e9c797146f57f74cc65cc515c048b942760c4b00b951a7f"
+    },
+    {
+      "bytes": 1110,
+      "path": "r16_f2_s1/adapter/adapter_config.json",
+      "run_id": "r16_f2_s1",
+      "sha256": "d70b8879e9b6eacc4ff6c2b172b4868bb3c50af00213fab09f2f769921d08614"
+    },
+    {
+      "bytes": 8676008,
+      "path": "r16_f2_s1/adapter/adapter_model.safetensors",
+      "run_id": "r16_f2_s1",
+      "sha256": "c94ecd742782d8353a1dae6080be6f4a90d0307b6498453072262ddf29ae0d9f"
+    },
+    {
+      "bytes": 900,
+      "path": "r16_f2_s2/ADAPTER_MANIFEST.json",
+      "run_id": "r16_f2_s2",
+      "sha256": "9b049a76087b33150039ca3b09315b0bebd68fb2bc188112e18cbc44e8784515"
+    },
+    {
+      "bytes": 1197,
+      "path": "r16_f2_s2/CONFIG.json",
+      "run_id": "r16_f2_s2",
+      "sha256": "80b540c60730d294db753437fbaf67e74b2748ae3e561ad17c47e8b2d413fd36"
+    },
+    {
+      "bytes": 9188,
+      "path": "r16_f2_s2/METRICS.json",
+      "run_id": "r16_f2_s2",
+      "sha256": "579d77e38052b253472e1c270b9c83545983572d0e1cd615e2d25c8526c923df"
+    },
+    {
+      "bytes": 23009,
+      "path": "r16_f2_s2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r16_f2_s2",
+      "sha256": "363a8f02d4bbd4577ddf177ac753557fef7e2e94de0e352dbd1ebc4db7060fe8"
+    },
+    {
+      "bytes": 23058,
+      "path": "r16_f2_s2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r16_f2_s2",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r16_f2_s2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r16_f2_s2",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1425,
+      "path": "r16_f2_s2/RUN_COMMIT.json",
+      "run_id": "r16_f2_s2",
+      "sha256": "161369aea98accb1f7b8e013419f58de82e16cb9e461ea77d7fe2405ef011b4d"
+    },
+    {
+      "bytes": 17254,
+      "path": "r16_f2_s2/TRAINING_RECEIPT.json",
+      "run_id": "r16_f2_s2",
+      "sha256": "ca29bf6fd27f07c20d41fdc95b49ed6c8f20d8aa8539bb10519a90ca401af995"
+    },
+    {
+      "bytes": 5206,
+      "path": "r16_f2_s2/adapter/README.md",
+      "run_id": "r16_f2_s2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17253,
+      "path": "r16_f2_s2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r16_f2_s2",
+      "sha256": "23020ac74ba659e3100ac5d6d7dc77bc7216afbaa7c0a6bcdfcae0698b81569d"
+    },
+    {
+      "bytes": 402,
+      "path": "r16_f2_s2/adapter/TRAINING_SPEC.json",
+      "run_id": "r16_f2_s2",
+      "sha256": "ae8e5b99c91158a7b8ee0abbb9abbf9056caddab82f7a82335ab18086bd732c7"
+    },
+    {
+      "bytes": 1110,
+      "path": "r16_f2_s2/adapter/adapter_config.json",
+      "run_id": "r16_f2_s2",
+      "sha256": "1c94115c10787433d10d549853869c67eddcb40e3b0a96a0fb177d906944a046"
+    },
+    {
+      "bytes": 8676008,
+      "path": "r16_f2_s2/adapter/adapter_model.safetensors",
+      "run_id": "r16_f2_s2",
+      "sha256": "b479f7d5fd811d196c3e35363fb4d8790cbd230c871d4c9fef12e6a8acf695c1"
+    },
+    {
+      "bytes": 894,
+      "path": "r16_f6_s0/ADAPTER_MANIFEST.json",
+      "run_id": "r16_f6_s0",
+      "sha256": "405a4d32ea2dc7b2007b17957add4bb427419541f21b5da7f8513411c4fac05d"
+    },
+    {
+      "bytes": 1339,
+      "path": "r16_f6_s0/CONFIG.json",
+      "run_id": "r16_f6_s0",
+      "sha256": "26ad5870047f72617c9b380b11b9e63278d3b19ce0f78abec1081c5a1061e7f0"
+    },
+    {
+      "bytes": 10251,
+      "path": "r16_f6_s0/METRICS.json",
+      "run_id": "r16_f6_s0",
+      "sha256": "7b292a51f9e6a07979bae21f87d490a5210d9765fd4562baa41d6b5adb75dbdd"
+    },
+    {
+      "bytes": 22977,
+      "path": "r16_f6_s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r16_f6_s0",
+      "sha256": "eb9e88bba7ed731d8a76fc950f915f151bb0de65d8dba1f00fe534e39cd9c434"
+    },
+    {
+      "bytes": 23058,
+      "path": "r16_f6_s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r16_f6_s0",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5864,
+      "path": "r16_f6_s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r16_f6_s0",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1425,
+      "path": "r16_f6_s0/RUN_COMMIT.json",
+      "run_id": "r16_f6_s0",
+      "sha256": "8ea896247741fe2954f654677e38747beb9674d493dad8f4680031fcfa6c261b"
+    },
+    {
+      "bytes": 16710,
+      "path": "r16_f6_s0/TRAINING_RECEIPT.json",
+      "run_id": "r16_f6_s0",
+      "sha256": "d24c0ab968f3f8aa0ae89b7ed9708304b088eb81bd7b7731ea9b37303f8bb665"
+    },
+    {
+      "bytes": 5206,
+      "path": "r16_f6_s0/adapter/README.md",
+      "run_id": "r16_f6_s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16709,
+      "path": "r16_f6_s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r16_f6_s0",
+      "sha256": "4a563685fa4f79faccb0085ac8b0e8563f921bae27f99b6e0abfe7747eec8c11"
+    },
+    {
+      "bytes": 402,
+      "path": "r16_f6_s0/adapter/TRAINING_SPEC.json",
+      "run_id": "r16_f6_s0",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "r16_f6_s0/adapter/adapter_config.json",
+      "run_id": "r16_f6_s0",
+      "sha256": "1fb6408e23fbec99eaee7907e1abddfa2035e06c01fb5451d457e13d94ef1666"
+    },
+    {
+      "bytes": 8676008,
+      "path": "r16_f6_s0/adapter/adapter_model.safetensors",
+      "run_id": "r16_f6_s0",
+      "sha256": "e8e84a72c72f634c798d90cfcda1bc4698760ea933866774b87a1ed5a519a564"
+    },
+    {
+      "bytes": 896,
+      "path": "r16_f6_s1/ADAPTER_MANIFEST.json",
+      "run_id": "r16_f6_s1",
+      "sha256": "be618a84d64a2dd39566da21ce5b1db9244482d904996c9df3d2284c18b52f5f"
+    },
+    {
+      "bytes": 1339,
+      "path": "r16_f6_s1/CONFIG.json",
+      "run_id": "r16_f6_s1",
+      "sha256": "080787ca1f75504070fd8328bce5e53f5834dfe045129c85d5ba9fa976a8b577"
+    },
+    {
+      "bytes": 10195,
+      "path": "r16_f6_s1/METRICS.json",
+      "run_id": "r16_f6_s1",
+      "sha256": "322801086cba33bd63cb6d4f52672198e88e56e36d275b4da3258f24475428cb"
+    },
+    {
+      "bytes": 22979,
+      "path": "r16_f6_s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r16_f6_s1",
+      "sha256": "10a281bd605367a720868e3040d45513caec2ff42e1b3fc8d66d585e4b610569"
+    },
+    {
+      "bytes": 23058,
+      "path": "r16_f6_s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r16_f6_s1",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5864,
+      "path": "r16_f6_s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r16_f6_s1",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1425,
+      "path": "r16_f6_s1/RUN_COMMIT.json",
+      "run_id": "r16_f6_s1",
+      "sha256": "43f645d591b4562ca8f508a3d66e3a3319d19b4fa0abec6e5a488d22121fae4e"
+    },
+    {
+      "bytes": 16620,
+      "path": "r16_f6_s1/TRAINING_RECEIPT.json",
+      "run_id": "r16_f6_s1",
+      "sha256": "90e12174c3b49fe863b3a22cbc9e105d054329350d1760e7d236c842a98694fd"
+    },
+    {
+      "bytes": 5206,
+      "path": "r16_f6_s1/adapter/README.md",
+      "run_id": "r16_f6_s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16619,
+      "path": "r16_f6_s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r16_f6_s1",
+      "sha256": "44aa53223ddd9884fa4849cb5b0a94514333125920620b9e13a59323a7903472"
+    },
+    {
+      "bytes": 402,
+      "path": "r16_f6_s1/adapter/TRAINING_SPEC.json",
+      "run_id": "r16_f6_s1",
+      "sha256": "ca6eb5ad653655980e9c797146f57f74cc65cc515c048b942760c4b00b951a7f"
+    },
+    {
+      "bytes": 1110,
+      "path": "r16_f6_s1/adapter/adapter_config.json",
+      "run_id": "r16_f6_s1",
+      "sha256": "cf58104381024781e248c2f1a9e9f9b6fb4b14f173ed4abdebeb48a48d0a9b24"
+    },
+    {
+      "bytes": 8676008,
+      "path": "r16_f6_s1/adapter/adapter_model.safetensors",
+      "run_id": "r16_f6_s1",
+      "sha256": "d3d433ea601ecd8256877b9e38ed7d86fc551b95821b0016b70e27fa0a39307a"
+    },
+    {
+      "bytes": 894,
+      "path": "r16_f6_s2/ADAPTER_MANIFEST.json",
+      "run_id": "r16_f6_s2",
+      "sha256": "c354a9ee5f497b9a3c00ad3f24ddee197553db1f76b271939fdc1723d10d6e57"
+    },
+    {
+      "bytes": 1339,
+      "path": "r16_f6_s2/CONFIG.json",
+      "run_id": "r16_f6_s2",
+      "sha256": "b7e0fe5f7565b44c8291a701a71eae47e7a34d292d382c9be000619a0f24ebe8"
+    },
+    {
+      "bytes": 10290,
+      "path": "r16_f6_s2/METRICS.json",
+      "run_id": "r16_f6_s2",
+      "sha256": "386e4925fe1ebcade0c6a7978ec8bd920c45077ed6c70d10254bf720283b4e11"
+    },
+    {
+      "bytes": 22970,
+      "path": "r16_f6_s2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r16_f6_s2",
+      "sha256": "db91c955219da2311e9be91db87af5b53579fde05d684dfe76d0b9291276f310"
+    },
+    {
+      "bytes": 23058,
+      "path": "r16_f6_s2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r16_f6_s2",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5860,
+      "path": "r16_f6_s2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r16_f6_s2",
+      "sha256": "18c5e98fcdcdd9a813bc9f9e1d5ba8b3bda9a947919e435231e0ede9fccefda3"
+    },
+    {
+      "bytes": 1425,
+      "path": "r16_f6_s2/RUN_COMMIT.json",
+      "run_id": "r16_f6_s2",
+      "sha256": "662149163f90965590b5d28c2d9295e5bf6397ac3e40642b781ad3135921b22b"
+    },
+    {
+      "bytes": 16747,
+      "path": "r16_f6_s2/TRAINING_RECEIPT.json",
+      "run_id": "r16_f6_s2",
+      "sha256": "d84b2887a9ffbcd3b1ef445711c86555737859f8225c2b4f1d992cda6e1675e8"
+    },
+    {
+      "bytes": 5206,
+      "path": "r16_f6_s2/adapter/README.md",
+      "run_id": "r16_f6_s2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16746,
+      "path": "r16_f6_s2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r16_f6_s2",
+      "sha256": "b2b858e509f6cee4bcc99774352d7ff0829e8f1a9932da21402a4682d74eb1f3"
+    },
+    {
+      "bytes": 402,
+      "path": "r16_f6_s2/adapter/TRAINING_SPEC.json",
+      "run_id": "r16_f6_s2",
+      "sha256": "ae8e5b99c91158a7b8ee0abbb9abbf9056caddab82f7a82335ab18086bd732c7"
+    },
+    {
+      "bytes": 1110,
+      "path": "r16_f6_s2/adapter/adapter_config.json",
+      "run_id": "r16_f6_s2",
+      "sha256": "3d7e87c907852e43062c0ff880b4786fa62fff1c12cb5f925f427a5dff33d05f"
+    },
+    {
+      "bytes": 8676008,
+      "path": "r16_f6_s2/adapter/adapter_model.safetensors",
+      "run_id": "r16_f6_s2",
+      "sha256": "64fbf6b2f151391c6845df781ac3134f8f141484fdafa60a085707c64a2496ab"
+    },
+    {
+      "bytes": 900,
+      "path": "r32_f2_s0/ADAPTER_MANIFEST.json",
+      "run_id": "r32_f2_s0",
+      "sha256": "4b36ca5bfd891e623da8261909f8dd7924144b6cad5aed0b2abc4194a0b7b16f"
+    },
+    {
+      "bytes": 1197,
+      "path": "r32_f2_s0/CONFIG.json",
+      "run_id": "r32_f2_s0",
+      "sha256": "7bee55b19d0531aede42294bc59162cfcf4eabdaa08d5b5a4e15d2fdb7a5f4f6"
+    },
+    {
+      "bytes": 9306,
+      "path": "r32_f2_s0/METRICS.json",
+      "run_id": "r32_f2_s0",
+      "sha256": "d60815670697053a31d38b0d54889c7d94f530e62ec7685c347db86442280bdc"
+    },
+    {
+      "bytes": 22981,
+      "path": "r32_f2_s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r32_f2_s0",
+      "sha256": "84e116dedd8e4283d441fa5c8c4770f0b0cc145ab0f6dbdf4c541b6bcdd07feb"
+    },
+    {
+      "bytes": 23058,
+      "path": "r32_f2_s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r32_f2_s0",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r32_f2_s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r32_f2_s0",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1425,
+      "path": "r32_f2_s0/RUN_COMMIT.json",
+      "run_id": "r32_f2_s0",
+      "sha256": "d525f6d805da301a318d015da6a578191298fc21ac9571a27e065789ec8ab075"
+    },
+    {
+      "bytes": 17320,
+      "path": "r32_f2_s0/TRAINING_RECEIPT.json",
+      "run_id": "r32_f2_s0",
+      "sha256": "535644301290b592c05d099ad2c67add507a65d9b9f78842b6c73214914b10dd"
+    },
+    {
+      "bytes": 5206,
+      "path": "r32_f2_s0/adapter/README.md",
+      "run_id": "r32_f2_s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17319,
+      "path": "r32_f2_s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r32_f2_s0",
+      "sha256": "bf2dd7e982d2b5416c8cbe4a1c9661fbfb0ed331a3d317d3319b9478c4cc7503"
+    },
+    {
+      "bytes": 402,
+      "path": "r32_f2_s0/adapter/TRAINING_SPEC.json",
+      "run_id": "r32_f2_s0",
+      "sha256": "1c3a43a0489152f112fe0f17f5603a041b598bc90c3e8f130cfa6066cafc925a"
+    },
+    {
+      "bytes": 1110,
+      "path": "r32_f2_s0/adapter/adapter_config.json",
+      "run_id": "r32_f2_s0",
+      "sha256": "731f6c3c8b54c9a53c84332d78b3dbde5ef4818b58b2892d913428f8b07f6586"
+    },
+    {
+      "bytes": 17326944,
+      "path": "r32_f2_s0/adapter/adapter_model.safetensors",
+      "run_id": "r32_f2_s0",
+      "sha256": "44caeca398a807775d10c39762b11ab1479ad10138cc28b3e327f3946e5b041c"
+    },
+    {
+      "bytes": 903,
+      "path": "r32_f2_s1/ADAPTER_MANIFEST.json",
+      "run_id": "r32_f2_s1",
+      "sha256": "9f66c2f38e2fd852bd93ec0dd0f487670ee4872b84b4dc897936b0f94d41771c"
+    },
+    {
+      "bytes": 1197,
+      "path": "r32_f2_s1/CONFIG.json",
+      "run_id": "r32_f2_s1",
+      "sha256": "cf83dafc93546e4fcd2f794004a242bf33ded59b9772b1c1cb4ea95b59aca16c"
+    },
+    {
+      "bytes": 9499,
+      "path": "r32_f2_s1/METRICS.json",
+      "run_id": "r32_f2_s1",
+      "sha256": "576c8558ee3e4c713ae973a090803765869050cfb3d7e5b4bad4c7067df430e4"
+    },
+    {
+      "bytes": 23004,
+      "path": "r32_f2_s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r32_f2_s1",
+      "sha256": "bb5d3b82e45642dbfc28db6b2a39c0e9b7f450c73c2f1f36fd03a766a98b7602"
+    },
+    {
+      "bytes": 23058,
+      "path": "r32_f2_s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r32_f2_s1",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r32_f2_s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r32_f2_s1",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1425,
+      "path": "r32_f2_s1/RUN_COMMIT.json",
+      "run_id": "r32_f2_s1",
+      "sha256": "095307c17020b0061f2278d14c9f67d7407cd41785d17c94a9d64cd660b35d19"
+    },
+    {
+      "bytes": 17353,
+      "path": "r32_f2_s1/TRAINING_RECEIPT.json",
+      "run_id": "r32_f2_s1",
+      "sha256": "513dac11bb9b7e5b524dab7be04b81e6ddd7c2af32c6d500ca462f6573952b24"
+    },
+    {
+      "bytes": 5206,
+      "path": "r32_f2_s1/adapter/README.md",
+      "run_id": "r32_f2_s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17352,
+      "path": "r32_f2_s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r32_f2_s1",
+      "sha256": "7ad9e7e283f10c7e9689d6e53761a7ef1c6d6bc15d3e1c9ea915aaff10c31dce"
+    },
+    {
+      "bytes": 402,
+      "path": "r32_f2_s1/adapter/TRAINING_SPEC.json",
+      "run_id": "r32_f2_s1",
+      "sha256": "b43f5808a250f1b0ff058c9443a98eb2c546b21d0bd0b4f62ac90c7a66eeb1ad"
+    },
+    {
+      "bytes": 1110,
+      "path": "r32_f2_s1/adapter/adapter_config.json",
+      "run_id": "r32_f2_s1",
+      "sha256": "af45f38367f0b858371550fde0ee98dad15b82f6853685a0c10b4b6bee3d4553"
+    },
+    {
+      "bytes": 17326944,
+      "path": "r32_f2_s1/adapter/adapter_model.safetensors",
+      "run_id": "r32_f2_s1",
+      "sha256": "867eab337337b9fc7246841bb093e25a033b103f29076233d14cf7fc006abcec"
+    },
+    {
+      "bytes": 900,
+      "path": "r32_f2_s2/ADAPTER_MANIFEST.json",
+      "run_id": "r32_f2_s2",
+      "sha256": "1d3ab3ceb1989a91a0c29951fc3af48b91e3454a4e1ced6b49236d0196a56447"
+    },
+    {
+      "bytes": 1197,
+      "path": "r32_f2_s2/CONFIG.json",
+      "run_id": "r32_f2_s2",
+      "sha256": "a4913d638e78551b893ea3e747e00154f950c57793c7cdc6ad6ec2aa8fcba6dc"
+    },
+    {
+      "bytes": 9541,
+      "path": "r32_f2_s2/METRICS.json",
+      "run_id": "r32_f2_s2",
+      "sha256": "73c9aa870550e617a76a0f71a5c53e3e85e7a11e67e23d2ac5a48d7b6590a469"
+    },
+    {
+      "bytes": 23005,
+      "path": "r32_f2_s2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r32_f2_s2",
+      "sha256": "34e091c45c6cd9a7d400c6ad50520ae352d8b01fd18d56333f1f40d145f47f9a"
+    },
+    {
+      "bytes": 23058,
+      "path": "r32_f2_s2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r32_f2_s2",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r32_f2_s2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r32_f2_s2",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1425,
+      "path": "r32_f2_s2/RUN_COMMIT.json",
+      "run_id": "r32_f2_s2",
+      "sha256": "5bdfe79022c2628c1f54c3cf5fe430067228f3a63fbefc15fa572a7eb24abdc1"
+    },
+    {
+      "bytes": 17278,
+      "path": "r32_f2_s2/TRAINING_RECEIPT.json",
+      "run_id": "r32_f2_s2",
+      "sha256": "e2c07804e3b2d542c78473baaa35820a0c2324ab03b7bf2ed0ecd9a84d829a7c"
+    },
+    {
+      "bytes": 5206,
+      "path": "r32_f2_s2/adapter/README.md",
+      "run_id": "r32_f2_s2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17277,
+      "path": "r32_f2_s2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r32_f2_s2",
+      "sha256": "82b25f96c339f9da925db70444ea27e85c5cd5961eb7cd2bc28a81a3de0643d8"
+    },
+    {
+      "bytes": 402,
+      "path": "r32_f2_s2/adapter/TRAINING_SPEC.json",
+      "run_id": "r32_f2_s2",
+      "sha256": "7dda172de6d486260d014b6d86c4f9698d7e4eeebb8096a293d441fce778801d"
+    },
+    {
+      "bytes": 1110,
+      "path": "r32_f2_s2/adapter/adapter_config.json",
+      "run_id": "r32_f2_s2",
+      "sha256": "40868f7d5f6d03f5558dba7bd1ad2061519b5151c7107dbba5b40ad568451a7b"
+    },
+    {
+      "bytes": 17326944,
+      "path": "r32_f2_s2/adapter/adapter_model.safetensors",
+      "run_id": "r32_f2_s2",
+      "sha256": "e4e7dff028a89f5fb662deeb95174dd8ed9b688c23840e5892814f8e33e772a1"
+    },
+    {
+      "bytes": 894,
+      "path": "r32_f2b_s0/ADAPTER_MANIFEST.json",
+      "run_id": "r32_f2b_s0",
+      "sha256": "5a43c094060d701f181089c9f1b4dde016d3a778ef52c91eed0c4ca8f03c8683"
+    },
+    {
+      "bytes": 1198,
+      "path": "r32_f2b_s0/CONFIG.json",
+      "run_id": "r32_f2b_s0",
+      "sha256": "3abf102b52bff6874cc207089aeed465518e616bbeb8cefe91a46f03c2075977"
+    },
+    {
+      "bytes": 9814,
+      "path": "r32_f2b_s0/METRICS.json",
+      "run_id": "r32_f2b_s0",
+      "sha256": "240c1fc8415f260c16e0878c9b47be1034aedd7a8cd152f393a5f4642ddbeeda"
+    },
+    {
+      "bytes": 22962,
+      "path": "r32_f2b_s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r32_f2b_s0",
+      "sha256": "a3db193cd7cce39846dca32508d0ce001195840fd2109d2f7083c73148af8a7f"
+    },
+    {
+      "bytes": 23058,
+      "path": "r32_f2b_s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r32_f2b_s0",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r32_f2b_s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r32_f2b_s0",
+      "sha256": "47ad5d2120e7aad0d964c21e62bd910978d2b348d998767bc45791e604dab6a9"
+    },
+    {
+      "bytes": 1426,
+      "path": "r32_f2b_s0/RUN_COMMIT.json",
+      "run_id": "r32_f2b_s0",
+      "sha256": "acbe8f3bdf5ffd93dc9308889ceb5469c55e6b9448fd643708f13cb8036a48b0"
+    },
+    {
+      "bytes": 16920,
+      "path": "r32_f2b_s0/TRAINING_RECEIPT.json",
+      "run_id": "r32_f2b_s0",
+      "sha256": "f10bf1a4769f89d5399fdb26116678e68f60860eb7fdab47e80daf706c3da0f2"
+    },
+    {
+      "bytes": 5206,
+      "path": "r32_f2b_s0/adapter/README.md",
+      "run_id": "r32_f2b_s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16919,
+      "path": "r32_f2b_s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r32_f2b_s0",
+      "sha256": "e763be71cab166e2faa350a09568eac6718d6cdd62f02e7c2b6f2e8880d76ec9"
+    },
+    {
+      "bytes": 402,
+      "path": "r32_f2b_s0/adapter/TRAINING_SPEC.json",
+      "run_id": "r32_f2b_s0",
+      "sha256": "1c3a43a0489152f112fe0f17f5603a041b598bc90c3e8f130cfa6066cafc925a"
+    },
+    {
+      "bytes": 1110,
+      "path": "r32_f2b_s0/adapter/adapter_config.json",
+      "run_id": "r32_f2b_s0",
+      "sha256": "058c5e06ef3164c5c2c28a66c0e30e4b959ebd2f7eda9dac462c2751ffd070fa"
+    },
+    {
+      "bytes": 17326944,
+      "path": "r32_f2b_s0/adapter/adapter_model.safetensors",
+      "run_id": "r32_f2b_s0",
+      "sha256": "88c9f8c96f82b31fbb914a44ad0cfccd698e3ef3fa3e37664a7d243b4b1a3e6f"
+    },
+    {
+      "bytes": 895,
+      "path": "r32_f2b_s1/ADAPTER_MANIFEST.json",
+      "run_id": "r32_f2b_s1",
+      "sha256": "8ccdd0cd9a78fbc6a09679b62e92a55a14778849f8995f641e9ceb8f879fb1d9"
+    },
+    {
+      "bytes": 1198,
+      "path": "r32_f2b_s1/CONFIG.json",
+      "run_id": "r32_f2b_s1",
+      "sha256": "5a103fab4def0c6ca07224f47b4032fd4550bf064da08a813ef1b39323add6c3"
+    },
+    {
+      "bytes": 9441,
+      "path": "r32_f2b_s1/METRICS.json",
+      "run_id": "r32_f2b_s1",
+      "sha256": "f5003ead42c1a5c50d17fdf6ad39a750bd4de7b96abed3dce5de2978623db479"
+    },
+    {
+      "bytes": 22955,
+      "path": "r32_f2b_s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r32_f2b_s1",
+      "sha256": "ce2872594ca2683b4faf3c500a4be30e204d16e35fc9b022b85705e1d65f4265"
+    },
+    {
+      "bytes": 23058,
+      "path": "r32_f2b_s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r32_f2b_s1",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r32_f2b_s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r32_f2b_s1",
+      "sha256": "47ad5d2120e7aad0d964c21e62bd910978d2b348d998767bc45791e604dab6a9"
+    },
+    {
+      "bytes": 1426,
+      "path": "r32_f2b_s1/RUN_COMMIT.json",
+      "run_id": "r32_f2b_s1",
+      "sha256": "6f4b1e2b4499f941e470a8f34117ae3828d38a1b1b1d3e6896be1d5e4505b817"
+    },
+    {
+      "bytes": 17012,
+      "path": "r32_f2b_s1/TRAINING_RECEIPT.json",
+      "run_id": "r32_f2b_s1",
+      "sha256": "ac6565f197834069b8c9434a99f728b71266cf96258692a8d3cee8d5f955e7d1"
+    },
+    {
+      "bytes": 5206,
+      "path": "r32_f2b_s1/adapter/README.md",
+      "run_id": "r32_f2b_s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17011,
+      "path": "r32_f2b_s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r32_f2b_s1",
+      "sha256": "a363dff9e83e1e34dd4e1f85f8e97d4f494fa791622d263112ee5e13bfcae360"
+    },
+    {
+      "bytes": 402,
+      "path": "r32_f2b_s1/adapter/TRAINING_SPEC.json",
+      "run_id": "r32_f2b_s1",
+      "sha256": "b43f5808a250f1b0ff058c9443a98eb2c546b21d0bd0b4f62ac90c7a66eeb1ad"
+    },
+    {
+      "bytes": 1110,
+      "path": "r32_f2b_s1/adapter/adapter_config.json",
+      "run_id": "r32_f2b_s1",
+      "sha256": "40868f7d5f6d03f5558dba7bd1ad2061519b5151c7107dbba5b40ad568451a7b"
+    },
+    {
+      "bytes": 17326944,
+      "path": "r32_f2b_s1/adapter/adapter_model.safetensors",
+      "run_id": "r32_f2b_s1",
+      "sha256": "8cc73dff7cd9eec14b679c92f01db605b34128ff02baaf3195259261c84b5448"
+    },
+    {
+      "bytes": 897,
+      "path": "r32_f6_s0/ADAPTER_MANIFEST.json",
+      "run_id": "r32_f6_s0",
+      "sha256": "ebd2000f8e7c457872e934ac118ac92a89438c8e17ff1a17835f40c2899c03bd"
+    },
+    {
+      "bytes": 1339,
+      "path": "r32_f6_s0/CONFIG.json",
+      "run_id": "r32_f6_s0",
+      "sha256": "40c6869b1c8441a7ad7abd769f2c04f411e03bb69eeae9e29eed31176f31c442"
+    },
+    {
+      "bytes": 10214,
+      "path": "r32_f6_s0/METRICS.json",
+      "run_id": "r32_f6_s0",
+      "sha256": "50b0c5369bfcd23fe584b305542e6ade439912d1938db03ff0db749d97676d4b"
+    },
+    {
+      "bytes": 22992,
+      "path": "r32_f6_s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r32_f6_s0",
+      "sha256": "285e1656dc0040cb003a2634c729a80501be09e120b39d768cfce54c3d86ce01"
+    },
+    {
+      "bytes": 23058,
+      "path": "r32_f6_s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r32_f6_s0",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5864,
+      "path": "r32_f6_s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r32_f6_s0",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1425,
+      "path": "r32_f6_s0/RUN_COMMIT.json",
+      "run_id": "r32_f6_s0",
+      "sha256": "06e232596f81ef1d379114ea319beb0206a93d51f54060d8fd49078423f3fc24"
+    },
+    {
+      "bytes": 16580,
+      "path": "r32_f6_s0/TRAINING_RECEIPT.json",
+      "run_id": "r32_f6_s0",
+      "sha256": "c4f4486a23a0db9e30d4ad26738fbce345f76b18ad7ba350218559d035dfcbe5"
+    },
+    {
+      "bytes": 5206,
+      "path": "r32_f6_s0/adapter/README.md",
+      "run_id": "r32_f6_s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16579,
+      "path": "r32_f6_s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r32_f6_s0",
+      "sha256": "266f821dae0f111e323a9b59d217dbf7b58fe81f39f38ffb82dafab2e4df44b3"
+    },
+    {
+      "bytes": 402,
+      "path": "r32_f6_s0/adapter/TRAINING_SPEC.json",
+      "run_id": "r32_f6_s0",
+      "sha256": "1c3a43a0489152f112fe0f17f5603a041b598bc90c3e8f130cfa6066cafc925a"
+    },
+    {
+      "bytes": 1110,
+      "path": "r32_f6_s0/adapter/adapter_config.json",
+      "run_id": "r32_f6_s0",
+      "sha256": "5f63f18aec51e311d6cc78fd37648ed4846bb941da9e550dc14b413bd8353fa9"
+    },
+    {
+      "bytes": 17326944,
+      "path": "r32_f6_s0/adapter/adapter_model.safetensors",
+      "run_id": "r32_f6_s0",
+      "sha256": "0d2888ed3d0a628d598dbbc7700aed187d482ab98f64b6bbf3ed4eda89d6a897"
+    },
+    {
+      "bytes": 894,
+      "path": "r32_f6_s1/ADAPTER_MANIFEST.json",
+      "run_id": "r32_f6_s1",
+      "sha256": "dbab471aff1dbcb361aa4cc7da603766baa483779cd61b2b44df43d8bef3fad0"
+    },
+    {
+      "bytes": 1339,
+      "path": "r32_f6_s1/CONFIG.json",
+      "run_id": "r32_f6_s1",
+      "sha256": "b18ecb44f55dd9cf5de30016501db21a65621c1d74acd7c1ad82ce21175c9d5b"
+    },
+    {
+      "bytes": 10030,
+      "path": "r32_f6_s1/METRICS.json",
+      "run_id": "r32_f6_s1",
+      "sha256": "9cf662473f49c03b0ca659f2b02fbb79d029b18b2b0f47a58672e3c92e67bd6e"
+    },
+    {
+      "bytes": 22999,
+      "path": "r32_f6_s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r32_f6_s1",
+      "sha256": "2152cd089fae788e2a5fafb34290bf30cd507313fc5acc3b8c80e84e5618e02d"
+    },
+    {
+      "bytes": 23058,
+      "path": "r32_f6_s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r32_f6_s1",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5864,
+      "path": "r32_f6_s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r32_f6_s1",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1425,
+      "path": "r32_f6_s1/RUN_COMMIT.json",
+      "run_id": "r32_f6_s1",
+      "sha256": "d78e80f1c7093942c5f168a6330312f9af55118274040b047a66e7903b3b0dc8"
+    },
+    {
+      "bytes": 16732,
+      "path": "r32_f6_s1/TRAINING_RECEIPT.json",
+      "run_id": "r32_f6_s1",
+      "sha256": "6f9885ae72593ca5d5bb08bf29dc8240751a24c9cf5bfe9b4f27628b99eb672f"
+    },
+    {
+      "bytes": 5206,
+      "path": "r32_f6_s1/adapter/README.md",
+      "run_id": "r32_f6_s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16731,
+      "path": "r32_f6_s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r32_f6_s1",
+      "sha256": "d212ee81a7e9fff9b24d3759ead722d7d36703b2bec1d2a71c090cebbad5156d"
+    },
+    {
+      "bytes": 402,
+      "path": "r32_f6_s1/adapter/TRAINING_SPEC.json",
+      "run_id": "r32_f6_s1",
+      "sha256": "b43f5808a250f1b0ff058c9443a98eb2c546b21d0bd0b4f62ac90c7a66eeb1ad"
+    },
+    {
+      "bytes": 1110,
+      "path": "r32_f6_s1/adapter/adapter_config.json",
+      "run_id": "r32_f6_s1",
+      "sha256": "38bb9ab714efc995b74e85e59bce8dd1f945e608746e29c143254e05ae948841"
+    },
+    {
+      "bytes": 17326944,
+      "path": "r32_f6_s1/adapter/adapter_model.safetensors",
+      "run_id": "r32_f6_s1",
+      "sha256": "8934ff8c49b498cfeaae5649d9f80a9477e14723f41420fa66a644099db9a59c"
+    },
+    {
+      "bytes": 894,
+      "path": "r32_f6_s2/ADAPTER_MANIFEST.json",
+      "run_id": "r32_f6_s2",
+      "sha256": "9bf7a86342fe491ba7c81d626597d5a21cde45a151ece728b8604f283a49d347"
+    },
+    {
+      "bytes": 1339,
+      "path": "r32_f6_s2/CONFIG.json",
+      "run_id": "r32_f6_s2",
+      "sha256": "8c99d5d5e8376e7af971f2cc8ef818a068b4985cfc590bcdc1922d3add139f89"
+    },
+    {
+      "bytes": 10415,
+      "path": "r32_f6_s2/METRICS.json",
+      "run_id": "r32_f6_s2",
+      "sha256": "7b019b1bafd141eff6705da4fd3d1fcdb8a8431c927c23d2772d5585d831b0a0"
+    },
+    {
+      "bytes": 22955,
+      "path": "r32_f6_s2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r32_f6_s2",
+      "sha256": "f2271c82a73e6bcdb64ba4521b4a4aacfb5703f302cd75c0e24d5fe93f555a66"
+    },
+    {
+      "bytes": 23058,
+      "path": "r32_f6_s2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r32_f6_s2",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5864,
+      "path": "r32_f6_s2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r32_f6_s2",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1425,
+      "path": "r32_f6_s2/RUN_COMMIT.json",
+      "run_id": "r32_f6_s2",
+      "sha256": "3c2ebd06703c714c6fe2395fc27914eedac8000f4f8e1a15b28b7e7161b8e648"
+    },
+    {
+      "bytes": 16749,
+      "path": "r32_f6_s2/TRAINING_RECEIPT.json",
+      "run_id": "r32_f6_s2",
+      "sha256": "c071c20fb3bca9497537c8028eb65eaa5619d00ab0d5c4b7ce261ad97653c913"
+    },
+    {
+      "bytes": 5206,
+      "path": "r32_f6_s2/adapter/README.md",
+      "run_id": "r32_f6_s2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16748,
+      "path": "r32_f6_s2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r32_f6_s2",
+      "sha256": "6558d17ab4b6b14e5fc9f9b1bc3e89b886964a02d7090569e9326db9e3992468"
+    },
+    {
+      "bytes": 402,
+      "path": "r32_f6_s2/adapter/TRAINING_SPEC.json",
+      "run_id": "r32_f6_s2",
+      "sha256": "7dda172de6d486260d014b6d86c4f9698d7e4eeebb8096a293d441fce778801d"
+    },
+    {
+      "bytes": 1110,
+      "path": "r32_f6_s2/adapter/adapter_config.json",
+      "run_id": "r32_f6_s2",
+      "sha256": "b5b276fb2dda5b82e3883b95c9b103328b78e44d0d7da5f2dc8307480077a78a"
+    },
+    {
+      "bytes": 17326944,
+      "path": "r32_f6_s2/adapter/adapter_model.safetensors",
+      "run_id": "r32_f6_s2",
+      "sha256": "010b97f8ab4dcdc57bc49f61f239a67ecda764fabad4a11f7a9eb4d27c111524"
+    },
+    {
+      "bytes": 899,
+      "path": "r4_f2_s0/ADAPTER_MANIFEST.json",
+      "run_id": "r4_f2_s0",
+      "sha256": "f44be4c849ec5cc31ca5820ec86e6558408255a362c5fb28bd7f889ae59b444d"
+    },
+    {
+      "bytes": 1195,
+      "path": "r4_f2_s0/CONFIG.json",
+      "run_id": "r4_f2_s0",
+      "sha256": "1129ec6969fdaf95aa893bc95ab56ade680165c5ac669f27d018b8d88af040d3"
+    },
+    {
+      "bytes": 9305,
+      "path": "r4_f2_s0/METRICS.json",
+      "run_id": "r4_f2_s0",
+      "sha256": "f0599ddd324fc0104294ae0f48c6c9885794a4ff3325256fe5602e6d27a41cdc"
+    },
+    {
+      "bytes": 23012,
+      "path": "r4_f2_s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r4_f2_s0",
+      "sha256": "3d37ae6a33cc2cb307f30fa567ad47b1b6ccc451d8f3d5c554975fbfbef70534"
+    },
+    {
+      "bytes": 23058,
+      "path": "r4_f2_s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r4_f2_s0",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r4_f2_s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r4_f2_s0",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1424,
+      "path": "r4_f2_s0/RUN_COMMIT.json",
+      "run_id": "r4_f2_s0",
+      "sha256": "9314b4bad49b7fcd5fb6ae28371df5f727d3202450ba317dd9685e1b1b047ca1"
+    },
+    {
+      "bytes": 17210,
+      "path": "r4_f2_s0/TRAINING_RECEIPT.json",
+      "run_id": "r4_f2_s0",
+      "sha256": "6b4f6d1e3f82c15b6d67e440b653ac69c75bdd60229584e43082918203a29b21"
+    },
+    {
+      "bytes": 5206,
+      "path": "r4_f2_s0/adapter/README.md",
+      "run_id": "r4_f2_s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17209,
+      "path": "r4_f2_s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r4_f2_s0",
+      "sha256": "9505c7db0d24261636bc808f32c60a70910a9997f73bc5ce7435d7738048e946"
+    },
+    {
+      "bytes": 401,
+      "path": "r4_f2_s0/adapter/TRAINING_SPEC.json",
+      "run_id": "r4_f2_s0",
+      "sha256": "1c43a7264f4cbc48a5f8cce480cc3994226c49881393bf7b1ae9d6fc9e1d0053"
+    },
+    {
+      "bytes": 1109,
+      "path": "r4_f2_s0/adapter/adapter_config.json",
+      "run_id": "r4_f2_s0",
+      "sha256": "7e8c9bd453fa53594931a3cf3073156cb4117ee0723ab63ee78fc58cfb669a00"
+    },
+    {
+      "bytes": 2187608,
+      "path": "r4_f2_s0/adapter/adapter_model.safetensors",
+      "run_id": "r4_f2_s0",
+      "sha256": "9fee73494dcc41f87920b9e9bc2847412e300c0799ef3491ad2f74adee61c4c7"
+    },
+    {
+      "bytes": 902,
+      "path": "r4_f2_s1/ADAPTER_MANIFEST.json",
+      "run_id": "r4_f2_s1",
+      "sha256": "e5573b3f9d2413a6a3992af605551852546c5a23f9bd5a65a000b2d6356fd91a"
+    },
+    {
+      "bytes": 1195,
+      "path": "r4_f2_s1/CONFIG.json",
+      "run_id": "r4_f2_s1",
+      "sha256": "3788d5f7945baaa399d680991e8ff7689fa1c52a99ed6220f7dcf2b1c83db321"
+    },
+    {
+      "bytes": 9609,
+      "path": "r4_f2_s1/METRICS.json",
+      "run_id": "r4_f2_s1",
+      "sha256": "b517d16cba14688bb3b28287cf0a7107715c5c1f8f51f6dd6b04cb400eef290e"
+    },
+    {
+      "bytes": 23012,
+      "path": "r4_f2_s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r4_f2_s1",
+      "sha256": "60ad242883ff296723bcc920a60a94c8bca834397cc3a4e652a0b92681bd965e"
+    },
+    {
+      "bytes": 23058,
+      "path": "r4_f2_s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r4_f2_s1",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r4_f2_s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r4_f2_s1",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1424,
+      "path": "r4_f2_s1/RUN_COMMIT.json",
+      "run_id": "r4_f2_s1",
+      "sha256": "55b400ce618470746e07d670ef82e6b18fbe9662876ece6576f7939fb5f864e3"
+    },
+    {
+      "bytes": 17244,
+      "path": "r4_f2_s1/TRAINING_RECEIPT.json",
+      "run_id": "r4_f2_s1",
+      "sha256": "ee559ba200e116d9b0057de298c43d34af978ef0774aad21501899025d74bbc4"
+    },
+    {
+      "bytes": 5206,
+      "path": "r4_f2_s1/adapter/README.md",
+      "run_id": "r4_f2_s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17243,
+      "path": "r4_f2_s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r4_f2_s1",
+      "sha256": "2bf12d7dc2e1dc1a56a1cb191d53ad8722ab9f73d59618e6147dc835982bf230"
+    },
+    {
+      "bytes": 401,
+      "path": "r4_f2_s1/adapter/TRAINING_SPEC.json",
+      "run_id": "r4_f2_s1",
+      "sha256": "c683947e1b3dce16ff19804b0381257313c05bbfe596c57b5ebc9448078bd0d4"
+    },
+    {
+      "bytes": 1109,
+      "path": "r4_f2_s1/adapter/adapter_config.json",
+      "run_id": "r4_f2_s1",
+      "sha256": "98dd2fa3403f041b6eee6a910674ed7a12d7c132816541de4b5a6aa0b9b73266"
+    },
+    {
+      "bytes": 2187608,
+      "path": "r4_f2_s1/adapter/adapter_model.safetensors",
+      "run_id": "r4_f2_s1",
+      "sha256": "ada51ae2eb6dc5cff80f4c971e3dc533fe5b5f14d4a125c144a259aaeab14778"
+    },
+    {
+      "bytes": 899,
+      "path": "r4_f2_s2/ADAPTER_MANIFEST.json",
+      "run_id": "r4_f2_s2",
+      "sha256": "170f88a526ec0c73ef38d98b6a2ea6a9cfe375afa0aea445e62882b6d2e57788"
+    },
+    {
+      "bytes": 1195,
+      "path": "r4_f2_s2/CONFIG.json",
+      "run_id": "r4_f2_s2",
+      "sha256": "f5e3fe8d7f724fefd1b2e4d120ee15b8f45b9fad51205295e591194055198cad"
+    },
+    {
+      "bytes": 9523,
+      "path": "r4_f2_s2/METRICS.json",
+      "run_id": "r4_f2_s2",
+      "sha256": "77d17e98c472ad8d61b075d0fd210494be120a2d64aca7054df250e4e3578fb7"
+    },
+    {
+      "bytes": 22990,
+      "path": "r4_f2_s2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r4_f2_s2",
+      "sha256": "d15770e81e40e4bc9499fb03f443c5ce2cd4566fd3f76ef2e8bb4835188c1aac"
+    },
+    {
+      "bytes": 23058,
+      "path": "r4_f2_s2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r4_f2_s2",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r4_f2_s2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r4_f2_s2",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1424,
+      "path": "r4_f2_s2/RUN_COMMIT.json",
+      "run_id": "r4_f2_s2",
+      "sha256": "144a8e8488dd9131c07a5b2f96e6772ce2ad7318e4205a48be52c6442e579570"
+    },
+    {
+      "bytes": 17127,
+      "path": "r4_f2_s2/TRAINING_RECEIPT.json",
+      "run_id": "r4_f2_s2",
+      "sha256": "6dd002a3d13feb8668a26d94a37d4eb053b30979e4817b7c52a2fcff8f2ba438"
+    },
+    {
+      "bytes": 5206,
+      "path": "r4_f2_s2/adapter/README.md",
+      "run_id": "r4_f2_s2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17126,
+      "path": "r4_f2_s2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r4_f2_s2",
+      "sha256": "bab441baf7126524aa5bbbdc9728f6b440203cb85da909379affa72fe12abf61"
+    },
+    {
+      "bytes": 401,
+      "path": "r4_f2_s2/adapter/TRAINING_SPEC.json",
+      "run_id": "r4_f2_s2",
+      "sha256": "977e72003f85064f7a94fdfd1e8af8e1fead2e0156941b6b3a2a597ae7dab164"
+    },
+    {
+      "bytes": 1109,
+      "path": "r4_f2_s2/adapter/adapter_config.json",
+      "run_id": "r4_f2_s2",
+      "sha256": "252b6abf93625fcb7ae7fdba187a6db5bfdc6586eb8c6d1522e22ec2298b8817"
+    },
+    {
+      "bytes": 2187608,
+      "path": "r4_f2_s2/adapter/adapter_model.safetensors",
+      "run_id": "r4_f2_s2",
+      "sha256": "5d050371e3dd3704214a588e875693b7b48266e1ea5062de34376c1f27a4e4cb"
+    },
+    {
+      "bytes": 894,
+      "path": "r4_f2b_s0/ADAPTER_MANIFEST.json",
+      "run_id": "r4_f2b_s0",
+      "sha256": "37c25b0a44e4b9009985f608b7ea414785c539d5d32ec3c8b75497677e4802da"
+    },
+    {
+      "bytes": 1196,
+      "path": "r4_f2b_s0/CONFIG.json",
+      "run_id": "r4_f2b_s0",
+      "sha256": "391f0b16c22db4c4e8fd06afbe8d2ac3429bb212a24368ba76eda1d19920a211"
+    },
+    {
+      "bytes": 9799,
+      "path": "r4_f2b_s0/METRICS.json",
+      "run_id": "r4_f2b_s0",
+      "sha256": "ee2c6d238dc4864a5c42d4da97f82b7ff26de84a8bd06b1e14bad169f1b6a6f6"
+    },
+    {
+      "bytes": 22972,
+      "path": "r4_f2b_s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r4_f2b_s0",
+      "sha256": "81a109ede073b3ac7451d04e3179b87f8a6e21c9cd4798e13b28aae496e29256"
+    },
+    {
+      "bytes": 23058,
+      "path": "r4_f2b_s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r4_f2b_s0",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r4_f2b_s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r4_f2b_s0",
+      "sha256": "47ad5d2120e7aad0d964c21e62bd910978d2b348d998767bc45791e604dab6a9"
+    },
+    {
+      "bytes": 1425,
+      "path": "r4_f2b_s0/RUN_COMMIT.json",
+      "run_id": "r4_f2b_s0",
+      "sha256": "5cec726944cc5c11f816fb5a316997434ecf06bd90f0c04d86135259e959bd50"
+    },
+    {
+      "bytes": 16876,
+      "path": "r4_f2b_s0/TRAINING_RECEIPT.json",
+      "run_id": "r4_f2b_s0",
+      "sha256": "11c1f4c52702d197bedbd2cab460359dcd5dcfeffda6905ef3e756fc37c6aadb"
+    },
+    {
+      "bytes": 5206,
+      "path": "r4_f2b_s0/adapter/README.md",
+      "run_id": "r4_f2b_s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16875,
+      "path": "r4_f2b_s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r4_f2b_s0",
+      "sha256": "6a1b5cee48f790d02b418ab8376cda83d4c47186dec9fd63a2065097389a4b06"
+    },
+    {
+      "bytes": 401,
+      "path": "r4_f2b_s0/adapter/TRAINING_SPEC.json",
+      "run_id": "r4_f2b_s0",
+      "sha256": "1c43a7264f4cbc48a5f8cce480cc3994226c49881393bf7b1ae9d6fc9e1d0053"
+    },
+    {
+      "bytes": 1109,
+      "path": "r4_f2b_s0/adapter/adapter_config.json",
+      "run_id": "r4_f2b_s0",
+      "sha256": "5a76aaab9a12adfb24e564dbf9fe89d63b0390717808cedd3cf1be9b2cc070d3"
+    },
+    {
+      "bytes": 2187608,
+      "path": "r4_f2b_s0/adapter/adapter_model.safetensors",
+      "run_id": "r4_f2b_s0",
+      "sha256": "dbfdbefe06122cfe824bc520b875e209576006a1298dd36ab4907cd81d972ae6"
+    },
+    {
+      "bytes": 894,
+      "path": "r4_f2b_s1/ADAPTER_MANIFEST.json",
+      "run_id": "r4_f2b_s1",
+      "sha256": "e020f7667d391e8b93a63a0bfdc980af630ef9b1ba254587e12856a65d04011b"
+    },
+    {
+      "bytes": 1196,
+      "path": "r4_f2b_s1/CONFIG.json",
+      "run_id": "r4_f2b_s1",
+      "sha256": "adb40f6b6d68fc15830281ab29923d8702347443a2ebe76f72104a060799f9dc"
+    },
+    {
+      "bytes": 9614,
+      "path": "r4_f2b_s1/METRICS.json",
+      "run_id": "r4_f2b_s1",
+      "sha256": "f620de1a3c51547be305cf40212f3194b7418b7e5fcb152c91ba18c334a44fee"
+    },
+    {
+      "bytes": 22977,
+      "path": "r4_f2b_s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r4_f2b_s1",
+      "sha256": "150f0ea5aacb4757abc817d245e0160cca2dee290ec7fe37898b8899c00648ef"
+    },
+    {
+      "bytes": 23058,
+      "path": "r4_f2b_s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r4_f2b_s1",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r4_f2b_s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r4_f2b_s1",
+      "sha256": "47ad5d2120e7aad0d964c21e62bd910978d2b348d998767bc45791e604dab6a9"
+    },
+    {
+      "bytes": 1425,
+      "path": "r4_f2b_s1/RUN_COMMIT.json",
+      "run_id": "r4_f2b_s1",
+      "sha256": "56aac33a865e713bd1e6608a796cb366cb6f770f916f30dfa6e62ce1f0f11ba4"
+    },
+    {
+      "bytes": 16776,
+      "path": "r4_f2b_s1/TRAINING_RECEIPT.json",
+      "run_id": "r4_f2b_s1",
+      "sha256": "b308ca20882e1f3295c2bc8911eaaba3c99a7c38fb0cbc49e96333335273e5ff"
+    },
+    {
+      "bytes": 5206,
+      "path": "r4_f2b_s1/adapter/README.md",
+      "run_id": "r4_f2b_s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16775,
+      "path": "r4_f2b_s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r4_f2b_s1",
+      "sha256": "d8bcae114ea53299a73b61e5968b08597aaae67d95cfd62d20550d5a843b987d"
+    },
+    {
+      "bytes": 401,
+      "path": "r4_f2b_s1/adapter/TRAINING_SPEC.json",
+      "run_id": "r4_f2b_s1",
+      "sha256": "c683947e1b3dce16ff19804b0381257313c05bbfe596c57b5ebc9448078bd0d4"
+    },
+    {
+      "bytes": 1109,
+      "path": "r4_f2b_s1/adapter/adapter_config.json",
+      "run_id": "r4_f2b_s1",
+      "sha256": "5a76aaab9a12adfb24e564dbf9fe89d63b0390717808cedd3cf1be9b2cc070d3"
+    },
+    {
+      "bytes": 2187608,
+      "path": "r4_f2b_s1/adapter/adapter_model.safetensors",
+      "run_id": "r4_f2b_s1",
+      "sha256": "fd32be99f3ec43b4f55f01156987fa8c50d0b718c43c402f69f60a97f0ec0ed7"
+    },
+    {
+      "bytes": 908,
+      "path": "r4_f6_s0/ADAPTER_MANIFEST.json",
+      "run_id": "r4_f6_s0",
+      "sha256": "a8ad31a8ba67dc7b987739b4af63d326a5e907360caebc588ac2fa916651179e"
+    },
+    {
+      "bytes": 1337,
+      "path": "r4_f6_s0/CONFIG.json",
+      "run_id": "r4_f6_s0",
+      "sha256": "d431846c400fe622b8dde77e7caf8d87dab42ef93e90820379996450e5702203"
+    },
+    {
+      "bytes": 10194,
+      "path": "r4_f6_s0/METRICS.json",
+      "run_id": "r4_f6_s0",
+      "sha256": "8d9152668d0b492afcdd24006483944c30a18531ea8eccbc01c6212220d6cc32"
+    },
+    {
+      "bytes": 23001,
+      "path": "r4_f6_s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r4_f6_s0",
+      "sha256": "ba6144e3ba4d407d442041810d1298c13fb36d953b1890116e1802ef8ed07f40"
+    },
+    {
+      "bytes": 23058,
+      "path": "r4_f6_s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r4_f6_s0",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5864,
+      "path": "r4_f6_s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r4_f6_s0",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1424,
+      "path": "r4_f6_s0/RUN_COMMIT.json",
+      "run_id": "r4_f6_s0",
+      "sha256": "084c59cc6b44004580946747ff254c090ed091a8ec1eb514dc6ac77d0e37c56c"
+    },
+    {
+      "bytes": 16627,
+      "path": "r4_f6_s0/TRAINING_RECEIPT.json",
+      "run_id": "r4_f6_s0",
+      "sha256": "c1996bbec1c682c90bac29815d68131e16365d3bf847d7247632703ddc240dd6"
+    },
+    {
+      "bytes": 5206,
+      "path": "r4_f6_s0/adapter/README.md",
+      "run_id": "r4_f6_s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16626,
+      "path": "r4_f6_s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r4_f6_s0",
+      "sha256": "ba6c65ceff3b1c29bd0a0ab7ba9c9e4dedfcbb5ed695aee9188dffc08bdc40f9"
+    },
+    {
+      "bytes": 401,
+      "path": "r4_f6_s0/adapter/TRAINING_SPEC.json",
+      "run_id": "r4_f6_s0",
+      "sha256": "1c43a7264f4cbc48a5f8cce480cc3994226c49881393bf7b1ae9d6fc9e1d0053"
+    },
+    {
+      "bytes": 1109,
+      "path": "r4_f6_s0/adapter/adapter_config.json",
+      "run_id": "r4_f6_s0",
+      "sha256": "7e8c9bd453fa53594931a3cf3073156cb4117ee0723ab63ee78fc58cfb669a00"
+    },
+    {
+      "bytes": 2187608,
+      "path": "r4_f6_s0/adapter/adapter_model.safetensors",
+      "run_id": "r4_f6_s0",
+      "sha256": "e0bbc85ddc6f11371c369f4ee1ad3be8143b2cae99b4fd55861977dfd66a8ec5"
+    },
+    {
+      "bytes": 893,
+      "path": "r4_f6_s1/ADAPTER_MANIFEST.json",
+      "run_id": "r4_f6_s1",
+      "sha256": "72096e9d992624e3743d4119d148708f065f809c8d701c370dd7aa598f6e117d"
+    },
+    {
+      "bytes": 1337,
+      "path": "r4_f6_s1/CONFIG.json",
+      "run_id": "r4_f6_s1",
+      "sha256": "a12812c4b5a302892975e9c5e771894108edc2c3d5f973404c854d12c61df5c9"
+    },
+    {
+      "bytes": 10205,
+      "path": "r4_f6_s1/METRICS.json",
+      "run_id": "r4_f6_s1",
+      "sha256": "0ab9e45d223a3d129fe0abdacb6121b8f873cf4c72664efa714646c5817001f6"
+    },
+    {
+      "bytes": 22973,
+      "path": "r4_f6_s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r4_f6_s1",
+      "sha256": "1ea268cdf2664f6bd7affb110db95aa96dffdffc20f69d4c45ca9bf883b3c25b"
+    },
+    {
+      "bytes": 23058,
+      "path": "r4_f6_s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r4_f6_s1",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5864,
+      "path": "r4_f6_s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r4_f6_s1",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1424,
+      "path": "r4_f6_s1/RUN_COMMIT.json",
+      "run_id": "r4_f6_s1",
+      "sha256": "57cbdb53ab11c29722546bcdc74bb511b19cfaf71ca8422c537845c96ab34063"
+    },
+    {
+      "bytes": 16567,
+      "path": "r4_f6_s1/TRAINING_RECEIPT.json",
+      "run_id": "r4_f6_s1",
+      "sha256": "ec1b6b78d70db2c33e16e5e49176c7fc9da0f6e7ff293eeac5f1adf80fa355ab"
+    },
+    {
+      "bytes": 5206,
+      "path": "r4_f6_s1/adapter/README.md",
+      "run_id": "r4_f6_s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16566,
+      "path": "r4_f6_s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r4_f6_s1",
+      "sha256": "43743f6a2a7576362a2e49c8428659e6df44c25e6a1fe8cb8ce353bdfc25ab81"
+    },
+    {
+      "bytes": 401,
+      "path": "r4_f6_s1/adapter/TRAINING_SPEC.json",
+      "run_id": "r4_f6_s1",
+      "sha256": "c683947e1b3dce16ff19804b0381257313c05bbfe596c57b5ebc9448078bd0d4"
+    },
+    {
+      "bytes": 1109,
+      "path": "r4_f6_s1/adapter/adapter_config.json",
+      "run_id": "r4_f6_s1",
+      "sha256": "5a76aaab9a12adfb24e564dbf9fe89d63b0390717808cedd3cf1be9b2cc070d3"
+    },
+    {
+      "bytes": 2187608,
+      "path": "r4_f6_s1/adapter/adapter_model.safetensors",
+      "run_id": "r4_f6_s1",
+      "sha256": "f5474ca0648feafad4db357e0027719bee9524dcddcb092b900cb56a04195215"
+    },
+    {
+      "bytes": 893,
+      "path": "r4_f6_s2/ADAPTER_MANIFEST.json",
+      "run_id": "r4_f6_s2",
+      "sha256": "34063422caef6e3a2314ce9c7ff4412b832288093f2097cb9cf3c6780f1ac755"
+    },
+    {
+      "bytes": 1337,
+      "path": "r4_f6_s2/CONFIG.json",
+      "run_id": "r4_f6_s2",
+      "sha256": "5ddd35d35088c04db484d8c850f30f9e018c2213702257064cc68a6178019618"
+    },
+    {
+      "bytes": 10476,
+      "path": "r4_f6_s2/METRICS.json",
+      "run_id": "r4_f6_s2",
+      "sha256": "ae7a964de4f76a2063017fedd94e10a8a6b2eaa49e9e7420fbc8fc26aa1a8caa"
+    },
+    {
+      "bytes": 23006,
+      "path": "r4_f6_s2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r4_f6_s2",
+      "sha256": "35a7d198fd18043010d079f14df7f39fce9ef9aa74c1bb518225efa651a8bc03"
+    },
+    {
+      "bytes": 23058,
+      "path": "r4_f6_s2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r4_f6_s2",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5864,
+      "path": "r4_f6_s2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r4_f6_s2",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1424,
+      "path": "r4_f6_s2/RUN_COMMIT.json",
+      "run_id": "r4_f6_s2",
+      "sha256": "7a2309e934b99cf80a7d10e34e4d548b286c6569631f25a7b931c1c698d9b011"
+    },
+    {
+      "bytes": 16423,
+      "path": "r4_f6_s2/TRAINING_RECEIPT.json",
+      "run_id": "r4_f6_s2",
+      "sha256": "4676384c8e6e871945774ed814d0d9b4ac4217b834db0e15a1eb8e2d28b7945a"
+    },
+    {
+      "bytes": 5206,
+      "path": "r4_f6_s2/adapter/README.md",
+      "run_id": "r4_f6_s2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16422,
+      "path": "r4_f6_s2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r4_f6_s2",
+      "sha256": "7e45d05f3515c8a60e3b4403211b5890651aa3f02c6af2b97a8e6b5a92424f76"
+    },
+    {
+      "bytes": 401,
+      "path": "r4_f6_s2/adapter/TRAINING_SPEC.json",
+      "run_id": "r4_f6_s2",
+      "sha256": "977e72003f85064f7a94fdfd1e8af8e1fead2e0156941b6b3a2a597ae7dab164"
+    },
+    {
+      "bytes": 1109,
+      "path": "r4_f6_s2/adapter/adapter_config.json",
+      "run_id": "r4_f6_s2",
+      "sha256": "c6029434bd194783b0a514bcff30d3a602a62d5586e3d7b2801569e4dadc4954"
+    },
+    {
+      "bytes": 2187608,
+      "path": "r4_f6_s2/adapter/adapter_model.safetensors",
+      "run_id": "r4_f6_s2",
+      "sha256": "ffe5736386fdf7969cebc491ed7580bd5d59c9690c523999bf8f10a2be73a46f"
+    },
+    {
+      "bytes": 899,
+      "path": "r8_f2_s0/ADAPTER_MANIFEST.json",
+      "run_id": "r8_f2_s0",
+      "sha256": "f5aac567fccb03ee67bd7e73fad4d32d28ad82aa26c4d1d0c055de95d0aff43c"
+    },
+    {
+      "bytes": 1195,
+      "path": "r8_f2_s0/CONFIG.json",
+      "run_id": "r8_f2_s0",
+      "sha256": "bbe0dd7c7654e3537e4132f2a13706e6c74c335da8c743eb1960f4dab206a3e8"
+    },
+    {
+      "bytes": 9241,
+      "path": "r8_f2_s0/METRICS.json",
+      "run_id": "r8_f2_s0",
+      "sha256": "ea3582b491504a3c2c3ac25ebbdf2b776454b695fa114266e2636142eb1e2d53"
+    },
+    {
+      "bytes": 22995,
+      "path": "r8_f2_s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r8_f2_s0",
+      "sha256": "3932079f49e4f46a4e9c0fbcd11a9064851285002ff8409a8a1d3d26953649d5"
+    },
+    {
+      "bytes": 23058,
+      "path": "r8_f2_s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r8_f2_s0",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r8_f2_s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r8_f2_s0",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1424,
+      "path": "r8_f2_s0/RUN_COMMIT.json",
+      "run_id": "r8_f2_s0",
+      "sha256": "3506a131ff71422de68a355b44954f18bbf4742212efa5a7776baffc7e592e67"
+    },
+    {
+      "bytes": 17194,
+      "path": "r8_f2_s0/TRAINING_RECEIPT.json",
+      "run_id": "r8_f2_s0",
+      "sha256": "46aa2b5fea811e212db62b2822b552c225da21e436a911892ef8a3f72cb8d45a"
+    },
+    {
+      "bytes": 5206,
+      "path": "r8_f2_s0/adapter/README.md",
+      "run_id": "r8_f2_s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17193,
+      "path": "r8_f2_s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r8_f2_s0",
+      "sha256": "7e3e0c8317af213c117d215b59c90f13760f3a0f17191ffe0ddc232532cefb41"
+    },
+    {
+      "bytes": 401,
+      "path": "r8_f2_s0/adapter/TRAINING_SPEC.json",
+      "run_id": "r8_f2_s0",
+      "sha256": "44fc4b629b21c7d79fa625e39533dd68170793000b8d4d29e08736667d892cd0"
+    },
+    {
+      "bytes": 1109,
+      "path": "r8_f2_s0/adapter/adapter_config.json",
+      "run_id": "r8_f2_s0",
+      "sha256": "78f054ce2f67d76b0ddfb7625e17df14684ba294c5fa6a8f53bb92c0d2d4f9ed"
+    },
+    {
+      "bytes": 4350392,
+      "path": "r8_f2_s0/adapter/adapter_model.safetensors",
+      "run_id": "r8_f2_s0",
+      "sha256": "90b5ffcb02ef42e1b8e2ab991930d4a2491045633a9cf1140ed7c5a4c2106bdb"
+    },
+    {
+      "bytes": 902,
+      "path": "r8_f2_s1/ADAPTER_MANIFEST.json",
+      "run_id": "r8_f2_s1",
+      "sha256": "bb2dd6609a38b0477a06c0c684cd77225354f6008e6b1de1bc3c0ab2c4ed8ef1"
+    },
+    {
+      "bytes": 1195,
+      "path": "r8_f2_s1/CONFIG.json",
+      "run_id": "r8_f2_s1",
+      "sha256": "b0b080bc974688b24618a641a86e6c4d6449459258e58ce55e6e837d259ffd41"
+    },
+    {
+      "bytes": 9693,
+      "path": "r8_f2_s1/METRICS.json",
+      "run_id": "r8_f2_s1",
+      "sha256": "68eea61dd9f09fc0e40e12aeb26470152e0686ee5e26232c0d34b8025b4cbb71"
+    },
+    {
+      "bytes": 23013,
+      "path": "r8_f2_s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r8_f2_s1",
+      "sha256": "cfeae4f6ec66273f682f8c0d444839bebbd3fb739e5c2e171b1e83dc8031cfa6"
+    },
+    {
+      "bytes": 23058,
+      "path": "r8_f2_s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r8_f2_s1",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r8_f2_s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r8_f2_s1",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1424,
+      "path": "r8_f2_s1/RUN_COMMIT.json",
+      "run_id": "r8_f2_s1",
+      "sha256": "9001d3b44f6952dc2d5f515888ba87ed03dcf20074cd09a95208298d1f1b46d8"
+    },
+    {
+      "bytes": 17311,
+      "path": "r8_f2_s1/TRAINING_RECEIPT.json",
+      "run_id": "r8_f2_s1",
+      "sha256": "3e6d3887722539fe3a31ad8e58c2c259e743aaf23eded4865a98932662cc693c"
+    },
+    {
+      "bytes": 5206,
+      "path": "r8_f2_s1/adapter/README.md",
+      "run_id": "r8_f2_s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17310,
+      "path": "r8_f2_s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r8_f2_s1",
+      "sha256": "b51ec02b8545d57a86dd6b81c0312f00ffa4d4dfb0537c92740b195a0349a5d1"
+    },
+    {
+      "bytes": 401,
+      "path": "r8_f2_s1/adapter/TRAINING_SPEC.json",
+      "run_id": "r8_f2_s1",
+      "sha256": "72dac509657dde638a78a3b9504bf884ae3fbc7f231be82f5180b9e4cb027e2c"
+    },
+    {
+      "bytes": 1109,
+      "path": "r8_f2_s1/adapter/adapter_config.json",
+      "run_id": "r8_f2_s1",
+      "sha256": "eb3a3551a7654049e689353567ad24330db98dbe2b275d718e1241af467549f9"
+    },
+    {
+      "bytes": 4350392,
+      "path": "r8_f2_s1/adapter/adapter_model.safetensors",
+      "run_id": "r8_f2_s1",
+      "sha256": "1d6bed3b04d67f0a72eaf29ccb128ec7f2c227a73c06be45a9915255a1c1c166"
+    },
+    {
+      "bytes": 899,
+      "path": "r8_f2_s2/ADAPTER_MANIFEST.json",
+      "run_id": "r8_f2_s2",
+      "sha256": "81186d13b8719b962196c539615869a59b4b84a5ffcb179038968b04909fb746"
+    },
+    {
+      "bytes": 1195,
+      "path": "r8_f2_s2/CONFIG.json",
+      "run_id": "r8_f2_s2",
+      "sha256": "2cd24e0388b7f7394839bb349541fe38b7923d205f77c7fe64f87d83ceb23c92"
+    },
+    {
+      "bytes": 9430,
+      "path": "r8_f2_s2/METRICS.json",
+      "run_id": "r8_f2_s2",
+      "sha256": "6cb8f799acad3d0728da8a0f04e57de0416389349db821c6983825381849ad20"
+    },
+    {
+      "bytes": 23007,
+      "path": "r8_f2_s2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r8_f2_s2",
+      "sha256": "90d0a076c60c9853e805a9a99d055d844c7e9b4270b98efc8219ba698e292cef"
+    },
+    {
+      "bytes": 23058,
+      "path": "r8_f2_s2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r8_f2_s2",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "r8_f2_s2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r8_f2_s2",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1424,
+      "path": "r8_f2_s2/RUN_COMMIT.json",
+      "run_id": "r8_f2_s2",
+      "sha256": "2706ab1cbe08a1913cf81147e51dcf8469b2eb829e298b17430ba374aea40534"
+    },
+    {
+      "bytes": 17107,
+      "path": "r8_f2_s2/TRAINING_RECEIPT.json",
+      "run_id": "r8_f2_s2",
+      "sha256": "94723f463f8491824daa56a82ab457c72c245a311de0b728ebad199932df9248"
+    },
+    {
+      "bytes": 5206,
+      "path": "r8_f2_s2/adapter/README.md",
+      "run_id": "r8_f2_s2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17106,
+      "path": "r8_f2_s2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r8_f2_s2",
+      "sha256": "e269424e50408342b40129b238cfe79e7fbdb264859e209296b8f79d6a66cc5e"
+    },
+    {
+      "bytes": 401,
+      "path": "r8_f2_s2/adapter/TRAINING_SPEC.json",
+      "run_id": "r8_f2_s2",
+      "sha256": "cd315e2794014da95348af368135fda31adcae6114c8574ff7c9d9eac1f08c81"
+    },
+    {
+      "bytes": 1109,
+      "path": "r8_f2_s2/adapter/adapter_config.json",
+      "run_id": "r8_f2_s2",
+      "sha256": "5ee09d9f64f1fedf350fa7e6ec78f96233f4bb22876105ab09378f82325b3cc6"
+    },
+    {
+      "bytes": 4350392,
+      "path": "r8_f2_s2/adapter/adapter_model.safetensors",
+      "run_id": "r8_f2_s2",
+      "sha256": "619b53ae5c5e6d26922c5dcb200b7a41e2318da3b4060b586082079992b5a1fe"
+    },
+    {
+      "bytes": 897,
+      "path": "r8_f6_s0/ADAPTER_MANIFEST.json",
+      "run_id": "r8_f6_s0",
+      "sha256": "e1caaad246c44564ff572230beaf46394140d95323bdafb0ba5795adf968eae9"
+    },
+    {
+      "bytes": 1337,
+      "path": "r8_f6_s0/CONFIG.json",
+      "run_id": "r8_f6_s0",
+      "sha256": "ef24a94f85a1da97276fa8ad921d1d2cd09045951fc7066f1e7076d1f5484fdb"
+    },
+    {
+      "bytes": 10177,
+      "path": "r8_f6_s0/METRICS.json",
+      "run_id": "r8_f6_s0",
+      "sha256": "435553d2c8763cfbfc13dcae1205f75d7e1241dcf095030c9259e09dd8fe1b9f"
+    },
+    {
+      "bytes": 23002,
+      "path": "r8_f6_s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r8_f6_s0",
+      "sha256": "c09877caa2f9da2d3550ccfb69aee93a6e54b2a7b256127dc3fbb06ff2c0cb05"
+    },
+    {
+      "bytes": 23058,
+      "path": "r8_f6_s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r8_f6_s0",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5864,
+      "path": "r8_f6_s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r8_f6_s0",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1424,
+      "path": "r8_f6_s0/RUN_COMMIT.json",
+      "run_id": "r8_f6_s0",
+      "sha256": "bf7dc12d585761734f91b6f49005964266a61fa23491d281f5efbebb11a2fea2"
+    },
+    {
+      "bytes": 16754,
+      "path": "r8_f6_s0/TRAINING_RECEIPT.json",
+      "run_id": "r8_f6_s0",
+      "sha256": "54b0c18fe596c4961b4ed907fee8254f0eccbd476c197c23998b762f93aef6a2"
+    },
+    {
+      "bytes": 5206,
+      "path": "r8_f6_s0/adapter/README.md",
+      "run_id": "r8_f6_s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16753,
+      "path": "r8_f6_s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r8_f6_s0",
+      "sha256": "c846d799ae9517e302d1cb6e2db48843235468abbb6d79ec7276422d09073221"
+    },
+    {
+      "bytes": 401,
+      "path": "r8_f6_s0/adapter/TRAINING_SPEC.json",
+      "run_id": "r8_f6_s0",
+      "sha256": "44fc4b629b21c7d79fa625e39533dd68170793000b8d4d29e08736667d892cd0"
+    },
+    {
+      "bytes": 1109,
+      "path": "r8_f6_s0/adapter/adapter_config.json",
+      "run_id": "r8_f6_s0",
+      "sha256": "9e87c036fd82ccbce2a48a9e17f359a94d6b7145c14d506a73ced09b6aa29327"
+    },
+    {
+      "bytes": 4350392,
+      "path": "r8_f6_s0/adapter/adapter_model.safetensors",
+      "run_id": "r8_f6_s0",
+      "sha256": "4b26608ca33c4441d41ab4cc9aeb20de832c21fb50bcc57ee9d7699f9d61b085"
+    },
+    {
+      "bytes": 897,
+      "path": "r8_f6_s1/ADAPTER_MANIFEST.json",
+      "run_id": "r8_f6_s1",
+      "sha256": "5efced33f72e7c83d33fe95de8b41d3e56a8df880551520184cc783f05494e3a"
+    },
+    {
+      "bytes": 1337,
+      "path": "r8_f6_s1/CONFIG.json",
+      "run_id": "r8_f6_s1",
+      "sha256": "e400698404717f286cf0a49f60bcfc093979b31435ccf625a0f02e2ea1aa917e"
+    },
+    {
+      "bytes": 10153,
+      "path": "r8_f6_s1/METRICS.json",
+      "run_id": "r8_f6_s1",
+      "sha256": "e81a3db6784edfcbe9a90a4b13c5f58d0c34ddb6bb793e8f3cbfd663ec3fa815"
+    },
+    {
+      "bytes": 23005,
+      "path": "r8_f6_s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r8_f6_s1",
+      "sha256": "327dcd7e40af708031d55c435a7890690e0835738223b63d4218ee26e86ebc28"
+    },
+    {
+      "bytes": 23058,
+      "path": "r8_f6_s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r8_f6_s1",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5864,
+      "path": "r8_f6_s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r8_f6_s1",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1424,
+      "path": "r8_f6_s1/RUN_COMMIT.json",
+      "run_id": "r8_f6_s1",
+      "sha256": "47b48dff6ba7d7b0e6ce7006f6862d38491b8765149a8a1c2776bde03a5b18d2"
+    },
+    {
+      "bytes": 16715,
+      "path": "r8_f6_s1/TRAINING_RECEIPT.json",
+      "run_id": "r8_f6_s1",
+      "sha256": "a91add1ae0a31d68e2c3b84dfc2897872943688a92ac63b11e763f0862817f58"
+    },
+    {
+      "bytes": 5206,
+      "path": "r8_f6_s1/adapter/README.md",
+      "run_id": "r8_f6_s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16714,
+      "path": "r8_f6_s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r8_f6_s1",
+      "sha256": "c0acf40e1688638adcf0dd2a9a32fee4f393dd77021cbdca6a4991416848600a"
+    },
+    {
+      "bytes": 401,
+      "path": "r8_f6_s1/adapter/TRAINING_SPEC.json",
+      "run_id": "r8_f6_s1",
+      "sha256": "72dac509657dde638a78a3b9504bf884ae3fbc7f231be82f5180b9e4cb027e2c"
+    },
+    {
+      "bytes": 1109,
+      "path": "r8_f6_s1/adapter/adapter_config.json",
+      "run_id": "r8_f6_s1",
+      "sha256": "21dfe520a9c14eeacb279c8b9c736bee112e9cada7656dcd563ef657bbbb0970"
+    },
+    {
+      "bytes": 4350392,
+      "path": "r8_f6_s1/adapter/adapter_model.safetensors",
+      "run_id": "r8_f6_s1",
+      "sha256": "d509834676329aa0b5eb5777c235562828129acebfab8f968a7f4bdb6440ce70"
+    },
+    {
+      "bytes": 894,
+      "path": "r8_f6_s2/ADAPTER_MANIFEST.json",
+      "run_id": "r8_f6_s2",
+      "sha256": "99fef9024335d9387e9389b3ef70d5becd081918d390ea69c3ea2069bc5054f2"
+    },
+    {
+      "bytes": 1337,
+      "path": "r8_f6_s2/CONFIG.json",
+      "run_id": "r8_f6_s2",
+      "sha256": "bc376de8a516832dfcf4a1793966b1c0a3afcec1b5bb022d8d578a6fbe370422"
+    },
+    {
+      "bytes": 10296,
+      "path": "r8_f6_s2/METRICS.json",
+      "run_id": "r8_f6_s2",
+      "sha256": "f744f163b07ab365b876de12a25ef667f9285c43fb73a9f47ca0dc215743efed"
+    },
+    {
+      "bytes": 22987,
+      "path": "r8_f6_s2/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "r8_f6_s2",
+      "sha256": "726c61bce72b95af18e95c5b8a006a005c0b0307bff669246a0ae446538bd782"
+    },
+    {
+      "bytes": 23058,
+      "path": "r8_f6_s2/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "r8_f6_s2",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 5864,
+      "path": "r8_f6_s2/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "r8_f6_s2",
+      "sha256": "fc0ac31106323db2594ceceab40fe79d57f7cd88ab6a0d78f777af68aba008d7"
+    },
+    {
+      "bytes": 1424,
+      "path": "r8_f6_s2/RUN_COMMIT.json",
+      "run_id": "r8_f6_s2",
+      "sha256": "ed9b9e404998a23a9ea5c49351102519fb00fbedd0a4d36afabe0b6a4ee57de0"
+    },
+    {
+      "bytes": 16693,
+      "path": "r8_f6_s2/TRAINING_RECEIPT.json",
+      "run_id": "r8_f6_s2",
+      "sha256": "8e46f4720cdb188991897a74d1bb9ec5217703c5cf6b8eaf4a0b439c80351282"
+    },
+    {
+      "bytes": 5206,
+      "path": "r8_f6_s2/adapter/README.md",
+      "run_id": "r8_f6_s2",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 16692,
+      "path": "r8_f6_s2/adapter/TRAINING_RECEIPT.json",
+      "run_id": "r8_f6_s2",
+      "sha256": "1400a595e0311e632536e14521e3218097b1658ef4eda9eb8d1464bf82298799"
+    },
+    {
+      "bytes": 401,
+      "path": "r8_f6_s2/adapter/TRAINING_SPEC.json",
+      "run_id": "r8_f6_s2",
+      "sha256": "cd315e2794014da95348af368135fda31adcae6114c8574ff7c9d9eac1f08c81"
+    },
+    {
+      "bytes": 1109,
+      "path": "r8_f6_s2/adapter/adapter_config.json",
+      "run_id": "r8_f6_s2",
+      "sha256": "8aced7de27a2c8e45b67280da7f0b55d45cf6cc3f12897c41902ea2ebcf70d2c"
+    },
+    {
+      "bytes": 4350392,
+      "path": "r8_f6_s2/adapter/adapter_model.safetensors",
+      "run_id": "r8_f6_s2",
+      "sha256": "0e2e630d641e933a82e9d3d6748ac3881bb869aacf13e02c4ac460adbcafc16b"
+    },
+    {
       "bytes": 890,
       "path": "rot1only-s0/ADAPTER_MANIFEST.json",
       "run_id": "rot1only-s0",
@@ -3198,10 +5382,868 @@
       "path": "seed4-2fam/adapter/adapter_model.safetensors",
       "run_id": "seed4-2fam",
       "sha256": "37a7237697dc7b06943457ef75dd40b4c6c9fbc3f9c3b182df66279949efda54"
+    },
+    {
+      "bytes": 906,
+      "path": "single_pc-delim-s0/ADAPTER_MANIFEST.json",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "20bfb1d990ac11de66e85047a330d29cded843ed7988ddc295353f100ff5a5ea"
+    },
+    {
+      "bytes": 1166,
+      "path": "single_pc-delim-s0/CONFIG.json",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "f187f442b42ed1878ae4fb10c77fe9a52928cb487a6713b6bd119845c62d91eb"
+    },
+    {
+      "bytes": 2400,
+      "path": "single_pc-delim-s0/METRICS.json",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "f019e4b574dd0aaf948019ffe63a279cff1d787ddb6734d6e601fef0abfc8f90"
+    },
+    {
+      "bytes": 2273,
+      "path": "single_pc-delim-s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "55dd44ab996aa64db1080e090c5bb2b34315b6b8cd7bdcc04b06a10bd35b241c"
+    },
+    {
+      "bytes": 2279,
+      "path": "single_pc-delim-s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 1039,
+      "path": "single_pc-delim-s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "34c6011dcd3794c556b7e786c93229799156ec838ea46d2020f3f6fb2a124a17"
+    },
+    {
+      "bytes": 1434,
+      "path": "single_pc-delim-s0/RUN_COMMIT.json",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "ae310f1c05c1f88e7874ff5d5df09f2ad08d0660f4e02b3ae062f5147ecc4af0"
+    },
+    {
+      "bytes": 17659,
+      "path": "single_pc-delim-s0/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "5424103b950d1fca2329de8b3a5cfb2d7cc3a2fb6bb44594679b5b0ac4479f1b"
+    },
+    {
+      "bytes": 5206,
+      "path": "single_pc-delim-s0/adapter/README.md",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17658,
+      "path": "single_pc-delim-s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "212d6de0279594dbaafb65a0c35da4d437dc2a18be3e12e9c1c9f0eb56dd5634"
+    },
+    {
+      "bytes": 402,
+      "path": "single_pc-delim-s0/adapter/TRAINING_SPEC.json",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "single_pc-delim-s0/adapter/adapter_config.json",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "1fb6408e23fbec99eaee7907e1abddfa2035e06c01fb5451d457e13d94ef1666"
+    },
+    {
+      "bytes": 8676008,
+      "path": "single_pc-delim-s0/adapter/adapter_model.safetensors",
+      "run_id": "single_pc-delim-s0",
+      "sha256": "c9141012a7a4070a6b80076a0335cdad05f0f2f8af7ddea9b8abaf4cc94e6902"
+    },
+    {
+      "bytes": 910,
+      "path": "single_pc-delim-s1/ADAPTER_MANIFEST.json",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "e26694becec1a3682967a2a49577c3aa3acb830a81e2217983aa0c45eef59bab"
+    },
+    {
+      "bytes": 1166,
+      "path": "single_pc-delim-s1/CONFIG.json",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "609cd91509e33f8340ba50bf55b3acb058c91446faf76c963b50b7099abba4c1"
+    },
+    {
+      "bytes": 2377,
+      "path": "single_pc-delim-s1/METRICS.json",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "da65960f7def109383c9360a775cc18a2fd3d43de4ad5862e7153ba9c4de9d0c"
+    },
+    {
+      "bytes": 2276,
+      "path": "single_pc-delim-s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "267cc76d74378c7439969101e72dd52355509f4051a4d43c4f4cde2b6d8c41c7"
+    },
+    {
+      "bytes": 2279,
+      "path": "single_pc-delim-s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 1039,
+      "path": "single_pc-delim-s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "34c6011dcd3794c556b7e786c93229799156ec838ea46d2020f3f6fb2a124a17"
+    },
+    {
+      "bytes": 1434,
+      "path": "single_pc-delim-s1/RUN_COMMIT.json",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "a7409e790e9430aca33328592b12a3624785a2a6ce4adcf6528a4488c981c3b8"
+    },
+    {
+      "bytes": 17677,
+      "path": "single_pc-delim-s1/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "78debc137170a5976fe4c62bb1e1f482d7d533c2297ef18f1f1b6b472d6574cb"
+    },
+    {
+      "bytes": 5206,
+      "path": "single_pc-delim-s1/adapter/README.md",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17676,
+      "path": "single_pc-delim-s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "70f37a6f947ee313c5505f8c110095d0cfb9dff02da56f9e9853c3c752254e72"
+    },
+    {
+      "bytes": 402,
+      "path": "single_pc-delim-s1/adapter/TRAINING_SPEC.json",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "ca6eb5ad653655980e9c797146f57f74cc65cc515c048b942760c4b00b951a7f"
+    },
+    {
+      "bytes": 1110,
+      "path": "single_pc-delim-s1/adapter/adapter_config.json",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "69e9db3cd915800f8fb680a2a9112d3781862b0fecb5084bbd8eed1be871deb9"
+    },
+    {
+      "bytes": 8676008,
+      "path": "single_pc-delim-s1/adapter/adapter_model.safetensors",
+      "run_id": "single_pc-delim-s1",
+      "sha256": "c97b14fafc974f6f4cfaa8848f09101f25a1102cb829433d9db2988bb9cc4739"
+    },
+    {
+      "bytes": 900,
+      "path": "single_pc-rev-s0/ADAPTER_MANIFEST.json",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "068f892117767f84213460e07d27485298de78bf082234a6e5fcd8f657f1069a"
+    },
+    {
+      "bytes": 1160,
+      "path": "single_pc-rev-s0/CONFIG.json",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "a0ebc32a9d990cbca69b72499d53336981a38bd86d0e12ece003f5dea1bdd345"
+    },
+    {
+      "bytes": 2344,
+      "path": "single_pc-rev-s0/METRICS.json",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "61d7e1d91a7853ee962d277a070f9a64d5d4c926def5681c9f9f57f9520af71b"
+    },
+    {
+      "bytes": 2268,
+      "path": "single_pc-rev-s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "64acc4fb7402926da8fc6d33d3fd2bee67002170612411f8607a794448e25651"
+    },
+    {
+      "bytes": 2279,
+      "path": "single_pc-rev-s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 955,
+      "path": "single_pc-rev-s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "6ef0eb93881752b19c4a6bc7f1bc4795c9e016da4df0babd1c9480cc42b60bb7"
+    },
+    {
+      "bytes": 1432,
+      "path": "single_pc-rev-s0/RUN_COMMIT.json",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "5eeb04974a2fd2eadc503e0c32e9491a272c6b09205a91f1778e7496767e3172"
+    },
+    {
+      "bytes": 17379,
+      "path": "single_pc-rev-s0/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "cb9e8ad0be5a6267f52ded8756f52943f7fe8f69c6da262cf04fce97cf62fc86"
+    },
+    {
+      "bytes": 5206,
+      "path": "single_pc-rev-s0/adapter/README.md",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17378,
+      "path": "single_pc-rev-s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "2943f7b03451fde87ee76941c6ca14908b295477263f5271024653ca5a11f22b"
+    },
+    {
+      "bytes": 402,
+      "path": "single_pc-rev-s0/adapter/TRAINING_SPEC.json",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "single_pc-rev-s0/adapter/adapter_config.json",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "c4483fd61e91b57717e65e1fe93ea35624e5d6ed9dfca48cf397799bb1288c28"
+    },
+    {
+      "bytes": 8676008,
+      "path": "single_pc-rev-s0/adapter/adapter_model.safetensors",
+      "run_id": "single_pc-rev-s0",
+      "sha256": "9e6c033084b359816853d6f109c7612bc4f7b18876240240c5c3b616ba8302de"
+    },
+    {
+      "bytes": 906,
+      "path": "single_pc-rev-s1/ADAPTER_MANIFEST.json",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "eff5118f9d9dc4f83361bfa6f415eeed1f4a3f5e79c1498b8f6ea7024a598d23"
+    },
+    {
+      "bytes": 1160,
+      "path": "single_pc-rev-s1/CONFIG.json",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "43365f1c12b9e5d0440bd1ecd8893246615aef74b28facdc039661a32c6b64af"
+    },
+    {
+      "bytes": 2372,
+      "path": "single_pc-rev-s1/METRICS.json",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "a8645727af488a816fdc6a621e2300222c2278ad7ba9ec3266930e1c7d372032"
+    },
+    {
+      "bytes": 2272,
+      "path": "single_pc-rev-s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "7fd84279c3b3ff906e5d0731fe1a44e5166687a5b209c92b14d10aaf2357cd90"
+    },
+    {
+      "bytes": 2279,
+      "path": "single_pc-rev-s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 955,
+      "path": "single_pc-rev-s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "6ef0eb93881752b19c4a6bc7f1bc4795c9e016da4df0babd1c9480cc42b60bb7"
+    },
+    {
+      "bytes": 1432,
+      "path": "single_pc-rev-s1/RUN_COMMIT.json",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "467929b4d0cd11262174b0b98494ebe3004721b6f09d099bb629a93ad5dd2810"
+    },
+    {
+      "bytes": 17364,
+      "path": "single_pc-rev-s1/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "5a81eee31063162cdc6120febe9600d0939e0c5c7d1f73acfcc40945d3f39c6b"
+    },
+    {
+      "bytes": 5206,
+      "path": "single_pc-rev-s1/adapter/README.md",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17363,
+      "path": "single_pc-rev-s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "c8346d74cb05d18fe606ed97d754f86752f078ded2a1a8aa353af900a65df8b9"
+    },
+    {
+      "bytes": 402,
+      "path": "single_pc-rev-s1/adapter/TRAINING_SPEC.json",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "ca6eb5ad653655980e9c797146f57f74cc65cc515c048b942760c4b00b951a7f"
+    },
+    {
+      "bytes": 1110,
+      "path": "single_pc-rev-s1/adapter/adapter_config.json",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "b30175fd066e3f0024475e69e9b9724075444d40000474c7b64790a4e9750573"
+    },
+    {
+      "bytes": 8676008,
+      "path": "single_pc-rev-s1/adapter/adapter_model.safetensors",
+      "run_id": "single_pc-rev-s1",
+      "sha256": "ee388d8f6aee4343855ddf4939e2cc2040aa68c3175e94fafc944553b1b0aab7"
+    },
+    {
+      "bytes": 901,
+      "path": "single_pc-sort-s0/ADAPTER_MANIFEST.json",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "64ae325b69067543caffe51da98f57954dff8612b36f84b728bdd5d999d71b71"
+    },
+    {
+      "bytes": 1163,
+      "path": "single_pc-sort-s0/CONFIG.json",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "d6f700150b48782a91fdfd62b748e242b5e36c550f8ca29fc180018088af9494"
+    },
+    {
+      "bytes": 2359,
+      "path": "single_pc-sort-s0/METRICS.json",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "e7ee6b15cf1b440ec91394d7daa3ab92432c261727ce8c80c257e552a376bee0"
+    },
+    {
+      "bytes": 2266,
+      "path": "single_pc-sort-s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "a1a63414268447755c9b6ca02ac76ecd2aaa38cf27221f7adef19e90b37d46db"
+    },
+    {
+      "bytes": 2279,
+      "path": "single_pc-sort-s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 965,
+      "path": "single_pc-sort-s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "204d947833f2cf5c0a9d22ed01ced45607a1dc4d03cd105ebf6e60085f735ca0"
+    },
+    {
+      "bytes": 1433,
+      "path": "single_pc-sort-s0/RUN_COMMIT.json",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "c57d66b5a16df9c7761fe0287fad9fe7e7a6be81ac3799a409baba503b730997"
+    },
+    {
+      "bytes": 17220,
+      "path": "single_pc-sort-s0/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "389de9a388e7fdac53ac5e491c50eeaa98f39d5a7205fcd063f8498cc6478206"
+    },
+    {
+      "bytes": 5206,
+      "path": "single_pc-sort-s0/adapter/README.md",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17219,
+      "path": "single_pc-sort-s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "a7c695247687b8697e2369c4d57bf337ca6ba5830f29010874f0ad49d55782e4"
+    },
+    {
+      "bytes": 402,
+      "path": "single_pc-sort-s0/adapter/TRAINING_SPEC.json",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "single_pc-sort-s0/adapter/adapter_config.json",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "c4483fd61e91b57717e65e1fe93ea35624e5d6ed9dfca48cf397799bb1288c28"
+    },
+    {
+      "bytes": 8676008,
+      "path": "single_pc-sort-s0/adapter/adapter_model.safetensors",
+      "run_id": "single_pc-sort-s0",
+      "sha256": "7ed23c1d6ef8e6559edd2bc00bd0e60d7518121f25b2200959841d0624ac9e06"
+    },
+    {
+      "bytes": 903,
+      "path": "single_pc-sort-s1/ADAPTER_MANIFEST.json",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "aa0add800fe82500d3c08253b0c6b07c1864e272d5ebbf784a3a0ea0d45f953a"
+    },
+    {
+      "bytes": 1163,
+      "path": "single_pc-sort-s1/CONFIG.json",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "b7e4f126317ac2e9ad51f79c8ae4882ccfa8fab6c90191b4b275c9b1418a9b11"
+    },
+    {
+      "bytes": 2299,
+      "path": "single_pc-sort-s1/METRICS.json",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "5825137edb9ace4c561fc8df5ab6b2c8d8c356cfeb220b91a3c3945c4d27f21e"
+    },
+    {
+      "bytes": 2268,
+      "path": "single_pc-sort-s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "e9fa3fed585aaf1514c47ed8423f1a26f2aa78cf2028c561075ba29c1e5a64ac"
+    },
+    {
+      "bytes": 2279,
+      "path": "single_pc-sort-s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 965,
+      "path": "single_pc-sort-s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "204d947833f2cf5c0a9d22ed01ced45607a1dc4d03cd105ebf6e60085f735ca0"
+    },
+    {
+      "bytes": 1433,
+      "path": "single_pc-sort-s1/RUN_COMMIT.json",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "3f24d75d7e804652096be6b2a3ad57ad3a7a9a1fcb699dcad9fe6338d800d7e2"
+    },
+    {
+      "bytes": 17216,
+      "path": "single_pc-sort-s1/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "58586d04bb0afd9d8f66f9a711fe4654ec240b540e8b7df0f38d587567219fcf"
+    },
+    {
+      "bytes": 5206,
+      "path": "single_pc-sort-s1/adapter/README.md",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17215,
+      "path": "single_pc-sort-s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "672ee52d3b95966b29ec5224dc50bcb695933e4030c5a2e8ace54b499aa9eb5c"
+    },
+    {
+      "bytes": 402,
+      "path": "single_pc-sort-s1/adapter/TRAINING_SPEC.json",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "ca6eb5ad653655980e9c797146f57f74cc65cc515c048b942760c4b00b951a7f"
+    },
+    {
+      "bytes": 1110,
+      "path": "single_pc-sort-s1/adapter/adapter_config.json",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "3d7e87c907852e43062c0ff880b4786fa62fff1c12cb5f925f427a5dff33d05f"
+    },
+    {
+      "bytes": 8676008,
+      "path": "single_pc-sort-s1/adapter/adapter_model.safetensors",
+      "run_id": "single_pc-sort-s1",
+      "sha256": "c45213359b2c40c1c536f59a8954f6865bb4485fb6cdb33fa3f6c867da0dfb5f"
+    },
+    {
+      "bytes": 899,
+      "path": "single_pc-swap-s0/ADAPTER_MANIFEST.json",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "5e73cdca45bdecd908b552f8e3b6aa22518cb1f4520ff383770e8c595c14bf87"
+    },
+    {
+      "bytes": 1163,
+      "path": "single_pc-swap-s0/CONFIG.json",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "da18640849657822fd5e9bdd700458c451068bc909d6b0bfc035e763d5d5a374"
+    },
+    {
+      "bytes": 2351,
+      "path": "single_pc-swap-s0/METRICS.json",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "bca0138279d56ceb07e1fd7206c3ad3a6598a5859d6de8bd32bcd33f6ada4c63"
+    },
+    {
+      "bytes": 2265,
+      "path": "single_pc-swap-s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "fd62abc3163bf27e2a6633ac0d7cd18e9b0dd54181556ba7307a8b73c65ecb18"
+    },
+    {
+      "bytes": 2279,
+      "path": "single_pc-swap-s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 965,
+      "path": "single_pc-swap-s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "01d964e156b2fec59647a9987669ef4fd0d7a12b6cdf327ac9aadf94b5b38c2f"
+    },
+    {
+      "bytes": 1433,
+      "path": "single_pc-swap-s0/RUN_COMMIT.json",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "e04e9db40d6d6fcba36070cd0e7950cd349f9d778d0df4d51c1576f27363b223"
+    },
+    {
+      "bytes": 17464,
+      "path": "single_pc-swap-s0/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "8113382749246c3ad42057b669a20b14aaba3aa444ad9a089eef9b4b81056287"
+    },
+    {
+      "bytes": 5206,
+      "path": "single_pc-swap-s0/adapter/README.md",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17463,
+      "path": "single_pc-swap-s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "65e83dc893293b8ab26d2c157f5893820d1c2374bde1edc4cb0a8f1088d0fafa"
+    },
+    {
+      "bytes": 402,
+      "path": "single_pc-swap-s0/adapter/TRAINING_SPEC.json",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "single_pc-swap-s0/adapter/adapter_config.json",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "1fb6408e23fbec99eaee7907e1abddfa2035e06c01fb5451d457e13d94ef1666"
+    },
+    {
+      "bytes": 8676008,
+      "path": "single_pc-swap-s0/adapter/adapter_model.safetensors",
+      "run_id": "single_pc-swap-s0",
+      "sha256": "109ecb55cdb94ae6bfb33944e0deaaf5b368fa83d7670abaed238d529f8edaeb"
+    },
+    {
+      "bytes": 902,
+      "path": "single_pc-swap-s1/ADAPTER_MANIFEST.json",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "220696ae4c80b1415bbcc4fbf1ed0bc315527f379453696d079483598a283da4"
+    },
+    {
+      "bytes": 1163,
+      "path": "single_pc-swap-s1/CONFIG.json",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "9c6a78f05eb6e1653985a254374438ca15fda483e3107496a778bdf3d8baf38e"
+    },
+    {
+      "bytes": 2418,
+      "path": "single_pc-swap-s1/METRICS.json",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "4c19a1d064a09f45b3f30a8073253e09ba8eb208ddde4e45b7f4d83f1c6f209d"
+    },
+    {
+      "bytes": 2268,
+      "path": "single_pc-swap-s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "1afc96aa858007a870532d26aa62909b44e79bf7585c2e13bba2e9a782130034"
+    },
+    {
+      "bytes": 2279,
+      "path": "single_pc-swap-s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 965,
+      "path": "single_pc-swap-s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "01d964e156b2fec59647a9987669ef4fd0d7a12b6cdf327ac9aadf94b5b38c2f"
+    },
+    {
+      "bytes": 1433,
+      "path": "single_pc-swap-s1/RUN_COMMIT.json",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "f16309af6dd2ed098a7819ca6e8c1b3fdabbec6454760e06d321982783ad05a7"
+    },
+    {
+      "bytes": 17455,
+      "path": "single_pc-swap-s1/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "8d70ef524868af44f5c02ec31158a1f95397ac69ee93909c14162ad896e6d64a"
+    },
+    {
+      "bytes": 5206,
+      "path": "single_pc-swap-s1/adapter/README.md",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17454,
+      "path": "single_pc-swap-s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "89c6fdbfcabf7b74cc60790c876af4dbece484bead19ce8311545c9320d6bc03"
+    },
+    {
+      "bytes": 402,
+      "path": "single_pc-swap-s1/adapter/TRAINING_SPEC.json",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "ca6eb5ad653655980e9c797146f57f74cc65cc515c048b942760c4b00b951a7f"
+    },
+    {
+      "bytes": 1110,
+      "path": "single_pc-swap-s1/adapter/adapter_config.json",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "38cc05cab41e0928b888c3e8c6605c2a551315b23a9668598683a6f95f70b242"
+    },
+    {
+      "bytes": 8676008,
+      "path": "single_pc-swap-s1/adapter/adapter_model.safetensors",
+      "run_id": "single_pc-swap-s1",
+      "sha256": "5e87a410b773094de63f940c814d6bc0ec6e31653443a9cf0463df83f9dda6a1"
+    },
+    {
+      "bytes": 908,
+      "path": "single_pc-upper-s0/ADAPTER_MANIFEST.json",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "a4064f8a39c446fefefbcc137acd6145b9503d53d8046bc5bad8be3c0f61c5b0"
+    },
+    {
+      "bytes": 1166,
+      "path": "single_pc-upper-s0/CONFIG.json",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "8fde80dc86f5fb3e624415b361c39862341f4a822d6bf421bd5ad67fd2092329"
+    },
+    {
+      "bytes": 2401,
+      "path": "single_pc-upper-s0/METRICS.json",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "6b8b2e04ca8ef272aff1d6c9f92ee471af869bbf1dc13299c6090a7e16521c6d"
+    },
+    {
+      "bytes": 2271,
+      "path": "single_pc-upper-s0/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "898670c344b90b7edb88d3e628a7c3387cccfc606b68fddfdc1b85da8406238c"
+    },
+    {
+      "bytes": 2279,
+      "path": "single_pc-upper-s0/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 975,
+      "path": "single_pc-upper-s0/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "899fe04268da182de056bbe44d01aa2ed85303e8db16fb41348463d517ccaa19"
+    },
+    {
+      "bytes": 1434,
+      "path": "single_pc-upper-s0/RUN_COMMIT.json",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "639d62b9d2b64d677a680812d1ca97e43b3db7cd1a626c65b776e71678779486"
+    },
+    {
+      "bytes": 17745,
+      "path": "single_pc-upper-s0/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "ca4b15c12251e600f7c03416abce53accdc2907ac7073190f9de0aee6be58ad2"
+    },
+    {
+      "bytes": 5206,
+      "path": "single_pc-upper-s0/adapter/README.md",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17744,
+      "path": "single_pc-upper-s0/adapter/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "db8f381df8586e00e7c02b0acc27c0a09ace60088f278a52a00f99a313b45ec8"
+    },
+    {
+      "bytes": 402,
+      "path": "single_pc-upper-s0/adapter/TRAINING_SPEC.json",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "single_pc-upper-s0/adapter/adapter_config.json",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "3c9fbd4b7a84c044a24851e161b215824661d559c5fa56ff058507b8f6e5fa82"
+    },
+    {
+      "bytes": 8676008,
+      "path": "single_pc-upper-s0/adapter/adapter_model.safetensors",
+      "run_id": "single_pc-upper-s0",
+      "sha256": "8aa27f29190cd5f3227fd2daedcda9d9937e3e62fb07a06c1798c919a342c89a"
+    },
+    {
+      "bytes": 908,
+      "path": "single_pc-upper-s1/ADAPTER_MANIFEST.json",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "f28fc1c7a40d60777fe6727f88f2cf53f2320f9b4d8a3da7b7ce3480fd16be65"
+    },
+    {
+      "bytes": 1166,
+      "path": "single_pc-upper-s1/CONFIG.json",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "937506e2e27bc41f54e74a501e4fa2b83bcb36d49098dfeae9469b3cf0092b78"
+    },
+    {
+      "bytes": 2431,
+      "path": "single_pc-upper-s1/METRICS.json",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "fff65b83cbfc89bcbc1889c169b56f836a780add4b1b8985732d8921bd5dc68b"
+    },
+    {
+      "bytes": 2273,
+      "path": "single_pc-upper-s1/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "ad817139355a40879d7dccff9f83188afb28c8b286b2c134e11c35e0bb3df127"
+    },
+    {
+      "bytes": 2279,
+      "path": "single_pc-upper-s1/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "de545e8be4a42b93ba76760916a5589d4a6e84605871d965b592bfe001c173b2"
+    },
+    {
+      "bytes": 975,
+      "path": "single_pc-upper-s1/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "899fe04268da182de056bbe44d01aa2ed85303e8db16fb41348463d517ccaa19"
+    },
+    {
+      "bytes": 1434,
+      "path": "single_pc-upper-s1/RUN_COMMIT.json",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "b19f8a33a35a029adf2e369a86b689335b0736793a18d7fa709212d488c325bd"
+    },
+    {
+      "bytes": 17727,
+      "path": "single_pc-upper-s1/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "32fb8c02e70d9880411a1c7eb212cec206dbeade639778cb1d1a037bb7e57fb1"
+    },
+    {
+      "bytes": 5206,
+      "path": "single_pc-upper-s1/adapter/README.md",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17726,
+      "path": "single_pc-upper-s1/adapter/TRAINING_RECEIPT.json",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "e97f9843da9b2c98894cad0998492a71a704618d328be1c0a8402941bbcd111e"
+    },
+    {
+      "bytes": 402,
+      "path": "single_pc-upper-s1/adapter/TRAINING_SPEC.json",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "ca6eb5ad653655980e9c797146f57f74cc65cc515c048b942760c4b00b951a7f"
+    },
+    {
+      "bytes": 1110,
+      "path": "single_pc-upper-s1/adapter/adapter_config.json",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "c891708023831728bdb68f4ec709b4e42f498b6e01c7627222c1f4f0c729bfc0"
+    },
+    {
+      "bytes": 8676008,
+      "path": "single_pc-upper-s1/adapter/adapter_model.safetensors",
+      "run_id": "single_pc-upper-s1",
+      "sha256": "e624796474ef89c14a44809cbcabaeee716ad70ea08350c2240dd88dd8440136"
+    },
+    {
+      "bytes": 900,
+      "path": "v2_timing/ADAPTER_MANIFEST.json",
+      "run_id": "v2_timing",
+      "sha256": "41517e4c21014c455528e6ac2aa986c5f0b7211e1814f1599477d0ff0d1e3c35"
+    },
+    {
+      "bytes": 1197,
+      "path": "v2_timing/CONFIG.json",
+      "run_id": "v2_timing",
+      "sha256": "a14800c7000fdd505740aeac1a029fc21412ee6684fd57f0f43968bdf6a174e5"
+    },
+    {
+      "bytes": 9157,
+      "path": "v2_timing/METRICS.json",
+      "run_id": "v2_timing",
+      "sha256": "b002261c1520ec799d12bd6fc452d6414abc79f81efaaad28655cefa1d49da22"
+    },
+    {
+      "bytes": 22985,
+      "path": "v2_timing/PREDICTIONS-ADAPTED.jsonl",
+      "run_id": "v2_timing",
+      "sha256": "3c9dbc4ed595c91a22c96c871b13bcbe2bf656e300aecaa7d9e529c414b30a2c"
+    },
+    {
+      "bytes": 23058,
+      "path": "v2_timing/PREDICTIONS-FROZEN.jsonl",
+      "run_id": "v2_timing",
+      "sha256": "17134ee33019a8b3192b8396c83b3bcd68bf57aeb8ec9c31ca4152e7ab1c7fba"
+    },
+    {
+      "bytes": 1930,
+      "path": "v2_timing/PREDICTIONS-SUBSET.jsonl",
+      "run_id": "v2_timing",
+      "sha256": "4dd7aa0d5d225df5ca051d3142540e5676562519c04e3a1262e853b042e88049"
+    },
+    {
+      "bytes": 1425,
+      "path": "v2_timing/RUN_COMMIT.json",
+      "run_id": "v2_timing",
+      "sha256": "df1fed8be5041217da267192b97aab0ad363bcd08eab76efa7ab7a50ed37bf18"
+    },
+    {
+      "bytes": 17288,
+      "path": "v2_timing/TRAINING_RECEIPT.json",
+      "run_id": "v2_timing",
+      "sha256": "c68422a01320f1a3e12ddadbc9c90e807480c8c34969621d8333eacb9b7d446e"
+    },
+    {
+      "bytes": 5206,
+      "path": "v2_timing/adapter/README.md",
+      "run_id": "v2_timing",
+      "sha256": "706469298b27b8ef32e770a9e895a67113f00666bb0b7fd19198751041b0758b"
+    },
+    {
+      "bytes": 17287,
+      "path": "v2_timing/adapter/TRAINING_RECEIPT.json",
+      "run_id": "v2_timing",
+      "sha256": "b9b9b2c2bf090608c0e56ef707c10218705630b06202d10703947717f77bd451"
+    },
+    {
+      "bytes": 402,
+      "path": "v2_timing/adapter/TRAINING_SPEC.json",
+      "run_id": "v2_timing",
+      "sha256": "3c2280e43eaf6ec15f295ea5ffef68f92382dc0f5c7e65d9ee4b5c3eb9028d9b"
+    },
+    {
+      "bytes": 1110,
+      "path": "v2_timing/adapter/adapter_config.json",
+      "run_id": "v2_timing",
+      "sha256": "69e9db3cd915800f8fb680a2a9112d3781862b0fecb5084bbd8eed1be871deb9"
+    },
+    {
+      "bytes": 8676008,
+      "path": "v2_timing/adapter/adapter_model.safetensors",
+      "run_id": "v2_timing",
+      "sha256": "6a197d668343c21b7f93ee85cd6a4a26f1d5a3715f68d8c5cbac0424cd257717"
     }
   ],
-  "n_artifacts": 533,
+  "n_artifacts": 1040,
   "run_root": "results/campaign3b2/runs",
   "schema": "mini-agi-campaign3b2-artifact-manifest-v1",
-  "total_bytes": 358135126
+  "total_bytes": 691381645
 }
