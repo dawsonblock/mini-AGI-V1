@@ -73,6 +73,9 @@ release-ed25519*.pem
 *.pem
 *.p12
 !RELEASE_PUBLIC_KEY.pem
+# The control-plane manifest is signed, so its PUBLIC key must ship
+# with it or the signature cannot be verified from the archive.
+!CONTROL_PLANE_PUBLIC_KEY.pem
 
 adaptive_mtp.md
 
