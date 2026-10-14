@@ -1,0 +1,241 @@
+{
+  "flatness_test": "spread across levels must EXCEED the measured seed-to-seed sd",
+  "lever_effects": {
+    "capacity": {
+      "basis": "spread across rank 4/8/16/32 MEANS at fixed breadth, examples and steps; seed noise is averaged within rank before the spread is taken",
+      "measurement": "rank",
+      "source": "rank-ladder.json",
+      "value": 0.052777777777777785
+    },
+    "composition": {
+      "basis": "spread across family pairs at fixed breadth, examples, steps and seeds",
+      "measurement": "composition",
+      "source": "family-composition.json",
+      "value": 0.3888888888888889
+    },
+    "optimisation": {
+      "basis": "spread across steps levels at fixed breadth; levels with one run are reported with their n",
+      "measurement": "steps",
+      "source": "contrast-summary.json",
+      "value": 0.125
+    },
+    "preservation": {
+      "basis": "mean fraction of frozen-correct answers the LoRA arms destroy",
+      "measurement": "capability_destruction",
+      "source": "CAPABILITY_BASELINE.json",
+      "value": 0.7
+    }
+  },
+  "measured_effects": {
+    "capability_destruction": {
+      "basis": "mean fraction of frozen-correct answers the LoRA arms destroy",
+      "source": "CAPABILITY_BASELINE.json",
+      "value": 0.7
+    },
+    "composition": {
+      "basis": "spread across family pairs at fixed breadth, examples, steps and seeds",
+      "n_pairs": 4,
+      "single_family_spread": 0.5416666666666666,
+      "source": "family-composition.json",
+      "value": 0.3888888888888889,
+      "within_pair_range_mean": 0.08333333333333333
+    },
+    "exposure": {
+      "basis": "spread across exposure levels at fixed breadth; levels with one run are reported with their n",
+      "per_breadth": {
+        "4": {
+          "levels": {
+            "10.0": {
+              "mean": 0.25,
+              "n_runs": 1
+            },
+            "15.0": {
+              "mean": 0.25,
+              "n_runs": 1
+            },
+            "30.0": {
+              "mean": 0.25,
+              "n_runs": 1
+            }
+          },
+          "spread": 0.0
+        },
+        "6": {
+          "levels": {
+            "10.0": {
+              "mean": 0.25,
+              "n_runs": 1
+            },
+            "30.0": {
+              "mean": 0.25,
+              "n_runs": 1
+            }
+          },
+          "spread": 0.0
+        }
+      },
+      "source": "contrast-summary.json",
+      "value": 0.0,
+      "within_level_sd": null
+    },
+    "rank": {
+      "basis": "spread across rank 4/8/16/32 MEANS at fixed breadth, examples and steps; seed noise is averaged within rank before the spread is taken",
+      "per_breadth": {
+        "2 families": {
+          "rank_means": {
+            "4": 0.36944444444444446,
+            "8": 0.3972222222222222,
+            "16": 0.4083333333333334,
+            "32": 0.375
+          },
+          "seeds_per_rank": {
+            "4": 3,
+            "8": 3,
+            "16": 3,
+            "32": 3
+          },
+          "spread_across_rank_means": 0.03888888888888892,
+          "within_level_sd": 0.03507710931971674
+        },
+        "2 families (bad pair)": {
+          "rank_means": {
+            "4": 0.1375,
+            "32": 0.15833333333333333
+          },
+          "seeds_per_rank": {
+            "4": 2,
+            "32": 2
+          },
+          "spread_across_rank_means": 0.020833333333333315,
+          "within_level_sd": 0.05008673033404711
+        },
+        "6 families": {
+          "rank_means": {
+            "4": 0.29444444444444445,
+            "8": 0.25,
+            "16": 0.24166666666666667,
+            "32": 0.2611111111111111
+          },
+          "seeds_per_rank": {
+            "4": 3,
+            "8": 3,
+            "16": 3,
+            "32": 3
+          },
+          "spread_across_rank_means": 0.052777777777777785,
+          "within_level_sd": 0.05634882191895582
+        }
+      },
+      "source": "rank-ladder.json",
+      "value": 0.052777777777777785,
+      "within_level_sd": 0.04717088719090656
+    },
+    "steps": {
+      "basis": "spread across steps levels at fixed breadth; levels with one run are reported with their n",
+      "per_breadth": {
+        "2": {
+          "levels": {
+            "300": {
+              "mean": 0.45833333333333337,
+              "n_runs": 2
+            },
+            "600": {
+              "mean": 0.5833333333333334,
+              "n_runs": 1
+            }
+          },
+          "spread": 0.125
+        },
+        "4": {
+          "levels": {
+            "300": {
+              "mean": 0.25,
+              "n_runs": 2
+            },
+            "600": {
+              "mean": 0.25,
+              "n_runs": 1
+            }
+          },
+          "spread": 0.0
+        },
+        "6": {
+          "levels": {
+            "300": {
+              "mean": 0.25,
+              "n_runs": 2
+            },
+            "600": {
+              "mean": 0.25,
+              "n_runs": 1
+            },
+            "900": {
+              "mean": 0.25,
+              "n_runs": 1
+            }
+          },
+          "spread": 0.0
+        }
+      },
+      "source": "contrast-summary.json",
+      "value": 0.125,
+      "within_level_sd": 0.058925565098878974
+    }
+  },
+  "recommendation": "E2_replay_during_training",
+  "refused": [
+    {
+      "assumed_direction": "more capacity helps: higher rank should score at least as well as lower rank",
+      "candidate": "E5_rank_or_target_modules",
+      "description": "alternative rank or target modules",
+      "lever": "capacity",
+      "measured_effect": 0.052777777777777785,
+      "reason": "the capacity hypothesis assumes higher rank helps, but the sweep measured rank 4 as the best of [4, 8, 16, 32] at 6 families (means [0.294, 0.25, 0.242, 0.261]) \u2014 the ordering is not monotone in rank, so more capacity is not supported",
+      "status": "REFUSED-DIRECTION"
+    }
+  ],
+  "schema": "mini-agi-campaign3b3-intervention-selection-v1",
+  "selected": [
+    {
+      "candidate": "E2_replay_during_training",
+      "description": "replay previously-correct examples while training",
+      "lever": "preservation",
+      "measured_effect": 0.7,
+      "reason": "targets the preservation lever, whose measured spread is 0.700 (mean fraction of frozen-correct answers the LoRA arms destroy; CAPABILITY_BASELINE.json)",
+      "status": "ELIGIBLE"
+    },
+    {
+      "candidate": "E3_frozen_reference_regularization",
+      "description": "KL penalty against the frozen model on a preservation set",
+      "lever": "preservation",
+      "measured_effect": 0.7,
+      "reason": "targets the preservation lever, whose measured spread is 0.700 (mean fraction of frozen-correct answers the LoRA arms destroy; CAPABILITY_BASELINE.json)",
+      "status": "ELIGIBLE"
+    },
+    {
+      "candidate": "E1_balanced_sampling",
+      "description": "balance sampling across families",
+      "lever": "composition",
+      "measured_effect": 0.3888888888888889,
+      "reason": "targets the composition lever, whose measured spread is 0.389 (spread across family pairs at fixed breadth, examples, steps and seeds; family-composition.json)",
+      "status": "ELIGIBLE"
+    },
+    {
+      "candidate": "E6_task_conditioned_adapters",
+      "description": "specialise adapters per transformation",
+      "lever": "composition",
+      "measured_effect": 0.3888888888888889,
+      "reason": "targets the composition lever, whose measured spread is 0.389 (spread across family pairs at fixed breadth, examples, steps and seeds; family-composition.json)",
+      "status": "ELIGIBLE"
+    },
+    {
+      "candidate": "E4_lower_learning_rate",
+      "description": "lower LR or adjusted schedule",
+      "lever": "optimisation",
+      "measured_effect": 0.125,
+      "reason": "targets the optimisation lever, whose measured spread is 0.125 (spread across steps levels at fixed breadth; levels with one run are reported with their n; contrast-summary.json)",
+      "status": "ELIGIBLE"
+    }
+  ],
+  "statement": "Selection is driven by measured effect sizes, not by the candidate list. A lever the evidence has measured as flat has its candidates refused with the measurement quoted, so the selector cannot recommend a remedy that has already been tested and found inert."
+}
