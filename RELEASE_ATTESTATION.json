@@ -88,7 +88,7 @@
     "qualification": "macOS suite green; Linux boundary run pending",
     "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
   },
-  "manifest_sha256": "bd666f55d4bb23b604280284a29e5af75ef0dc4fa9197757a9d32357f8b3c0f8",
+  "manifest_sha256": "0bb7455dc8c8de22c0232cd274ee99d3fb944ef76f6747eaf781d669354a4237",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "1067 passed, 18 skipped, 0 failed (macOS); container: 62/62 v16.4.10 + 50/50 executor-isolation + 2/2 G10",
@@ -454,9 +454,14 @@
       "manifest_sha256": "bd666f55d4bb23b604280284a29e5af75ef0dc4fa9197757a9d32357f8b3c0f8",
       "reason": "Campaign 3B.3 Priorities 2-3: capability baselines and evidence-driven intervention selection",
       "utc": "2026-10-14T21:39:18Z"
+    },
+    {
+      "manifest_sha256": "0bb7455dc8c8de22c0232cd274ee99d3fb944ef76f6747eaf781d669354a4237",
+      "reason": "Campaign 3B.3 final: tree lint-clean, selector completeness reporting",
+      "utc": "2026-10-14T21:45:26Z"
     }
   ],
-  "reissued_utc": "2026-10-14T21:39:18Z",
+  "reissued_utc": "2026-10-14T21:45:26Z",
   "reissues": [
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
