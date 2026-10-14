@@ -24,7 +24,7 @@ from egai.common.canonical import digest  # noqa: E402
 from egai.common.crypto import Ed25519Signer  # noqa: E402
 from minagi.runtime.isolation_profile import load_profile  # noqa: E402
 from minagi.runtime.worker_launch_broker import (  # noqa: E402
-    AuthorizedLaunchRecord, BrokerError, BrokerRefused,
+    AuthorizedLaunchRecord, BrokerRefused,
     LaunchWorkerRequest, MappingRecordResolver,
     WorkerLaunchBroker, issue_launch_authorization, new_worker_id,
     verify_launch_authorization)

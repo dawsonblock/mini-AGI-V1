@@ -13,7 +13,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src-python"))
@@ -23,7 +22,7 @@ from minagi.runtime.nsjail_executor import (  # noqa: E402
     NsJailWorkerExecutor)
 from minagi.runtime.worker_isolation import DEFAULT_ISOLATION  # noqa: E402
 from minagi.runtime.worker_launch_broker import (  # noqa: E402
-    BrokerError, LaunchWorkerRequest, WorkerLaunchBroker,
+    LaunchWorkerRequest, WorkerLaunchBroker,
     new_worker_id)
 
 PROFILE_PATH = ROOT / "configs" / "isolation" / \

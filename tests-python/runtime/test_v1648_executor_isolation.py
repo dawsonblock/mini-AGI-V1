@@ -674,7 +674,7 @@ def test_service_production_nsjail_refuses_unqualified_host(tmp_path):
         pytest.skip("this checks the non-Linux refusal")
     from minagi.runtime import service
     binary, digest = _fake_nsjail(tmp_path)
-    with pytest.raises(SystemExit) as err:
+    with pytest.raises(SystemExit):
         service.resolve_worker_executor(
             _args(worker_executor="nsjail",
                   isolation_profile=str(PROFILE_PATH),

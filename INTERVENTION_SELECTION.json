@@ -1,4 +1,5 @@
 {
+  "completeness_warning": "",
   "flatness_test": "spread across levels must EXCEED the measured seed-to-seed sd",
   "lever_effects": {
     "capacity": {
@@ -237,5 +238,7 @@
       "status": "ELIGIBLE"
     }
   ],
-  "statement": "Selection is driven by measured effect sizes, not by the candidate list. A lever the evidence has measured as flat has its candidates refused with the measurement quoted, so the selector cannot recommend a remedy that has already been tested and found inert."
+  "selection_complete": true,
+  "statement": "Selection is driven by measured effect sizes, not by the candidate list. A lever the evidence has measured as flat has its candidates refused with the measurement quoted, so the selector cannot recommend a remedy that has already been tested and found inert.",
+  "unmeasured_levers": []
 }

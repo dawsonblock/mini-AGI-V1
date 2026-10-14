@@ -114,8 +114,7 @@ def test_require_authorization_defaults_true_when_registry_present(
         tmp_path):
     """A broker holding trusted keys enforces authorization unless an
     operator explicitly disarms it — default follows the registry."""
-    from minagi.v161.authority import (AUTHORITY_ROLES,
-                                       AuthorityRegistry,
+    from minagi.v161.authority import (AuthorityRegistry,
                                        write_trust_root)
     storage = tmp_path / "storage"
     write_trust_root(storage / ".keys", storage / "trust_root.json")

@@ -40,8 +40,8 @@ def _require_packaged_evidence(doc):
     """Skip when the run evidence is absent, so the source archive is not
     asked to prove something only the evidence package can."""
     import pytest
-    missing = [l for l in EVIDENCE_PACKAGE_LEVERS
-               if l not in doc["measured_effects"]]
+    missing = [lev for lev in EVIDENCE_PACKAGE_LEVERS
+               if lev not in doc["measured_effects"]]
     if missing:
         pytest.skip("run evidence not in this checkout (results/ ships in "
                     f"the evidence package); unmeasured levers: {missing}")
@@ -63,6 +63,7 @@ def test_the_capacity_candidate_is_refused_on_direction(tmp_path):
     best of 4/8/16/32, so the candidate is refused — a fixed script built
     from the plan's list would have picked it."""
     doc = _select(tmp_path)
+    _require_packaged_evidence(doc)
     refused = {r["candidate"]: r for r in doc["refused"]}
     assert "E5_rank_or_target_modules" in refused, (
         "the capacity candidate is no longer refused; the selector would "
@@ -148,3 +149,20 @@ def test_selector_refuses_to_select_on_nothing():
         "the empty-evidence guard is gone; the selector could fall back to "
         "the candidate list")
     assert "if not effects:" in src, "the guard no longer tests for evidence"
+
+
+def test_an_incomplete_selection_says_so(tmp_path):
+    """A checkout without the run evidence yields a WEAKER selection: a
+    lever it cannot measure cannot have its candidates refused. That must
+    be reported, because a selector that quietly stops refusing a refuted
+    lever is worse than one that admits it cannot."""
+    doc = _select(tmp_path)
+    assert "selection_complete" in doc and "unmeasured_levers" in doc
+    if doc["selection_complete"]:
+        assert doc["unmeasured_levers"] == []
+        assert doc["completeness_warning"] == ""
+    else:
+        assert doc["unmeasured_levers"], \
+            "incomplete but no unmeasured levers named"
+        assert "INCOMPLETE SELECTION" in doc["completeness_warning"]
+        assert "NOT tested for refusal" in doc["completeness_warning"]

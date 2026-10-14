@@ -300,6 +300,14 @@ def main() -> int:
                        f"{eff['value']:.3f} ({eff['basis']}; "
                        f"{eff['source']})")})
 
+    # A lever that is unmeasured cannot have its candidates refused, so a
+    # source-only checkout yields a WEAKER selection than a full one. That
+    # must be stated, not discovered: a selector that quietly stops
+    # refusing a refuted lever is worse than one that says it cannot.
+    all_levers = {lever for lever, _d, _dir in CANDIDATES.values()}
+    unmeasured = sorted(all_levers - set(lever_effect))
+    complete = not unmeasured
+
     selected.sort(key=lambda s: -(s.get("measured_effect") or 0.0))
     report = {
         "schema": "mini-agi-campaign3b3-intervention-selection-v1",
@@ -312,6 +320,14 @@ def main() -> int:
         "selected": selected,
         "refused": refused,
         "recommendation": (selected[0]["candidate"] if selected else None),
+        "selection_complete": complete,
+        "unmeasured_levers": unmeasured,
+        "completeness_warning": (
+            "" if complete else
+            f"INCOMPLETE SELECTION: {unmeasured} could not be measured in "
+            "this checkout, so candidates acting on those levers were NOT "
+            "tested for refusal and may appear eligible without a basis. "
+            "The run evidence ships in the separate evidence package."),
         "statement": (
             "Selection is driven by measured effect sizes, not by the "
             "candidate list. A lever the evidence has measured as flat has "
@@ -335,6 +351,9 @@ def main() -> int:
         print(f"  {r['candidate']:36} {r['status']:20} "
               f"{r['measured_effect']:.3f}")
     print(f"\nrecommendation: {report['recommendation']}")
+    if not complete:
+        print(f"INCOMPLETE: {unmeasured} unmeasured in this checkout — "
+              "candidates on those levers were not tested for refusal")
     print(f"wrote {args.output}")
     return 0
 

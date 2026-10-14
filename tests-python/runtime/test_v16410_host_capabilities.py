@@ -11,15 +11,13 @@ import hashlib
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src-python"))
 
 from minagi.runtime.isolation_profile import load_profile  # noqa: E402
 from minagi.runtime.nsjail_executor import (  # noqa: E402
-    ExecutorRefused, NsJailWorkerExecutor)
-import minagi.runtime.nsjail_executor as nsjail_mod  # noqa: E402
+    NsJailWorkerExecutor)
 from minagi.runtime.worker_launch_broker import (  # noqa: E402
     WorkerLaunchBroker)
 
