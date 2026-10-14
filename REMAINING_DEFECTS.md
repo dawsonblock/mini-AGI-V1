@@ -198,6 +198,26 @@ in particular — proving the adapter can fit a small verified subset to
 cleared that bar and the "generalization failure" may partly be an
 under-fitting failure.
 
+## RD-17 — OPEN: two declared train families are the same function
+
+`pc-rev` and `pc-swap` are identical on every training word. All training
+words are three letters long, and for a three-letter word "swap the first
+and last characters" IS "reverse the word". The corpus declares six train
+families but carries **five distinct functions**.
+
+**Consequence:** every breadth count over the train families overstates
+by one, and `pc-rev` / `pc-swap` are not independent evidence about each
+other.
+
+**Not fixed, deliberately.** v2 keeps the training block byte-identical
+to v1 so v1- and v2-trained runs are comparable; fixing the collision
+would silently change every training condition. Pinned by a test that
+asserts exactly the known collision, so a new one fails the build and a
+silent fix also fails it. A future corpus should use varied word lengths.
+
+Found while interpreting the single-family diagnostic
+(`SINGLE_FAMILY_DIAGNOSTIC.md`).
+
 ## RD-16 — CLOSED: breadth was confounded with family composition
 
 The 3B.2 Stage 3 conclusion "breadth is the binding constraint" was an
@@ -274,3 +294,4 @@ this is a reporting asymmetry rather than a correctness gap.
 | RD-14 | runner reports a single violation count | open (reporting) |
 | RD-15 | review's test counts differ from this tree | **unresolved** — needs their env + commit |
 | RD-16 | breadth confounded with family composition | **CLOSED** — conclusion withdrawn and replaced |
+| RD-17 | pc-rev and pc-swap are the same function | **OPEN** — recorded, deliberately not fixed |

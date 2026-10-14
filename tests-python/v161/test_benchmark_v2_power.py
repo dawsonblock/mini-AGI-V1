@@ -91,3 +91,59 @@ def test_generator_is_deterministic(tmp_path):
         if _ == 0:
             first = digest
     assert digest == first, "regenerating the corpus produced a different file"
+
+
+#: KNOWN v1 CORPUS DEFECT, inherited by v2 by design.
+#:
+#: Every v1 training word is three letters long, and for a three-letter
+#: word "swap the first and last characters" IS "reverse the word". So
+#: `pc-rev` and `pc-swap` are the same function on the training data: the
+#: corpus declares six train families but carries five distinct
+#: functions.
+#:
+#: v2 keeps the training block byte-identical to v1 deliberately, so that
+#: a v1-trained and a v2-trained run see the same training condition and
+#: are comparable. Fixing the collision here would break that invariant
+#: and silently change every training condition.
+#:
+#: Consequence for interpretation, recorded rather than hidden: any
+#: "breadth" count over the train families overstates by one, and
+#: `pc-rev` and `pc-swap` are not independent evidence about each other.
+#: A future corpus should use varied word lengths.
+KNOWN_FUNCTION_COLLISIONS = {("pc-rev", "pc-swap")}
+
+
+def _family_function_collisions(rows):
+    by_word: dict = {}
+    for r in rows:
+        word = r["prompt"].split("Input: ", 1)[1].rsplit("\nAnswer:", 1)[0]
+        by_word.setdefault(word, {})[r["family"]] = r["expected"]
+    families = sorted({r["family"] for r in rows})
+    found = set()
+    for i, a in enumerate(families):
+        for b in families[i + 1:]:
+            shared = [w for w in by_word if a in by_word[w] and b in by_word[w]]
+            if shared and all(by_word[w][a] == by_word[w][b] for w in shared):
+                found.add((a, b))
+    return found
+
+
+def test_family_function_collisions_are_exactly_the_known_ones():
+    """Pins the defect: no NEW collision, and the known one not silently
+    fixed (which would break v1/v2 comparability)."""
+    found = _family_function_collisions(
+        [r for r in build_corpus() if r["split"] == "train"])
+    assert found == KNOWN_FUNCTION_COLLISIONS, (
+        f"family-function collisions changed: found {sorted(found)}, "
+        f"expected {sorted(KNOWN_FUNCTION_COLLISIONS)}. A new collision "
+        "means the corpus overstates its breadth further; a missing one "
+        "means the training block was altered and v1/v2 comparability is "
+        "broken")
+
+
+def test_v2_inherits_the_collision_so_the_two_corpora_stay_comparable():
+    v1 = _family_function_collisions(
+        [r for r in build_corpus() if r["split"] == "train"])
+    v2 = _family_function_collisions(
+        [r for r in build_corpus_v2() if r["split"] == "train"])
+    assert v1 == v2, "v2's training block no longer matches v1's"
