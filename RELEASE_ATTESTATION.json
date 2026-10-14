@@ -88,7 +88,7 @@
     "qualification": "macOS suite green; Linux boundary run pending",
     "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
   },
-  "manifest_sha256": "07e6feb52ea1a22142bdcf43090404fee919b461bc671d205319ba3e38a83ca2",
+  "manifest_sha256": "7d9b01c6232f8461a9b35ac27c29c813144171a6ae00eb5460215b854777268e",
   "operator_promotion_authority": false,
   "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
   "python_validation": "1067 passed, 18 skipped, 0 failed (macOS); container: 62/62 v16.4.10 + 50/50 executor-isolation + 2/2 G10",
@@ -419,9 +419,14 @@
       "manifest_sha256": "07e6feb52ea1a22142bdcf43090404fee919b461bc671d205319ba3e38a83ca2",
       "reason": "Campaign 3B.2: manifest over the final tree incl. the generated manifests",
       "utc": "2026-10-14T00:00:03Z"
+    },
+    {
+      "manifest_sha256": "7d9b01c6232f8461a9b35ac27c29c813144171a6ae00eb5460215b854777268e",
+      "reason": "Campaign 3B.2: include FAMILY_COMPOSITION_CORRECTION.md and the withdrawal notice, so the packaged source does not ship a withdrawn claim uncorrected",
+      "utc": "2026-10-14T01:12:48Z"
     }
   ],
-  "reissued_utc": "2026-10-14T00:00:03Z",
+  "reissued_utc": "2026-10-14T01:12:48Z",
   "reissues": [
     {
       "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
