@@ -69,6 +69,7 @@ def main() -> int:
             "config_digest": commit.get("config_digest"),
             "attempt_id": commit.get("attempt_id"),
             "created_utc": commit.get("created_utc"),
+            "corpus": cfg.get("corpus"),
             "model_id": cfg["model_id"],
             "model_revision": cfg["model_revision"],
             "seed": cfg["seed"],
@@ -111,23 +112,52 @@ def main() -> int:
     correct = [e for e in experiments if e["supervision"] == "correct"]
     shuffled = [e for e in experiments if e["supervision"] == "shuffled-label"]
 
-    def by_breadth(rows, n):
+    # Runs span more than one benchmark, and the frozen baseline is a
+    # property of the BENCHMARK, not of the campaign: v1 scores 0.417 and
+    # v2 scores 0.400 on their respective held-out sets. Pooling them
+    # under one baseline would make `above_frozen` compare apples to
+    # oranges, so every roll-up is grouped by corpus and uses that
+    # corpus's own frozen baseline, measured from the runs themselves.
+    def by_breadth(rows, n, base):
         hs = [r["hidden_adapted"] for r in rows if r["n_families"] == n]
         return ({"n": len(hs), "mean": statistics.fmean(hs),
                  "min": min(hs), "max": max(hs),
-                 "above_frozen": sum(1 for h in hs if h > frozen)}
+                 "frozen_baseline": base,
+                 "above_frozen": sum(1 for h in hs if h > base)}
                 if hs else None)
 
+    corpora: dict = {}
+    for e in correct:
+        corpora.setdefault(str(e.get("corpus") or "unknown"), []).append(e)
+    per_corpus = {}
+    for name, rows in sorted(corpora.items()):
+        bases = {round(r["hidden_frozen"], 6) for r in rows}
+        base = min(bases) if len(bases) == 1 else None
+        per_corpus[name] = {
+            "n_runs": len(rows),
+            "frozen_baseline": base,
+            "frozen_baseline_note": (
+                "consistent across these runs" if base is not None else
+                f"NOT consistent across these runs: {sorted(bases)} — "
+                "above_frozen is omitted because it would be ill-defined"),
+            "by_breadth": {
+                str(n): by_breadth(rows, n, base)
+                for n in (1, 2, 4, 5, 6) if base is not None},
+        }
+
     exp_manifest = {
-        "schema": "mini-agi-campaign3b2-experiment-manifest-v1",
+        "schema": "mini-agi-campaign3b2-experiment-manifest-v2",
         "run_root": args.run_root,
         "corpus": args.corpus,
-        "frozen_hidden_baseline": frozen,
         "n_runs": len(experiments),
         "n_correct_label_runs": len(correct),
         "n_shuffled_control_runs": len(shuffled),
-        "breadth_summary_correct_labels": {
-            str(n): by_breadth(correct, n) for n in (2, 4, 6)},
+        "benchmarks": sorted(corpora),
+        "note": ("Roll-ups are grouped BY CORPUS because the frozen "
+                 "baseline belongs to the benchmark, not the campaign. A "
+                 "single pooled baseline would compare runs evaluated on "
+                 "different held-out sets."),
+        "correct_labels_by_corpus": per_corpus,
         "runs": experiments,
     }
     Path(args.experiments).write_text(json.dumps(exp_manifest, indent=2,
@@ -146,13 +176,17 @@ def main() -> int:
                                                sort_keys=True) + "\n")
 
     print(f"runs: {len(experiments)} ({len(correct)} correct, "
-          f"{len(shuffled)} shuffled) | frozen baseline {frozen:.3f}")
-    for n in (2, 4, 6):
-        s = exp_manifest["breadth_summary_correct_labels"][str(n)]
-        if s:
-            print(f"  {n} families: n={s['n']} mean={s['mean']:.3f} "
-                  f"[{s['min']:.3f}-{s['max']:.3f}] "
-                  f"above-frozen {s['above_frozen']}/{s['n']}")
+          f"{len(shuffled)} shuffled)")
+    for name, blk in per_corpus.items():
+        base = blk["frozen_baseline"]
+        print(f"  {name}  n={blk['n_runs']}  "
+              f"frozen {base if base is None else round(base, 3)}")
+        for n, st in blk["by_breadth"].items():
+            if st is None:
+                continue
+            print(f"    {n} families: n={st['n']} mean={st['mean']:.3f} "
+                  f"[{st['min']:.3f}-{st['max']:.3f}] "
+                  f"above-frozen {st['above_frozen']}/{st['n']}")
     print(f"artifacts: {len(artifacts)} "
           f"({art_manifest['total_bytes'] / 1e6:.1f} MB, "
           f"{art_manifest['adapters']} adapters)")

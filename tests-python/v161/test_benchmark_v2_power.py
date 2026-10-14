@@ -147,3 +147,36 @@ def test_v2_inherits_the_collision_so_the_two_corpora_stay_comparable():
     v2 = _family_function_collisions(
         [r for r in build_corpus_v2() if r["split"] == "train"])
     assert v1 == v2, "v2's training block no longer matches v1's"
+
+
+def test_experiment_manifest_groups_rollups_by_benchmark(tmp_path):
+    """The frozen baseline belongs to the BENCHMARK, not the campaign.
+
+    v1 scores 0.417 on its held-out set and v2 scores 0.400 on its own.
+    An earlier manifest pooled every run under one baseline, so
+    `above_frozen` compared runs evaluated on different task sets. The
+    roll-up must be grouped by corpus and use each corpus's own baseline.
+    """
+    import json as _json
+    exp = tmp_path / "EXP.json"
+    art = tmp_path / "ART.json"
+    proc = subprocess.run(
+        [sys.executable,
+         str(ROOT / "scripts" / "analysis" / "experiment_manifest.py"),
+         "--run-root", "results/campaign3b2/runs",
+         "--experiments", str(exp), "--artifacts", str(art)],
+        capture_output=True, text=True, cwd=str(ROOT))
+    if proc.returncode != 0:
+        import pytest
+        pytest.skip("no run evidence in this checkout")
+    doc = _json.loads(exp.read_text())
+    assert "correct_labels_by_corpus" in doc, (
+        "roll-ups are pooled again; above_frozen would mix benchmarks")
+    assert "breadth_summary_correct_labels" not in doc, \
+        "the pooled single-baseline summary is back"
+    for name, blk in doc["correct_labels_by_corpus"].items():
+        if blk["frozen_baseline"] is None:
+            assert "NOT consistent" in blk["frozen_baseline_note"], name
+        for st in blk["by_breadth"].values():
+            if st is not None:
+                assert st["frozen_baseline"] == blk["frozen_baseline"]
