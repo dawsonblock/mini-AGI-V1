@@ -391,6 +391,19 @@ linting (separate roots/invocations) is the intended model. Fully
 eliminating the hazard requires IDE/workspace configuration outside
 this repo's control, or a per-repo virtualenv.
 
+**Recurred (v4.0.1 round).** The IDE linter (session rooted at the
+sibling checkout, which sits on `results/campaign3a-v166` — predating
+even v4.0.0) re-flagged E0611/E1123 on the new V4-21..V4-24 symbols
+(`lexical_terms`, `manifest_verifier`, `authority`, `artifact_resolver`,
+`train_family_adapters`) **and** on unmodified committed code
+(`positive_control_fit.py`'s `rehearsal_fraction`/`kl_*` calls — the
+3B.3 signature, zero occurrences in the sibling's `peft_trainer.py`).
+Re-verified: pylint 4.0.3 rates all flagged files 10.00/10 on exactly
+E0611/E1123/E1120 from this worktree and from the sibling cwd; every
+flagged symbol exists in this tree's source. The durable remedy is
+unchanged: root the IDE workspace at this checkout (or remove the
+sibling root), or give the IDE this repo's `.venv` interpreter.
+
 ## Summary
 
 | id | class | status |
