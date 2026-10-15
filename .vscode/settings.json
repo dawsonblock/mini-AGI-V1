@@ -1,0 +1,17 @@
+{
+    // This checkout's minagi/egai live under src-python/. Pinning the
+    // analysis path stops IDE tooling from resolving "minagi" against a
+    // SIBLING checkout's stale copy when a parent folder containing
+    // multiple checkouts is the workspace root (observed as E0611/E1123
+    // false positives on 3B.3 symbols).
+    "python.analysis.extraPaths": [
+        "src-python"
+    ],
+    // Pylint discovers its config from the launch cwd; forcing the
+    // workspace folder makes it load this tree's pyproject.toml
+    // init-hook, which puts THIS src-python on sys.path.
+    "pylint.cwd": "${workspaceFolder}",
+    "python.testing.pytestArgs": [
+        "tests-python"
+    ]
+}

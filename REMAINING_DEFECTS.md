@@ -364,6 +364,33 @@ verification or independent custody is missing, synthetic records carry
 Pinned by `test_sealed_custody_enforcement.py` and
 `test_confirmation_fail_closed.py`.
 
+## RD-20 — OPEN: IDE/editor linting resolves `minagi` against a sibling checkout
+
+The IDE Pylint run reported E0611 (`No name 'exact_match_strict'`) and
+E1123 (`rehearsal_fraction`, `kl_weight`, `rehearsal_examples`,
+`run_confirmation(mode=)`) on committed 3B.3 code — all false
+positives. Reproduced deterministically: when pylint launches with the
+sibling checkout (`mini-AGI-v16.1-Colab-Converged-Full-Upgraded`) as
+its resolution root, `minagi` binds to that tree's stale `src-python`
+modules, which predate every 3B.3 symbol. The identical pylint version
+rates all six flagged files 10.00/10 when run from this worktree; the
+symbols exist, are ruff-clean, and the P4 sweep executed with exactly
+those call signatures.
+
+**Mitigations in this tree:** `pyproject.toml`'s pylint `init-hook`
+now prefers each *analyzed file's* own `src-python` over the launch
+cwd (previously cwd won); `.vscode/settings.json` pins
+`python.analysis.extraPaths` + `pylint.cwd` so a per-folder or
+multi-root IDE session resolves correctly.
+
+**Residual limitation (inherent):** two checkouts ship identical
+package names (`minagi.v161.*`) with different contents. A single
+pylint process covering files from both trees cannot resolve both
+correctly — only one `src-python` can lead `sys.path`. Per-tree
+linting (separate roots/invocations) is the intended model. Fully
+eliminating the hazard requires IDE/workspace configuration outside
+this repo's control, or a per-repo virtualenv.
+
 ## Summary
 
 | id | class | status |
@@ -387,3 +414,4 @@ Pinned by `test_sealed_custody_enforcement.py` and
 | RD-17 | pc-rev and pc-swap are the same function | **OPEN** — recorded, deliberately not fixed |
 | RD-18 | case-insensitive scorer inflated all numbers | **CLOSED** — strict oracle + full rescore published |
 | RD-19 | sealed custody overclaimed independence | **CLOSED** — fail-closed custody + production/synthetic modes |
+| RD-20 | IDE lint resolves minagi against sibling checkout | **OPEN** — mitigated in-tree; workspace config is IDE-side |
