@@ -1,9 +1,18 @@
 # Campaign 3B.1 — Step 4 fit experiment
 
-Status: **executed.** Four runs, all on the pinned
+Status: **executed.** Six runs, all on the pinned
 `Qwen/Qwen2.5-0.5B-Instruct` revision `7ae55760…`, CPU, one seed, rank 16,
 the frozen prompt and output contracts. Every claim below is a recorded
 run, reproducible with `scripts/positive_control_fit.py`.
+
+> **Superseded scoring (3B.3).** All accuracies in this document were
+> produced by the case-insensitive `exact-match-v1` scorer, which
+> accepted wrong-case outputs. Every number below is **provisional**;
+> strict `exact-match-v2` rescores live in each run's
+> `RESCORE-STRICT.json` overlay and `results/campaign3b2/RESCORE_SUMMARY.json`.
+> Headline corrections: frozen hidden 0.417 → 0.333; run1 hidden
+> 0.583 → 0.333; the "adapter beats frozen" claim does not survive
+> strict scoring.
 
 The 3B diagnostic never cleared the 95% fit gate (0.767), so its
 cross-family failure might have been an under-fitting artifact. Step 4

@@ -5,10 +5,35 @@ import math
 import re
 
 def exact_match(prediction: str, expected: str) -> float:
+    """v1 oracle — LEGACY case-insensitive comparison.
+
+    Retained verbatim for provenance: every Campaign 3B/3B.1/3B.2 record
+    binds ``exact-match-v1`` to this callable, and the defect register
+    (RD-18) documents that it accepts wrong-case outputs — e.g. an
+    uppercase-transform task scored correct for a lowercase echo. New
+    correctness scoring must use :func:`exact_match_strict`
+    (``exact-match-v2``).
+    """
     return float(prediction.strip().casefold() == expected.strip().casefold())
 
+
+def exact_match_strict(prediction: str, expected: str) -> float:
+    """v2 oracle — strict case-sensitive comparison.
+
+    A transformation benchmark's answer is the transformed string
+    itself, so letter case is part of the answer: ``"Egg"`` is not
+    ``"egg"``. Corrects the v1 defect where a wrong-case output was
+    silently accepted (RD-18). Whitespace surrounding the answer is
+    still stripped — the output contract already requires answer-only.
+    """
+    return float(prediction.strip() == expected.strip())
+
 def retention_score(prediction: str, expected: str) -> float:
-    return exact_match(prediction, expected)
+    """Retention correctness — strict oracle (v2). Retention answers
+    carry case ('Paris', 'ALPHA'), so casefold acceptance reproduced
+    the RD-18 defect in the retention metric. For prose-style answers
+    use containment_match, which is normalized by design."""
+    return exact_match_strict(prediction, expected)
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
 

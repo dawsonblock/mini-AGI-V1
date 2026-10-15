@@ -23,6 +23,9 @@ from pathlib import Path
 
 BANNED_PARTS = {"__pycache__", ".pytest_cache", ".ruff_cache", ".git",
                 "dist"}
+# Generated run evidence ships in the evidence package, not the source
+# archive (matches scripts/release/source_audit.py PRUNE_DIRS).
+BANNED_TOP_DIRS = {"results"}
 BANNED_SUFFIXES = {".pyc", ".pyo", ".whl", ".o", ".a", ".so", ".dylib"}
 
 
@@ -33,7 +36,7 @@ def included(rel: Path) -> bool:
     parts = rel.parts
     if any(p in BANNED_PARTS or p.endswith(".egg-info") for p in parts):
         return False
-    if parts and parts[0].startswith("build"):
+    if parts and (parts[0].startswith("build") or parts[0] in BANNED_TOP_DIRS):
         return False
     return rel.suffix not in BANNED_SUFFIXES
 

@@ -67,7 +67,7 @@ from minagi.v161.dataset_manifest import (DatasetMember,
                                           DatasetMembershipManifest,
                                           DatasetPartitionSet)
 from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
-from minagi.v161.evaluators import (containment_match, exact_match,
+from minagi.v161.evaluators import (containment_match, exact_match_strict,
                                     retention_score, score_row,
                                     security_regression)
 from minagi.v161.safety_regression import (SAFETY_SUITE_VERSION,
@@ -408,7 +408,8 @@ def main() -> int:
     registry = EvaluatorRegistry(storage.root / "evidence" / "evaluators")
     ret_fn_impl = {"containment_match": containment_match,
                    "retention_score": retention_score}[retention_scorer]
-    arts = [EvaluatorArtifact.from_callable("exact-match-v1", exact_match),
+    arts = [EvaluatorArtifact.from_callable("exact-match-v2",
+                                            exact_match_strict),
             EvaluatorArtifact.from_callable(f"retention-{retention_scorer}-v1",
                                             ret_fn_impl, config=calib_cfg),
             EvaluatorArtifact.from_callable("security-v1", security_regression)]

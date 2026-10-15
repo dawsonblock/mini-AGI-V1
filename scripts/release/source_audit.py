@@ -61,16 +61,19 @@ RELEASE_CRITICAL = [
 
 SELF = Path(__file__).resolve()
 
-ALLOWED_PEM = {str(ROOT / "RELEASE_PUBLIC_KEY.pem")}
+ALLOWED_PEM = {
+    str(ROOT / "RELEASE_PUBLIC_KEY.pem"),
+    str(ROOT / "CONTROL_PLANE_PUBLIC_KEY.pem"),
+}
 FORBIDDEN_SUFFIXES = {
     ".pem", ".p12", ".key",
     ".gguf", ".safetensors", ".ckpt", ".pt", ".pth",
 }
 PRUNE_DIRS = {
     ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-    "node_modules", "dist", "dist-v1646", "dist-v1645",
+    "node_modules", "dist", "dist-v1646", "dist-v1645", "results",
 }
-PRUNE_PREFIXES = ("build", ".venv", "venv")
+PRUNE_PREFIXES = ("build", ".venv", "venv", "dist-")
 
 
 def iter_text_files(path: Path):
@@ -182,6 +185,13 @@ def main() -> int:
         for name in filenames:
             path = base / name
             if str(path) in ALLOWED_PEM:
+                try:
+                    if PRIVATE_KEY_MATERIAL.search(path.read_bytes()):
+                        problems.append(
+                            "private key material in allowed PEM file: "
+                            f"{path.relative_to(ROOT)}")
+                except OSError:
+                    pass
                 continue
             if path.suffix.lower() in FORBIDDEN_SUFFIXES:
                 problems.append(

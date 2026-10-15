@@ -29,7 +29,7 @@ from minagi.v161.campaign_plan import (ColabCampaignPlanV165,  # noqa: E402
 from minagi.v161.dataset_manifest import (DatasetMember,  # noqa: E402
                                           DatasetMembershipManifest,
                                           DatasetPartitionSet)
-from minagi.v161.evaluators import (exact_match, retention_score,  # noqa: E402
+from minagi.v161.evaluators import (exact_match_strict, retention_score,  # noqa: E402
                                     security_regression)
 from minagi.v161.evidence_receipt_v3 import (  # noqa: E402
     EvidenceReceiptV3, evaluation_bundle, input_manifest_digest,
@@ -227,8 +227,8 @@ class SyntheticCampaign:
         ret = [p for p in preds if p["block"] == "retention"]
         sec = [p for p in preds if p["block"] == "security"]
         rows_by = {r["id"]: r for r in _by_split("hidden")}
-        em = sum(exact_match(p["output"],
-                             rows_by[p["id"]]["expected"])
+        em = sum(exact_match_strict(p["output"],
+                                    rows_by[p["id"]]["expected"])
                  for p in hid) / len(hid)
         rows_ret = {r["id"]: r for r in _by_split("retention")}
         rs = sum(retention_score(p["output"],

@@ -51,7 +51,7 @@ from minagi.v161.authority import AuthorityRegistry  # noqa: E402
 from minagi.v161.dataset_manifest import (DatasetMember,  # noqa: E402
                                           DatasetMembershipManifest)
 from minagi.v161.evaluators import (containment_match,  # noqa: E402
-                                    exact_match, retention_score,
+                                    exact_match_strict, retention_score,
                                     score_row, security_regression)
 from minagi.v161.safety_regression import (category_rollup,  # noqa: E402
                                            retention_metric_status,
@@ -215,14 +215,17 @@ def load_sealed(path: Path, *, storage: Path | None = None,
 
 
 def sealed_custody_report(path: Path, *, storage: Path | None = None,
-                          environ=None) -> dict:
+                          environ=None,
+                          research_uid: int | None = None) -> dict:
     """What custody controls were actually enforced for this sealed set.
 
     Recorded in the signed confirmation record so a reader can see the
     real level of assurance rather than an assurance asserted in prose.
-    ``permissions_enforced`` false means the sealed set was readable by
-    other OS identities and the run should not be treated as
-    independently isolated.
+    A same-UID research/evaluator arrangement is NOT classified as
+    independently isolated merely because the sealed file is mode 0600:
+    ``independent_isolation_established`` requires owner-only permissions,
+    a path outside research storage, AND a distinct OS identity from the
+    research storage owner.
     """
     cooperative = {"control": "research_worker_env_marker",
                    "kind": "cooperative (in-process, bypassable)",
@@ -234,6 +237,10 @@ def sealed_custody_report(path: Path, *, storage: Path | None = None,
     perms = {"control": "sealed_file_permissions",
              "kind": "filesystem (OS-enforced)", "enforced": False,
              "detail": ""}
+    distinct = {"control": "distinct_evaluator_os_identity",
+                "kind": "OS identity separation (evaluator uid != research uid)",
+                "enforced": False,
+                "detail": ""}
     if is_research_worker(environ):
         cooperative.update({"enforced": False,
                             "detail": f"{RESEARCH_WORKER_ENV} was set"})
@@ -245,6 +252,7 @@ def sealed_custody_report(path: Path, *, storage: Path | None = None,
                                       "storage"})
         except ConfirmationRefused as exc:
             outside["detail"] = str(exc)
+    facts: dict = {}
     try:
         facts = require_sealed_file_permissions(path)
         perms.update({"enforced": bool(facts["enforced"]),
@@ -253,10 +261,42 @@ def sealed_custody_report(path: Path, *, storage: Path | None = None,
                           "euid": facts["euid"]}})
     except ConfirmationRefused as exc:
         perms["detail"] = str(exc)
+
+    eval_uid = facts.get("uid")
+    res_uid = research_uid
+    if res_uid is None and storage is not None:
+        try:
+            res_uid = int(os.stat(storage).st_uid)
+        except OSError:
+            res_uid = None
+    if eval_uid is not None and res_uid is not None:
+        if int(eval_uid) != int(res_uid):
+            distinct.update({
+                "enforced": True,
+                "detail": (f"evaluator uid {eval_uid} != research uid "
+                           f"{res_uid}"),
+                "observed": {"evaluator_uid": int(eval_uid),
+                             "research_uid": int(res_uid)}})
+        else:
+            distinct.update({
+                "enforced": False,
+                "detail": (f"same-UID arrangement (uid {eval_uid} owns both "
+                           "sealed data and research storage) — mode 0600 "
+                           "does not isolate against a same-UID worker"),
+                "observed": {"evaluator_uid": int(eval_uid),
+                             "research_uid": int(res_uid)}})
+    else:
+        distinct["detail"] = ("research storage uid unavailable — distinct "
+                              "OS identity cannot be established")
+
+    isolated = bool(perms["enforced"] and outside["enforced"]
+                    and distinct["enforced"])
     return {
         "schema": "mini-agi-campaign3b-custody-report-v1",
-        "controls": [cooperative, outside, perms],
-        "independent_isolation_established": bool(perms["enforced"]),
+        "controls": [cooperative, outside, perms, distinct],
+        "permissions_enforced": bool(perms["enforced"]),
+        "distinct_os_identity_enforced": bool(distinct["enforced"]),
+        "independent_isolation_established": isolated,
         "statement": (
             "The boundary that holds is OS-level: a separate evaluator "
             "identity, sealed files the research uid cannot open, and keys "
@@ -264,10 +304,11 @@ def sealed_custody_report(path: Path, *, storage: Path | None = None,
             "is a cooperative guard and is NOT isolation — a research worker "
             "that controls its own environment can bypass it, and an "
             "in-process caller can simply not pass it."
-            if perms["enforced"] else
-            "Owner-only sealed-file permissions were NOT enforced, so this "
-            "run did NOT establish independent isolation. Treat the "
-            "confirmation as un-isolated evidence."),
+            if isolated else
+            "Same-UID or unenforced file permissions: this run did NOT "
+            "establish independent OS-level evaluator isolation. Mode 0600 "
+            "protects against other UIDs, not against a same-UID research "
+            "process. Treat the confirmation as un-isolated evidence."),
     }
 
 
@@ -485,7 +526,7 @@ def score_sealed(rows, outputs_by_seed, arms, *,
                 out = str(outputs[a].get(rid, ""))
                 split = str(row.get("split", "hidden"))
                 if split == "hidden":
-                    s = float(exact_match(out, str(row["expected"])))
+                    s = float(exact_match_strict(out, str(row["expected"])))
                     hid.append(s)
                     per_row[a][f"{seed}:{rid}"] = s
                 elif split == "retention":
@@ -634,15 +675,29 @@ def run_confirmation(*, storage: Path, plan, submission, sealed_rows,
                      bootstrap_resamples: int = 2000,
                      ci_alpha: float = 0.05,
                      verify_artifacts=None,
-                     custody: dict | None = None) -> dict:
+                     custody: dict | None = None,
+                     mode: str = "synthetic") -> dict:
     """The whole evaluator-side flow with an injected executor.
 
     ``execute_arm(seed, arm_id, rows) -> {task_id: output}`` runs one
     arm for one seed; the CLI supplies the model-backed implementation,
-    tests supply deterministic stubs. ``verify_artifacts`` (optional)
-    runs the step-21 candidate verification before any execution and
-    its result is recorded in the signed record.
+    tests supply deterministic stubs. ``verify_artifacts`` runs the
+    step-21 candidate verification before any execution and its result
+    is recorded in the signed record.
+
+    ``mode`` is ``"production"`` or ``"synthetic"`` (Step 20):
+      * In ``"production"`` mode, verified model artifacts, enforced
+        independent evaluator custody, approved scoring configuration,
+        and complete authority signers are mandatory. If any is missing,
+        the decision is ``"NOT_QUALIFIED"`` (never ``"QUALIFIED"``) and
+        ``production_valid`` is ``False``.
+      * In ``"synthetic"`` mode (used by unit test fixtures), the record
+        is explicitly tagged ``mode="synthetic"`` and
+        ``production_valid=False`` so synthetic test fixtures can never
+        be presented as production qualification receipts.
     """
+    if mode not in ("production", "synthetic"):
+        raise ValueError(f"mode must be 'production' or 'synthetic', got {mode!r}")
     eligibility = verify_eligibility(storage, plan, submission)
     sealed = verify_sealed(plan, sealed_rows, submission)
     artifacts = verify_artifacts() if verify_artifacts is not None else None
@@ -654,7 +709,42 @@ def run_confirmation(*, storage: Path, plan, submission, sealed_rows,
     decision, reasons, stats = confirmation_gates(
         plan, sealed_rows, scores, per_row,
         bootstrap_resamples=bootstrap_resamples, ci_alpha=ci_alpha)
+    custody_doc = custody or {
+        "schema": "mini-agi-campaign3b-custody-report-v1",
+        "controls": [],
+        "permissions_enforced": False,
+        "distinct_os_identity_enforced": False,
+        "independent_isolation_established": False,
+        "statement": "no custody report supplied — independent "
+                     "isolation NOT established"}
+
+    prod_missing: list[str] = []
+    if mode == "production":
+        if artifacts is None or int(artifacts.get("checked", 0)) <= 0:
+            prod_missing.append(
+                "production confirmation requires verified candidate "
+                "artifacts (verify_artifacts missing or checked=0)")
+        if not custody_doc.get("independent_isolation_established"):
+            prod_missing.append(
+                "production confirmation requires enforced independent "
+                "evaluator custody (distinct OS identity + mode 0600 + "
+                "outside research storage)")
+        if retention_scorer not in ("retention_score", "containment_match"):
+            prod_missing.append(
+                f"unapproved retention_scorer {retention_scorer!r}")
+        if not ("evaluation" in signers and "qualification" in signers):
+            prod_missing.append(
+                "complete evaluator authority signers (evaluation + "
+                "qualification) required")
+        if prod_missing:
+            reasons = list(reasons) + prod_missing
+            decision = "NOT_QUALIFIED"
+
+    production_valid = bool(
+        mode == "production" and not prod_missing and decision == "QUALIFIED")
     body = {"schema": CONFIRMATION_SCHEMA,
+            "mode": mode,
+            "production_valid": production_valid,
             "campaign_id": plan.campaign_id,
             "plan_digest": plan.digest,
             "submission_digest": submission_identity(submission),
@@ -667,15 +757,13 @@ def run_confirmation(*, storage: Path, plan, submission, sealed_rows,
             "stats": stats,
             "decision": decision,
             "reasons": reasons,
-            "custody": custody or {
-                "schema": "mini-agi-campaign3b-custody-report-v1",
-                "controls": [],
-                "independent_isolation_established": False,
-                "statement": "no custody report supplied — independent "
-                             "isolation NOT established"},
-            "note": "evaluator-sealed confirmation — independent of the "
-                    "research worker; promotion remains a separate "
-                    "governed step"}
+            "custody": custody_doc,
+            "note": ("evaluator-sealed confirmation — independent of the "
+                     "research worker; promotion remains a separate "
+                     "governed step"
+                     if mode == "production" else
+                     "SYNTHETIC TEST RECORD — not a production-valid "
+                     "qualification receipt")}
     sig = signers["qualification"].sign(body)
     return {"value": body, "digest": digest(body),
             "signer_key_id": signers["qualification"].key_id,
@@ -821,6 +909,11 @@ def main() -> int:
     ap.add_argument("--submission", required=True)
     ap.add_argument("--output", required=True)
     ap.add_argument("--ledger", default=None)
+    ap.add_argument("--mode", choices=("production", "synthetic"),
+                    default="production",
+                    help="production (default) requires verified artifacts "
+                         "and distinct-UID evaluator custody; synthetic "
+                         "marks the output as non-production test evidence")
     args = ap.parse_args()
 
     storage = Path(args.storage)
@@ -844,7 +937,7 @@ def main() -> int:
     record = run_confirmation(
         storage=storage, plan=plan, submission=submission,
         sealed_rows=sealed_rows, execute_arm=execute_arm, signers=signers,
-        custody=custody,
+        custody=custody, mode=args.mode,
         retention_scorer=str(getattr(protocol, "retention_scorer",
                                      "retention_score")),
         verify_artifacts=lambda: verify_candidate_artifacts(

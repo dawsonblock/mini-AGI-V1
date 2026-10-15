@@ -70,7 +70,7 @@ specification: `PROMPT_CONTRACT_SPEC.md`.
 ## 4. SCI-303 — answer-only generation and scoring
 
 The frozen output contract (`Return only the transformed result. Do not
-provide an explanation.`, 64 tokens, EOS stop) is bound by digest into
+provide an explanation.`, 16 tokens, EOS stop) is bound by digest into
 signed per-arm metrics and the training receipt. Generation is greedy,
 bounded and stops on the end-of-turn token; the finish reason and
 max-token truncation are recorded explicitly.

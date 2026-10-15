@@ -54,12 +54,16 @@ carried it.
 
 ## RD-3 — The research question is unanswered
 
-The executed positive control returned **REFUSED** (5 of 7 readiness
-gates passed):
+The executed positive control returned **REFUSED** (6 of 7 readiness
+gates passed — the repair report's own gate list shows prompt parity,
+supervised targets, numerical stability, adapter reload, within-family
+learning and the negative control all passing; only the 95% fit gate
+failed):
 
 - the 95% fit gate was unmet (L6 train accuracy 0.767);
-- cross-family transfer was negative (L6 0.167 vs frozen 0.417 on the
-  held-out families).
+- cross-family transfer was negative under the original scorer
+  (L6 0.167 vs frozen 0.417 on the held-out families; strict rescore:
+  frozen baseline is 0.333, see RD-18).
 
 **Consequence.** Gate G12 is passed in the sense that *no improvement
 claim is made without recorded evidence* — and the recorded evidence is
@@ -168,12 +172,38 @@ map to `arms.py`. Verified against the real evidence: the qualifier now
 completes the full chain and returns REFUSED with
 `runner_decision_agreement: true`.
 
-## RD-13 — CLOSED: the adapter effect size and its causes are now measured
+## RD-13 — REOPENED AND RECLASSIFIED: rank evidence is CONFOUNDED, not refuted
 
-The rank ladder (`RANK_LADDER_REPORT.md`, 28 runs on the v2 benchmark)
-closes the open question. Rank 4→32 moves the held-out mean by ~0.05 and
-is **not monotone**; family composition moves it by ~0.23. Fit is 1.000
-at rank 4, so training capacity is not merely unsupported but refuted.
+**Reclassified (3B.3 assessment).** The text below overstated the
+evidence in two ways, both corrected:
+
+1. The rank ladder held `alpha` fixed at 32 while varying rank 4–32,
+   so the effective LoRA scaling `alpha/r` covaried **inversely** with
+   rank (8.0 → 1.0): rank 4 carried the *largest* update magnitude.
+   The sweep measured capacity × update-scale jointly and cannot
+   isolate either. A non-monotone ordering under a confounded sweep is
+   not a refutation — it is a measurement that cannot answer the
+   question.
+2. Every number in the ladder was produced by the case-insensitive
+   scorer (RD-18). Under strict `exact-match-v2` rescore the rank means
+   are 0.156 / 0.186 / 0.194 / 0.161 (r=4/8/16/32) — spread 0.038
+   against within-level seed sd ≈ 0.05: inside the noise either way.
+
+**Correct classification: `INCONCLUSIVE / CONFOUNDED — low priority`.**
+The narrow claim "more rank monotonically helps at fixed alpha" is
+unsupported; rank allocation at fixed scaling, alpha/r sweeps, and
+dynamic LoRA are all preserved mechanisms. The intervention selector
+now reports this as `CONFOUNDED`, never `REFUTED`.
+
+Original text retained below for the record.
+
+---
+
+(Original v1 text) The rank ladder (`RANK_LADDER_REPORT.md`, 28 runs on
+the v2 benchmark) closes the open question. Rank 4→32 moves the
+held-out mean by ~0.05 and is **not monotone**; family composition
+moves it by ~0.23. Fit is 1.000 at rank 4, so training capacity is not
+merely unsupported but refuted.
 
 Effect sizes on one benchmark: composition ~0.23-0.54, rank ~0.05,
 exposure 0.000, steps 0.000. **Composition is the only large effect in
@@ -290,6 +320,50 @@ induced classification from its per-arm per-category metrics
 (`arm_safety_classes`), so the provisional summary and the authoritative
 record agree on the distinction. Both still block promotion.
 
+## RD-18 — CLOSED: case-insensitive scoring inflated every published number
+
+**Found by external assessment (3B.3), confirmed by rescore.** The
+answer oracle compared `.casefold()` on both sides
+(`src-python/minagi/v161/evaluators.py:exact_match`, mirrored in the
+fit runner and `prompt_contract.py`'s field literally named
+`strict_exact_match`). On a benchmark where letter case IS the
+transformation (`pc-vowels`, `pc-lastupper`), wrong-case outputs scored
+correct.
+
+**Blast radius, measured:** ~1,302 of 9,419 retained scored rows flip
+under `exact-match-v2`. Pooled frozen hidden 0.411 → 0.297; pooled
+adapted 0.311 → 0.172; adapted `pc-vowels` 0.634 → 0.020,
+`pc-lastupper` 0.713 → 0.000. The 3B.1 headline "adapter beats frozen
+at 2 families" collapses (run1 0.583 → 0.333), and the L5b replay
+advantage shrinks to a single net row (sign-test p = 1.0 — no
+statistical evidence of superiority at n=12).
+
+**Fixed:** `exact_match_strict` (`exact-match-v2`, case-sensitive)
+added; the casefold function retained as `exact_match` solely for
+provenance comparison; campaign runner, qualifier, sealed confirmation, colab
+runner, fit runner, adversarial checks and `strict_exact_match`
+diagnostic all re-bound to v2. `scripts/analysis/rescore_strict.py`
+reproduces every number from retained prediction artifacts
+(`results/campaign3b2/RESCORE_SUMMARY.json` + per-run
+`RESCORE-STRICT.json` overlays).
+
+## RD-19 — CLOSED: sealed custody overclaimed independence
+
+`sealed_custody_report()` set `independent_isolation_established` on
+mode-0600 + same-euid ownership — which is satisfied when the sealed
+store and the research tree share one uid, i.e. exactly when custody is
+NOT independent. `run_confirmation()` also had no production/synthetic
+mode, so a synthetic fixture could produce a record indistinguishable
+from a real one.
+
+**Fixed:** custody now requires distinct storage- and evaluator-owner
+identity; `run_confirmation` runs explicit `production` or `synthetic`
+mode — production fails closed (`NOT_QUALIFIED`) when artifact
+verification or independent custody is missing, synthetic records carry
+`production_valid: false` so they can never be quoted as real.
+Pinned by `test_sealed_custody_enforcement.py` and
+`test_confirmation_fail_closed.py`.
+
 ## Summary
 
 | id | class | status |
@@ -306,8 +380,10 @@ record agree on the distinction. Both still block promotion.
 | RD-10 | first diagnostic not reproducible | re-run |
 | RD-11 | unused defect id | **CLOSED** (non-issue) |
 | RD-12 | qualifier could not qualify L5b/L7 | **CLOSED** |
-| RD-13 | adapter effect size unmeasured | **CLOSED** — rank ladder executed, composition dominates |
+| RD-13 | adapter effect size unmeasured | **RECLASSIFIED** — rank evidence is CONFOUNDED (alpha/r covaried), not refuted |
 | RD-14 | runner reports a single violation count | **CLOSED** |
 | RD-15 | review's test counts differ from this tree | **unresolved** — needs their env + commit |
 | RD-16 | breadth confounded with family composition | **CLOSED** — conclusion withdrawn and replaced |
 | RD-17 | pc-rev and pc-swap are the same function | **OPEN** — recorded, deliberately not fixed |
+| RD-18 | case-insensitive scorer inflated all numbers | **CLOSED** — strict oracle + full rescore published |
+| RD-19 | sealed custody overclaimed independence | **CLOSED** — fail-closed custody + production/synthetic modes |

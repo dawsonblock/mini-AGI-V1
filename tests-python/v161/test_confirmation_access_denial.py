@@ -8,6 +8,7 @@ the sealed block carries only counts, families and the manifest digest.
 """
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -196,27 +197,46 @@ def test_custody_report_states_the_real_level_of_assurance(tmp_path):
     c = Custody(tmp_path)
     sealed = _write_sealed(c, tmp_path / "evaluator" / "sealed.jsonl",
                            mode=0o600)
-    report = TOOL.sealed_custody_report(sealed, storage=c.storage, environ={})
-    kinds = {c_["control"]: c_ for c_ in report["controls"]}
+    # Same-UID arrangement (research storage and sealed file owned by the
+    # same UID): permissions_enforced is True, but independent_isolation
+    # MUST be False (Campaign 3B.2 Step 19).
+    same_uid_report = TOOL.sealed_custody_report(
+        sealed, storage=c.storage, environ={})
+    kinds = {c_["control"]: c_ for c_ in same_uid_report["controls"]}
     assert kinds["sealed_file_permissions"]["enforced"] is True
     assert kinds["sealed_outside_research_storage"]["enforced"] is True
     assert kinds["research_worker_env_marker"]["enforced"] is True
-    assert "cooperative" in kinds["research_worker_env_marker"]["kind"]
-    assert report["independent_isolation_established"] is True
-    assert "NOT isolation" in report["statement"]
+    assert kinds["distinct_evaluator_os_identity"]["enforced"] is False
+    assert same_uid_report["permissions_enforced"] is True
+    assert same_uid_report["distinct_os_identity_enforced"] is False
+    assert same_uid_report["independent_isolation_established"] is False
+    assert "did NOT establish independent" in same_uid_report["statement"]
 
-    # an unenforced permission control must NOT claim isolation
+    # Distinct-UID arrangement: evaluator UID != research UID + mode 0600
+    # + outside research storage -> independent isolation established.
+    distinct_report = TOOL.sealed_custody_report(
+        sealed, storage=c.storage, environ={},
+        research_uid=os.geteuid() + 1000)
+    assert distinct_report["distinct_os_identity_enforced"] is True
+    assert distinct_report["independent_isolation_established"] is True
+    assert "NOT isolation" in distinct_report["statement"]
+
+    # an unenforced permission control must NOT claim isolation even with
+    # a distinct research UID
     sealed.chmod(0o644)
-    weak = TOOL.sealed_custody_report(sealed, storage=c.storage, environ={})
+    weak = TOOL.sealed_custody_report(
+        sealed, storage=c.storage, environ={},
+        research_uid=os.geteuid() + 1000)
     assert weak["independent_isolation_established"] is False
-    assert "did NOT establish independent isolation" in weak["statement"]
 
 
 def test_custody_report_is_recorded_in_the_signed_record(tmp_path):
     c = Custody(tmp_path)
     sealed = _write_sealed(c, tmp_path / "evaluator" / "sealed.jsonl",
                            mode=0o600)
-    custody = TOOL.sealed_custody_report(sealed, storage=c.storage, environ={})
+    custody = TOOL.sealed_custody_report(
+        sealed, storage=c.storage, environ={},
+        research_uid=os.geteuid() + 1000)
     record = c.run(_executor(), custody=custody)
     assert record["value"]["custody"]["independent_isolation_established"] is True
 

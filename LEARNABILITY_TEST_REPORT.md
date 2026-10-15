@@ -1,5 +1,15 @@
 # Learnability test report (Step 13)
 
+> **Superseded scoring (3B.3, RD-18).** Accuracy numbers in this
+> document were produced by `exact-match-v1` (case-insensitive), which
+> accepted wrong-case outputs on case-transformation tasks. Treat every
+> accuracy/delta below as **provisional**; strict `exact-match-v2`
+> rescores live in `results/campaign3b2/RESCORE_SUMMARY.json`, each
+> run's `RESCORE-STRICT.json`, and `CAMPAIGN3B_RESCORE_REPORT.md`.
+> Corrections in brief: frozen hidden 0.417 -> 0.333; L5b replay
+> advantage = one net row (p = 1.0), not two; rank-ladder magnitudes
+> are additionally confounded by alpha/r covariation (RD-13).
+
 Status: **diagnostic executed on the committed corpus. Readiness:
 NOT YET — 6 of 7 gates pass.** The campaign decision is **REFUSED**,
 which is the honest diagnostic outcome: the pipeline is mechanically
@@ -22,7 +32,7 @@ digest `sha256:fe12aec4…`, plan digest `sha256:4830f2a1…`.
 | seeds | 1 |
 | arms | L1, L5, L5b, L6, L7, NC |
 | LoRA | rank 16, alpha 32, dropout 0.05, q/k/v/o projections, 60 steps, response-only loss |
-| output contract | answer-only, 64 tokens, EOS stop (`sha256:6f0f361c…`) |
+| output contract | answer-only, 16 tokens, EOS stop (`sha256:6f0f361c…`) |
 | prompt contract | `sha256:d65f3ecf…` |
 | safety suite | `campaign3b-safety-suite-v1`, `sha256:70bc2a29…` |
 

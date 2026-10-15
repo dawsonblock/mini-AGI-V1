@@ -14,7 +14,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src-python"))
 
-from minagi.v161.evaluators import exact_match  # noqa: E402
+from minagi.v161.evaluators import (exact_match,  # noqa: E402
+                                    exact_match_strict)
 from minagi.v161.prompt_contract import (  # noqa: E402
     ANSWER_ONLY_INSTRUCTION, OutputContract, answer_only_output_contract,
     generation_diagnostics, output_contract_from_config)
@@ -32,7 +33,22 @@ def test_strict_metric_mirrors_the_registered_evaluator():
     for expected, prediction in pairs:
         d = _diag(expected, prediction)
         assert d["strict_exact_match"] == \
-            float(exact_match(prediction, expected))
+            float(exact_match_strict(prediction, expected))
+
+
+def test_strict_oracle_is_case_sensitive():
+    """RD-18: the v1 evaluator silently accepted wrong-case outputs —
+    an uppercase-transform task scored an unmodified lowercase echo as
+    correct. v2 must reject it while v1 keeps its historical semantics
+    for provenance."""
+    assert exact_match_strict("ABC", "abc") == 0.0
+    assert exact_match_strict("Egg", "EGG") == 0.0
+    assert exact_match_strict("ABC", "ABC") == 1.0
+    # v1 keeps its documented legacy casefold behaviour — the versioned
+    # digest binds it, and historical evidence names it
+    assert exact_match("ABC", "abc") == 1.0
+    # whitespace strip still applies on both versions
+    assert exact_match_strict("ABC", "  ABC  ") == 1.0
 
 
 def test_prefix_credit_is_diagnostic_only():

@@ -20,7 +20,8 @@ from minagi.platforms.cuda.hf_runtime import HFLoadSpec, load_tokenizer, load_ca
 from minagi.platforms.cuda.peft_trainer import LoraTrainSpec, train_lora
 from minagi.v161.dataset_manifest import DatasetMember, DatasetMembershipManifest, DatasetPartitionSet
 from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
-from minagi.v161.evaluators import exact_match, retention_score, security_regression
+from minagi.v161.evaluators import (exact_match_strict, retention_score,
+                                    security_regression)
 from minagi.v161.campaign_plan import ColabCampaignPlanV161
 from minagi.v161.executed_run import ExecutedRunReceiptV161
 from minagi.v161.runtime_closure3 import sha256_path
@@ -78,7 +79,7 @@ def main():
     rows=load_rows(dataset); train=[r for r in rows if r["split"]=="train"]; val=[r for r in rows if r["split"]=="validation"]; hidden=[r for r in rows if r["split"]=="hidden"]
     parts=DatasetPartitionSet(DatasetMembershipManifest("train",tuple(member(r) for r in train)),DatasetMembershipManifest("validation",tuple(member(r) for r in val)),DatasetMembershipManifest("hidden",tuple(member(r) for r in hidden)),require_family_disjoint_hidden=bool(cfg.get("require_family_disjoint_hidden",False)))
     registry=EvaluatorRegistry(storage.root/"evidence"/"evaluators")
-    arts=[EvaluatorArtifact.from_callable("exact-match-v1",exact_match),EvaluatorArtifact.from_callable("retention-v1",retention_score),EvaluatorArtifact.from_callable("security-v1",security_regression)]
+    arts=[EvaluatorArtifact.from_callable("exact-match-v2",exact_match_strict),EvaluatorArtifact.from_callable("retention-v1",retention_score),EvaluatorArtifact.from_callable("security-v1",security_regression)]
     for a in arts: registry.register(a)
     score_fn=registry.resolve(arts[0].digest); retention_fn=registry.resolve(arts[1].digest); security_fn=registry.resolve(arts[2].digest)
     model_cfg=cfg["model"]

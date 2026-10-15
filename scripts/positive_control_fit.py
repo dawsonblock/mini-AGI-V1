@@ -98,6 +98,26 @@ def main() -> int:
                     help="Contrast C: hold PRESENTATIONS PER EXAMPLE "
                          "constant by setting steps = exposure x examples. "
                          "Overrides --steps.")
+    # Campaign 3B.3 — P2 rehearsal / P3 frozen-reference KL. Both are
+    # optimization-time interventions, NOT inference-time replay (L7).
+    ap.add_argument("--rehearsal-fraction", type=float, default=0.0,
+                    help="fraction of microbatches that draw verified-"
+                         "correct rehearsal pairs into the gradient "
+                         "stream (P2). 0 disables.")
+    ap.add_argument("--rehearsal-corpus", default=None,
+                    help="jsonl of verified-correct rehearsal pairs "
+                         "{prompt, response}; default = train-split "
+                         "rows the frozen model already answers "
+                         "correctly (verified at run time)")
+    ap.add_argument("--kl-weight", type=float, default=0.0,
+                    help="weight on mean KL(frozen || adapted) over the "
+                         "KL prompt set, every --kl-every microbatches "
+                         "(P3). 0 disables.")
+    ap.add_argument("--kl-every", type=int, default=1)
+    ap.add_argument("--kl-prompts", default="configs/preservation_prompts.txt",
+                    help="plain-text prompts anchoring the frozen-"
+                         "reference KL term (default: the preservation "
+                         "prompt set)")
     ap.add_argument("--run-root", default="results/campaign3b2/runs",
                     help="parent directory for immutable per-run outputs")
     ap.add_argument("--run-id", default=None,
@@ -106,7 +126,7 @@ def main() -> int:
 
     import yaml
     import torch
-    from egai.common.canonical import digest
+    from egai.common.canonical import digest, sha256_bytes
     from minagi.platforms.cuda.hf_runtime import (HFLoadSpec, load_causal_lm,
                                                   load_tokenizer)
     from minagi.platforms.cuda.peft_trainer import LoraTrainSpec, train_lora
@@ -192,7 +212,23 @@ def main() -> int:
         gradient_accumulation_steps=int(
             lora.get("gradient_accumulation_steps", 1)),
         microbatch_size=int(lora.get("microbatch_size", 1)),
-        malformed_policy=str(lora.get("malformed_policy", "fail")))
+        malformed_policy=str(lora.get("malformed_policy", "fail")),
+        rehearsal_fraction=float(args.rehearsal_fraction),
+        kl_weight=float(args.kl_weight),
+        kl_every=int(args.kl_every))
+
+    kl_prompts = None
+    kl_prompts_digest = None
+    if args.kl_weight > 0:
+        kp_path = ROOT / args.kl_prompts
+        if not kp_path.is_file():
+            raise SystemExit(f"KL prompt set missing: {kp_path}")
+        kl_prompts = [ln.strip() for ln in
+                      kp_path.read_text().splitlines() if ln.strip()]
+        if not kl_prompts:
+            raise SystemExit(f"KL prompt set empty: {kp_path}")
+        kl_prompts_digest = digest(
+            [sha256_bytes(p.encode()) for p in kl_prompts])
 
     run_config = {
         "families": families, "steps": args.steps, "rank": args.rank,
@@ -215,8 +251,19 @@ def main() -> int:
         },
         "prompt_contract_digest": contract.digest,
         "output_contract_digest": contract.output_contract_digest,
+        "score_oracle": "exact-match-v2",
         "max_new_tokens": max_new,
         "lora_spec_digest": train_spec.digest,
+        "rehearsal": {"fraction": args.rehearsal_fraction,
+                      "corpus": args.rehearsal_corpus or
+                                "verified-frozen-correct train rows",
+                      "note": "optimization-time gradient interleave "
+                              "(P2) — NOT inference-time replay (L7)"},
+        "kl_preservation": {"weight": args.kl_weight,
+                            "every_microbatches": args.kl_every,
+                            "prompts": args.kl_prompts,
+                            "prompts_digest": kl_prompts_digest,
+                            "reference": "same weights, adapter disabled"},
     }
     config_digest = digest(run_config)
     attempt_id = f"{int(time.time())}-{uuid.uuid4().hex[:8]}"
@@ -280,9 +327,13 @@ def main() -> int:
         } for r in group}
 
     def score(preds, group):
+        """RD-18: strict case-sensitive oracle (exact-match-v2). A
+        transformation task's answer is the transformed string itself,
+        so letter case is part of correctness — the earlier casefold
+        comparison silently accepted wrong-case outputs."""
         by = {r["id"]: r for r in group}
-        return {rid: int(v["output"].strip().casefold()
-                         == by[rid]["expected"].strip().casefold())
+        return {rid: int(v["output"].strip()
+                         == by[rid]["expected"].strip())
                 for rid, v in preds.items()}
 
     print(f"contrast : {allocation} | {len(families)} families | "
@@ -307,6 +358,38 @@ def main() -> int:
         examples = [{"prompt": str(r["prompt"]),
                      "response": str(r["expected"])} for r in train_rows]
 
+    # P2 rehearsal pool — VERIFIED-correct pairs only: rows the frozen
+    # model already answers correctly under the strict oracle, so the
+    # gradient mass lands on behavior that demonstrably exists. Default
+    # pool = the unique trained rows (frozen_subset was already scored
+    # above at zero extra generation cost); an explicit
+    # --rehearsal-corpus overrides it. Rehearsal always carries the TRUE
+    # expected answer even under --shuffle-labels.
+    rehearsal_examples = None
+    if args.rehearsal_fraction > 0:
+        if args.rehearsal_corpus:
+            pool_rows = [json.loads(ln) for ln in
+                         (ROOT / args.rehearsal_corpus)
+                         .read_text().splitlines() if ln.strip()]
+            rehearsal_examples = [{"prompt": str(r["prompt"]),
+                                   "response": str(r["expected"])}
+                                  for r in pool_rows]
+        else:
+            verified_ids = {r["id"] for r in subset
+                            if frozen_subset.get(r["id"], {})
+                            .get("output", "").strip()
+                            == str(r["expected"]).strip()}
+            rehearsal_examples = [{"prompt": str(r["prompt"]),
+                                   "response": str(r["expected"])}
+                                  for r in train_rows
+                                  if r["id"] in verified_ids]
+        if not rehearsal_examples:
+            return fail("rehearsal requested but the verified pool is "
+                        "empty — cannot rehearse behavior the frozen "
+                        "model does not have")
+        print(f"rehearsal: {len(rehearsal_examples)} verified pairs, "
+              f"fraction {args.rehearsal_fraction} of microbatches")
+
     model = load_causal_lm(spec, purpose="research")
     adapter_dir = staging / "adapter"
     t0 = time.time()
@@ -314,7 +397,9 @@ def main() -> int:
         model, receipt = train_lora(
             model=model, tokenizer=tokenizer, examples=examples,
             output_dir=adapter_dir, spec=train_spec,
-            prompt_contract=contract)
+            prompt_contract=contract,
+            rehearsal_examples=rehearsal_examples,
+            kl_prompts=kl_prompts)
     except Exception as exc:                       # noqa: BLE001
         return fail(f"training raised {type(exc).__name__}: {exc}")
     train_secs = time.time() - t0

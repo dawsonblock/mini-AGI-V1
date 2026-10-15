@@ -364,7 +364,14 @@ def generation_diagnostics(expected: str, prediction: str, *,
     else:
         stop_reason = "unknown"
     return {
-        "strict_exact_match": float(pred == exp),
+        # RD-18: strict is strict — byte equality after whitespace strip.
+        # The earlier version casefolded through _normalize, so the
+        # diagnostic named "strict" silently accepted wrong-case outputs.
+        "strict_exact_match": float(str(prediction).strip()
+                                    == str(expected).strip()),
+        # The two near-miss fields below are deliberately lenient
+        # diagnostics (they detect right answers in wrong formats);
+        # they keep casefold normalization and never feed correctness.
         "correct_first_line": float(bool(lines) and _normalize(lines[0]) == exp),
         "correct_answer_prefix": float(bool(exp) and pred.startswith(exp)
                                        and pred != exp),

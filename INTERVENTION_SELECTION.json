@@ -1,157 +1,193 @@
 {
   "completeness_warning": "",
-  "flatness_test": "spread across levels must EXCEED the measured seed-to-seed sd",
+  "decision_states": {
+    "CONFOUNDED": "measurement cannot isolate the lever",
+    "ELIGIBLE": "measured, not contradicted",
+    "ELIGIBLE-UNMEASURED": "lever never measured",
+    "FAILED-IMPLEMENTATION": "mechanism untested by a failed trial",
+    "HIGH-RISK": "benefit measured but unacceptable regression risk",
+    "INCONCLUSIVE": "spread within seed noise",
+    "INSUFFICIENT-EVIDENCE": "too few observations",
+    "RECOMMENDED": "targets the dominant measured positive lever",
+    "REFUTED": "measured direction contradicts the claim beyond noise"
+  },
+  "decisions": [
+    {
+      "candidate": "E2_replay_during_training",
+      "claim": "interleave verified rehearsal examples into the GRADIENT stream \u2014 rehearsal pairs carry supervised loss with a budgeted presentation fraction. This is NOT L7's mechanism: L7 injected replay as inference-time context and scored 0.083 while destroying 4/4 frozen-correct rows; E2 changes what the optimizer minimizes, not what the prompt contains",
+      "lever": "preservation",
+      "measured_effect": 0.599047619047619,
+      "priority": "normal",
+      "reason": "targets the largest measured effect: 0.599 mean destruction of frozen-correct answers (mean fraction of frozen-correct hidden answers destroyed, strict oracle, per-run pairwise). Remedy founded on a measured harm, not a hope",
+      "state": "RECOMMENDED"
+    },
+    {
+      "candidate": "E1_balanced_sampling",
+      "claim": "balance sampling across families reduces the spread between good and bad family sets",
+      "lever": "composition",
+      "measured_effect": 0.2916666666666667,
+      "priority": "normal",
+      "reason": "targets the composition lever (measured 0.292; spread across family-set means under strict scoring (train blocks byte-identical))",
+      "state": "ELIGIBLE"
+    },
+    {
+      "candidate": "E3_frozen_reference_regularization",
+      "claim": "KL penalty against the frozen model on a preservation prompt set \u2014 directly opposes capability drift",
+      "lever": "preservation",
+      "measured_effect": 0.599047619047619,
+      "priority": "normal",
+      "reason": "targets the largest measured effect: 0.599 mean destruction of frozen-correct answers (mean fraction of frozen-correct hidden answers destroyed, strict oracle, per-run pairwise). Remedy founded on a measured harm, not a hope",
+      "state": "ELIGIBLE"
+    },
+    {
+      "candidate": "E4_lower_learning_rate",
+      "claim": "lower LR or adjusted schedule reduces destruction",
+      "lever": "optimisation",
+      "measured_effect": 0.1414285714285714,
+      "priority": "normal",
+      "reason": "targets the optimisation lever (measured 0.141; spread across steps levels at fixed breadth, strict scoring)",
+      "state": "ELIGIBLE"
+    },
+    {
+      "candidate": "E6_task_conditioned_adapters",
+      "claim": "specialise adapters per transformation family",
+      "lever": "composition",
+      "measured_effect": 0.2916666666666667,
+      "priority": "normal",
+      "reason": "targets the composition lever (measured 0.292; spread across family-set means under strict scoring (train blocks byte-identical))",
+      "state": "ELIGIBLE"
+    },
+    {
+      "candidate": "E5_rank_or_target_modules",
+      "claim": "more capacity helps: higher rank should score at least as well as lower rank",
+      "lever": "capacity",
+      "measured_effect": 0.11289682539682538,
+      "preserves": [
+        "rank allocation at fixed scaling",
+        "alpha/r scaling sweep",
+        "dynamic LoRA"
+      ],
+      "priority": "low",
+      "reason": "the capacity measurement cannot isolate the lever: the rank ladder held alpha fixed at 32 while varying rank 4-32, so the effective LoRA scaling alpha/r covaried INVERSELY with rank (8.0, 4.0, 2.0, 1.0): rank 4 carried the largest update magnitude. The sweep measured capacity x update-scale jointly and cannot isolate either. The narrow claim (monotone non-decreasing in rank at fixed breadth) is unsupported, but this does NOT exclude the mechanism family",
+      "state": "CONFOUNDED"
+    }
+  ],
+  "flatness_test": "a lever's spread must EXCEED the measured within-level seed sd before it is treated as an effect \u2014 noise-level spread is INCONCLUSIVE, never a refutation",
   "lever_effects": {
     "capacity": {
-      "basis": "spread across rank 4/8/16/32 MEANS at fixed breadth, examples and steps; seed noise is averaged within rank before the spread is taken",
+      "basis": "spread across rank MEANS at fixed breadth under strict scoring; seed noise averaged within rank",
+      "confound": "the rank ladder held alpha fixed at 32 while varying rank 4-32, so the effective LoRA scaling alpha/r covaried INVERSELY with rank (8.0, 4.0, 2.0, 1.0): rank 4 carried the largest update magnitude. The sweep measured capacity x update-scale jointly and cannot isolate either",
       "measurement": "rank",
-      "source": "rank-ladder.json",
-      "value": 0.052777777777777785
-    },
-    "composition": {
-      "basis": "spread across family pairs at fixed breadth, examples, steps and seeds",
-      "measurement": "composition",
-      "source": "family-composition.json",
-      "value": 0.3888888888888889
-    },
-    "optimisation": {
-      "basis": "spread across steps levels at fixed breadth; levels with one run are reported with their n",
-      "measurement": "steps",
-      "source": "contrast-summary.json",
-      "value": 0.125
-    },
-    "preservation": {
-      "basis": "mean fraction of frozen-correct answers the LoRA arms destroy",
-      "measurement": "capability_destruction",
-      "source": "CAPABILITY_BASELINE.json",
-      "value": 0.7
-    }
-  },
-  "measured_effects": {
-    "capability_destruction": {
-      "basis": "mean fraction of frozen-correct answers the LoRA arms destroy",
-      "source": "CAPABILITY_BASELINE.json",
-      "value": 0.7
-    },
-    "composition": {
-      "basis": "spread across family pairs at fixed breadth, examples, steps and seeds",
-      "n_pairs": 4,
-      "single_family_spread": 0.5416666666666666,
-      "source": "family-composition.json",
-      "value": 0.3888888888888889,
-      "within_pair_range_mean": 0.08333333333333333
-    },
-    "exposure": {
-      "basis": "spread across exposure levels at fixed breadth; levels with one run are reported with their n",
       "per_breadth": {
-        "4": {
-          "levels": {
-            "10.0": {
-              "mean": 0.25,
-              "n_runs": 1
-            },
-            "15.0": {
-              "mean": 0.25,
-              "n_runs": 1
-            },
-            "30.0": {
-              "mean": 0.25,
-              "n_runs": 1
-            }
-          },
-          "spread": 0.0
-        },
-        "6": {
-          "levels": {
-            "10.0": {
-              "mean": 0.25,
-              "n_runs": 1
-            },
-            "30.0": {
-              "mean": 0.25,
-              "n_runs": 1
-            }
-          },
-          "spread": 0.0
-        }
-      },
-      "source": "contrast-summary.json",
-      "value": 0.0,
-      "within_level_sd": null
-    },
-    "rank": {
-      "basis": "spread across rank 4/8/16/32 MEANS at fixed breadth, examples and steps; seed noise is averaged within rank before the spread is taken",
-      "per_breadth": {
-        "2 families": {
-          "rank_means": {
-            "4": 0.36944444444444446,
-            "8": 0.3972222222222222,
-            "16": 0.4083333333333334,
-            "32": 0.375
-          },
-          "seeds_per_rank": {
-            "4": 3,
-            "8": 3,
-            "16": 3,
-            "32": 3
-          },
-          "spread_across_rank_means": 0.03888888888888892,
-          "within_level_sd": 0.03507710931971674
-        },
         "2 families (bad pair)": {
+          "oracle": "exact-match-v2",
           "rank_means": {
-            "4": 0.1375,
-            "32": 0.15833333333333333
+            "4": 0.09583333333333333,
+            "16": 0.1111111111111111,
+            "32": 0.0875
           },
           "seeds_per_rank": {
             "4": 2,
+            "16": 3,
             "32": 2
           },
-          "spread_across_rank_means": 0.020833333333333315,
-          "within_level_sd": 0.05008673033404711
+          "spread_across_rank_means": 0.02361111111111111,
+          "within_level_sd": 0.05957361200112272
         },
-        "6 families": {
+        "2 families (good pair)": {
+          "oracle": "exact-match-v2",
           "rank_means": {
-            "4": 0.29444444444444445,
-            "8": 0.25,
-            "16": 0.24166666666666667,
-            "32": 0.2611111111111111
+            "4": 0.15555555555555556,
+            "8": 0.18611111111111112,
+            "16": 0.26845238095238094,
+            "32": 0.16111111111111112
           },
           "seeds_per_rank": {
             "4": 3,
             "8": 3,
-            "16": 3,
+            "16": 14,
             "32": 3
           },
-          "spread_across_rank_means": 0.052777777777777785,
-          "within_level_sd": 0.05634882191895582
+          "spread_across_rank_means": 0.11289682539682538,
+          "within_level_sd": 0.0637523209818335
+        },
+        "6 families": {
+          "oracle": "exact-match-v2",
+          "rank_means": {
+            "4": 0.09722222222222222,
+            "8": 0.10833333333333334,
+            "16": 0.08333333333333333,
+            "32": 0.09999999999999999
+          },
+          "seeds_per_rank": {
+            "4": 3,
+            "8": 3,
+            "16": 7,
+            "32": 3
+          },
+          "spread_across_rank_means": 0.02500000000000001,
+          "within_level_sd": 0.027860426542954203
         }
       },
-      "source": "rank-ladder.json",
-      "value": 0.052777777777777785,
-      "within_level_sd": 0.04717088719090656
+      "source": "results/campaign3b2/runs/*/RESCORE-STRICT.json",
+      "value": 0.11289682539682538,
+      "within_level_sd": 0.05039545317530347
     },
-    "steps": {
-      "basis": "spread across steps levels at fixed breadth; levels with one run are reported with their n",
+    "composition": {
+      "basis": "spread across family-set means under strict scoring (train blocks byte-identical)",
+      "measurement": "composition",
+      "n_sets": 14,
+      "set_means": {
+        "2 families (bad pair)": 0.09999999999999999,
+        "2 families (good pair)": 0.2289855072463768,
+        "2 families: pc-delim,pc-swap": 0.27777777777777773,
+        "2 families: pc-rot1,pc-upper": 0.08333333333333333,
+        "4 families: pc-delim,pc-rev,pc-swap,pc-upper": 0.3333333333333333,
+        "4 families: pc-rev,pc-rot1,pc-sort,pc-upper": 0.2,
+        "5 families: pc-delim,pc-rev,pc-sort,pc-swap,pc-upper": 0.25,
+        "6 families": 0.09375,
+        "single pc-delim": 0.125,
+        "single pc-rev": 0.25,
+        "single pc-rot1": 0.041666666666666664,
+        "single pc-sort": 0.16666666666666666,
+        "single pc-swap": 0.20833333333333331,
+        "single pc-upper": 0.33333333333333337
+      },
+      "source": "results/campaign3b2/runs/*/RESCORE-STRICT.json",
+      "value": 0.2916666666666667,
+      "within_level_sd": 0.08456700842078795
+    },
+    "memory_replay": {
+      "basis": "L5b verified replay vs frozen under strict scoring \u2014 direction positive but ONE net row in 12: statistically null (exact sign test)",
+      "destroyed": 0,
+      "gained": 1,
+      "measurement": "memory_replay_inference",
+      "sign_test_p": 1.0,
+      "source": "results/campaign3b2/RESCORE_SUMMARY.json",
+      "value": 0.08333333333333333
+    },
+    "optimisation": {
+      "basis": "spread across steps levels at fixed breadth, strict scoring",
+      "measurement": "steps",
       "per_breadth": {
         "2": {
           "levels": {
             "300": {
-              "mean": 0.45833333333333337,
-              "n_runs": 2
+              "mean": 0.1919047619047619,
+              "n_runs": 35
             },
             "600": {
-              "mean": 0.5833333333333334,
+              "mean": 0.3333333333333333,
               "n_runs": 1
             }
           },
-          "spread": 0.125
+          "spread": 0.1414285714285714
         },
         "4": {
           "levels": {
             "300": {
               "mean": 0.25,
-              "n_runs": 2
+              "n_runs": 7
             },
             "600": {
               "mean": 0.25,
@@ -163,82 +199,236 @@
         "6": {
           "levels": {
             "300": {
-              "mean": 0.25,
-              "n_runs": 2
+              "mean": 0.09523809523809523,
+              "n_runs": 14
             },
             "600": {
-              "mean": 0.25,
+              "mean": 0.08333333333333333,
               "n_runs": 1
             },
             "900": {
+              "mean": 0.08333333333333333,
+              "n_runs": 1
+            }
+          },
+          "spread": 0.011904761904761904
+        }
+      },
+      "source": "results/campaign3b2/runs/*/RESCORE-STRICT.json",
+      "value": 0.1414285714285714,
+      "within_level_sd": null
+    },
+    "preservation": {
+      "basis": "mean fraction of frozen-correct hidden answers destroyed, strict oracle, per-run pairwise",
+      "measurement": "preservation",
+      "n_runs": 75,
+      "net_gain_mean": -5.64,
+      "source": "results/campaign3b2/runs/*/RESCORE-STRICT.json",
+      "value": 0.599047619047619,
+      "within_level_sd": 0.2090391610206757
+    }
+  },
+  "measured_effects": {
+    "composition": {
+      "basis": "spread across family-set means under strict scoring (train blocks byte-identical)",
+      "n_sets": 14,
+      "set_means": {
+        "2 families (bad pair)": 0.09999999999999999,
+        "2 families (good pair)": 0.2289855072463768,
+        "2 families: pc-delim,pc-swap": 0.27777777777777773,
+        "2 families: pc-rot1,pc-upper": 0.08333333333333333,
+        "4 families: pc-delim,pc-rev,pc-swap,pc-upper": 0.3333333333333333,
+        "4 families: pc-rev,pc-rot1,pc-sort,pc-upper": 0.2,
+        "5 families: pc-delim,pc-rev,pc-sort,pc-swap,pc-upper": 0.25,
+        "6 families": 0.09375,
+        "single pc-delim": 0.125,
+        "single pc-rev": 0.25,
+        "single pc-rot1": 0.041666666666666664,
+        "single pc-sort": 0.16666666666666666,
+        "single pc-swap": 0.20833333333333331,
+        "single pc-upper": 0.33333333333333337
+      },
+      "source": "results/campaign3b2/runs/*/RESCORE-STRICT.json",
+      "value": 0.2916666666666667,
+      "within_level_sd": 0.08456700842078795
+    },
+    "memory_replay_inference": {
+      "basis": "L5b verified replay vs frozen under strict scoring \u2014 direction positive but ONE net row in 12: statistically null (exact sign test)",
+      "destroyed": 0,
+      "gained": 1,
+      "sign_test_p": 1.0,
+      "source": "results/campaign3b2/RESCORE_SUMMARY.json",
+      "value": 0.08333333333333333
+    },
+    "preservation": {
+      "basis": "mean fraction of frozen-correct hidden answers destroyed, strict oracle, per-run pairwise",
+      "n_runs": 75,
+      "net_gain_mean": -5.64,
+      "source": "results/campaign3b2/runs/*/RESCORE-STRICT.json",
+      "value": 0.599047619047619,
+      "within_level_sd": 0.2090391610206757
+    },
+    "rank": {
+      "basis": "spread across rank MEANS at fixed breadth under strict scoring; seed noise averaged within rank",
+      "confound": "the rank ladder held alpha fixed at 32 while varying rank 4-32, so the effective LoRA scaling alpha/r covaried INVERSELY with rank (8.0, 4.0, 2.0, 1.0): rank 4 carried the largest update magnitude. The sweep measured capacity x update-scale jointly and cannot isolate either",
+      "per_breadth": {
+        "2 families (bad pair)": {
+          "oracle": "exact-match-v2",
+          "rank_means": {
+            "4": 0.09583333333333333,
+            "16": 0.1111111111111111,
+            "32": 0.0875
+          },
+          "seeds_per_rank": {
+            "4": 2,
+            "16": 3,
+            "32": 2
+          },
+          "spread_across_rank_means": 0.02361111111111111,
+          "within_level_sd": 0.05957361200112272
+        },
+        "2 families (good pair)": {
+          "oracle": "exact-match-v2",
+          "rank_means": {
+            "4": 0.15555555555555556,
+            "8": 0.18611111111111112,
+            "16": 0.26845238095238094,
+            "32": 0.16111111111111112
+          },
+          "seeds_per_rank": {
+            "4": 3,
+            "8": 3,
+            "16": 14,
+            "32": 3
+          },
+          "spread_across_rank_means": 0.11289682539682538,
+          "within_level_sd": 0.0637523209818335
+        },
+        "6 families": {
+          "oracle": "exact-match-v2",
+          "rank_means": {
+            "4": 0.09722222222222222,
+            "8": 0.10833333333333334,
+            "16": 0.08333333333333333,
+            "32": 0.09999999999999999
+          },
+          "seeds_per_rank": {
+            "4": 3,
+            "8": 3,
+            "16": 7,
+            "32": 3
+          },
+          "spread_across_rank_means": 0.02500000000000001,
+          "within_level_sd": 0.027860426542954203
+        }
+      },
+      "source": "results/campaign3b2/runs/*/RESCORE-STRICT.json",
+      "value": 0.11289682539682538,
+      "within_level_sd": 0.05039545317530347
+    },
+    "steps": {
+      "basis": "spread across steps levels at fixed breadth, strict scoring",
+      "per_breadth": {
+        "2": {
+          "levels": {
+            "300": {
+              "mean": 0.1919047619047619,
+              "n_runs": 35
+            },
+            "600": {
+              "mean": 0.3333333333333333,
+              "n_runs": 1
+            }
+          },
+          "spread": 0.1414285714285714
+        },
+        "4": {
+          "levels": {
+            "300": {
+              "mean": 0.25,
+              "n_runs": 7
+            },
+            "600": {
               "mean": 0.25,
               "n_runs": 1
             }
           },
           "spread": 0.0
+        },
+        "6": {
+          "levels": {
+            "300": {
+              "mean": 0.09523809523809523,
+              "n_runs": 14
+            },
+            "600": {
+              "mean": 0.08333333333333333,
+              "n_runs": 1
+            },
+            "900": {
+              "mean": 0.08333333333333333,
+              "n_runs": 1
+            }
+          },
+          "spread": 0.011904761904761904
         }
       },
-      "source": "contrast-summary.json",
-      "value": 0.125,
-      "within_level_sd": 0.058925565098878974
+      "source": "results/campaign3b2/runs/*/RESCORE-STRICT.json",
+      "value": 0.1414285714285714,
+      "within_level_sd": null
     }
   },
+  "n_runs_rescored": 80,
+  "oracle": "exact-match-v2 (strict case-sensitive)",
   "recommendation": "E2_replay_during_training",
-  "refused": [
-    {
-      "assumed_direction": "more capacity helps: higher rank should score at least as well as lower rank",
-      "candidate": "E5_rank_or_target_modules",
-      "description": "alternative rank or target modules",
-      "lever": "capacity",
-      "measured_effect": 0.052777777777777785,
-      "reason": "the capacity hypothesis assumes higher rank helps, but the sweep measured rank 4 as the best of [4, 8, 16, 32] at 6 families (means [0.294, 0.25, 0.242, 0.261]) \u2014 the ordering is not monotone in rank, so more capacity is not supported",
-      "status": "REFUSED-DIRECTION"
-    }
-  ],
-  "schema": "mini-agi-campaign3b3-intervention-selection-v1",
+  "refused": [],
+  "schema": "mini-agi-campaign3b3-intervention-selection-v2",
   "selected": [
     {
       "candidate": "E2_replay_during_training",
-      "description": "replay previously-correct examples while training",
       "lever": "preservation",
-      "measured_effect": 0.7,
-      "reason": "targets the preservation lever, whose measured spread is 0.700 (mean fraction of frozen-correct answers the LoRA arms destroy; CAPABILITY_BASELINE.json)",
-      "status": "ELIGIBLE"
-    },
-    {
-      "candidate": "E3_frozen_reference_regularization",
-      "description": "KL penalty against the frozen model on a preservation set",
-      "lever": "preservation",
-      "measured_effect": 0.7,
-      "reason": "targets the preservation lever, whose measured spread is 0.700 (mean fraction of frozen-correct answers the LoRA arms destroy; CAPABILITY_BASELINE.json)",
-      "status": "ELIGIBLE"
+      "measured_effect": 0.599047619047619,
+      "reason": "targets the largest measured effect: 0.599 mean destruction of frozen-correct answers (mean fraction of frozen-correct hidden answers destroyed, strict oracle, per-run pairwise). Remedy founded on a measured harm, not a hope",
+      "state": "RECOMMENDED"
     },
     {
       "candidate": "E1_balanced_sampling",
-      "description": "balance sampling across families",
       "lever": "composition",
-      "measured_effect": 0.3888888888888889,
-      "reason": "targets the composition lever, whose measured spread is 0.389 (spread across family pairs at fixed breadth, examples, steps and seeds; family-composition.json)",
-      "status": "ELIGIBLE"
+      "measured_effect": 0.2916666666666667,
+      "reason": "targets the composition lever (measured 0.292; spread across family-set means under strict scoring (train blocks byte-identical))",
+      "state": "ELIGIBLE"
     },
     {
-      "candidate": "E6_task_conditioned_adapters",
-      "description": "specialise adapters per transformation",
-      "lever": "composition",
-      "measured_effect": 0.3888888888888889,
-      "reason": "targets the composition lever, whose measured spread is 0.389 (spread across family pairs at fixed breadth, examples, steps and seeds; family-composition.json)",
-      "status": "ELIGIBLE"
+      "candidate": "E3_frozen_reference_regularization",
+      "lever": "preservation",
+      "measured_effect": 0.599047619047619,
+      "reason": "targets the largest measured effect: 0.599 mean destruction of frozen-correct answers (mean fraction of frozen-correct hidden answers destroyed, strict oracle, per-run pairwise). Remedy founded on a measured harm, not a hope",
+      "state": "ELIGIBLE"
     },
     {
       "candidate": "E4_lower_learning_rate",
-      "description": "lower LR or adjusted schedule",
       "lever": "optimisation",
-      "measured_effect": 0.125,
-      "reason": "targets the optimisation lever, whose measured spread is 0.125 (spread across steps levels at fixed breadth; levels with one run are reported with their n; contrast-summary.json)",
-      "status": "ELIGIBLE"
+      "measured_effect": 0.1414285714285714,
+      "reason": "targets the optimisation lever (measured 0.141; spread across steps levels at fixed breadth, strict scoring)",
+      "state": "ELIGIBLE"
+    },
+    {
+      "candidate": "E6_task_conditioned_adapters",
+      "lever": "composition",
+      "measured_effect": 0.2916666666666667,
+      "reason": "targets the composition lever (measured 0.292; spread across family-set means under strict scoring (train blocks byte-identical))",
+      "state": "ELIGIBLE"
     }
   ],
   "selection_complete": true,
-  "statement": "Selection is driven by measured effect sizes, not by the candidate list. A lever the evidence has measured as flat has its candidates refused with the measurement quoted, so the selector cannot recommend a remedy that has already been tested and found inert.",
+  "statement": "Selection is driven by measured effect sizes under the strict oracle. Uncertainty is a decision state, not a refusal: INCONCLUSIVE, CONFOUNDED and INSUFFICIENT-EVIDENCE all keep a direction open at low priority, and only a measured effect that contradicts the claim beyond noise counts as REFUTED.",
+  "trial_history": {
+    "E5_rank_or_target_modules": {
+      "fit_gate": 0.95,
+      "n_fit": 74,
+      "n_trials": 75,
+      "note": "rank trials reached fit >= 0.95, so the mechanism was exercised \u2014 the trial tested capacity (see confound on the capacity measurement)"
+    }
+  },
   "unmeasured_levers": []
 }

@@ -58,21 +58,25 @@ def test_selection_is_computed_from_evidence_not_from_the_candidate_list(
         assert blk.get("basis"), f"{name} has no stated basis"
 
 
-def test_the_capacity_candidate_is_refused_on_direction(tmp_path):
-    """E5 assumes more capacity helps. The sweep measured rank 4 as the
-    best of 4/8/16/32, so the candidate is refused — a fixed script built
-    from the plan's list would have picked it."""
+def test_the_capacity_candidate_is_confounded_not_refused(tmp_path):
+    """Reviewer correction (3B.3): the rank sweep held alpha fixed at 32
+    while rank varied 4-32, so alpha/r covaried inversely with rank —
+    the measurement is CONFOUNDED. A confounded sweep can never produce
+    a refusal; E5 must be CONFOUNDED / low priority, preserving rank
+    allocation, scaling sweeps and dynamic LoRA as open mechanisms."""
     doc = _select(tmp_path)
     _require_packaged_evidence(doc)
     refused = {r["candidate"]: r for r in doc["refused"]}
-    assert "E5_rank_or_target_modules" in refused, (
-        "the capacity candidate is no longer refused; the selector would "
-        "recommend a remedy the evidence contradicts")
-    r = refused["E5_rank_or_target_modules"]
-    assert r["status"] == "REFUSED-DIRECTION"
-    assert "not monotone" in r["reason"]
+    assert "E5_rank_or_target_modules" not in refused, (
+        "a confounded measurement was converted into a refusal — the "
+        "selector turned an unanswerable experiment into a closed "
+        "research direction")
+    by_name = {d["candidate"]: d for d in doc["decisions"]}
+    assert by_name["E5_rank_or_target_modules"]["state"] == "CONFOUNDED"
+    assert by_name["E5_rank_or_target_modules"]["priority"] == "low"
     assert "E5_rank_or_target_modules" not in {
-        s["candidate"] for s in doc["selected"]}
+        s["candidate"] for s in doc["selected"]
+        if s["state"] == "RECOMMENDED"}
 
 
 def test_rank_spread_is_measured_across_rank_means(tmp_path):
@@ -101,9 +105,9 @@ def test_flatness_is_tested_against_noise_not_a_constant(tmp_path):
         "the flatness criterion is no longer the variance test")
     assert "flat_threshold" not in doc, (
         "a fixed threshold is back as the criterion")
-    for r in doc["refused"]:
-        if r["status"] == "REFUSED":
-            assert "seed sd" in r["reason"] or "threshold" in r["reason"]
+    for r in doc["decisions"]:
+        if r["state"] == "REFUTED":
+            assert "noise" in r["reason"] or "sd" in r["reason"]
 
 
 def test_preservation_and_composition_rank_above_the_refused_lever(

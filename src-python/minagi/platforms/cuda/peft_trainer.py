@@ -1,4 +1,6 @@
 """v16.3.0 corrected LoRA trainer (REPAIR-019..024 + Phase-2.1).
+v16.4.11 (Campaign 3B.3) adds verified rehearsal interleaving and
+frozen-reference KL preservation.
 
 Two input modes:
 
@@ -10,6 +12,24 @@ Two input modes:
              response (+EOS) carries supervised loss. Malformed
              examples — empty response, or response fully truncated
              by max_length — are rejected, never silently dropped.
+
+Rehearsal (P2): when ``rehearsal_fraction > 0``, a deterministic share
+of microbatches draws from ``rehearsal_examples`` instead of the task
+stream — every Nth microbatch where N = round(1/fraction). Rehearsal
+pairs carry the SAME response-only supervised loss as task pairs; the
+corpus is the caller's verified-correct set, so gradient mass lands on
+behavior the frozen model already had. The mechanism is different from
+inference-time replay (campaign arm L7): L7 put replayed examples in
+the PROMPT at generation; rehearsal puts them in the GRADIENT, which is
+what counteracts destructive weight updates. Sampled presentations are
+recorded per-source so the receipt binds exactly what was rehearsed.
+
+Frozen-reference KL (P3): when ``kl_weight > 0``, every ``kl_every``-th
+microbatch additionally computes the mean next-token KL divergence
+between the adapter's distribution and the FROZEN BASE distribution
+(adapter disabled — the same weights the frozen eval arm measured) on
+``kl_prompts``, and adds ``kl_weight * KL`` to the update. The
+reference model's parameter digest is bound into the receipt.
 
 v16.3.0 (Phase 2.1) — explicit training schedule. Every microbatch
 carries exactly `microbatch_size` examples, every optimizer update
@@ -34,6 +54,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Mapping, Sequence
+import hashlib
 import importlib.metadata
 import json
 import random
@@ -42,6 +63,7 @@ from egai.common.canonical import digest, sha256_bytes
 from minagi.v161.prompt_contract import (DEFAULT_OUTPUT_CONTRACT,
                                          PromptContract,
                                          build_prompt_contract,
+                                         encode_generation,
                                          encode_supervised)
 
 LABEL_IGNORE = -100
@@ -62,7 +84,16 @@ class LoraTrainSpec:
     microbatch_size: int = 1
     response_only_loss: bool = False
     malformed_policy: str = "reject"   # reject | fail (strict campaigns)
-    schema: str = "mini-agi-v16.3-lora-train-spec-v2"
+    # Campaign 3B.3 — rehearsal interleave. rehearsal_fraction of
+    # microbatches draw from rehearsal_examples (verified-correct
+    # pairs). A deterministic schedule: microbatch index where
+    # micro % period == period - 1, period = round(1/fraction).
+    rehearsal_fraction: float = 0.0
+    # Frozen-reference KL preservation: every kl_every-th microbatch
+    # adds kl_weight * mean KL(frozen || adapted) over kl_prompts.
+    kl_weight: float = 0.0
+    kl_every: int = 1
+    schema: str = "mini-agi-v16.3-lora-train-spec-v3"
 
     def __post_init__(self):
         if self.gradient_accumulation_steps < 1:
@@ -74,11 +105,24 @@ class LoraTrainSpec:
             raise ValueError(f"unsupported optimizer: {self.optimizer}")
         if self.malformed_policy not in ("reject", "fail"):
             raise ValueError("malformed_policy must be reject|fail")
+        if not (0.0 <= self.rehearsal_fraction <= 1.0):
+            raise ValueError("rehearsal_fraction must be in [0, 1]")
+        if self.kl_weight < 0.0:
+            raise ValueError("kl_weight must be >= 0")
+        if self.kl_every < 1:
+            raise ValueError("kl_every must be >= 1")
 
     @property
     def effective_batch_size(self) -> int:
         """Examples per optimizer update."""
         return self.microbatch_size * self.gradient_accumulation_steps
+
+    @property
+    def rehearsal_period(self) -> int | None:
+        """Every Nth microbatch is a rehearsal microbatch."""
+        if self.rehearsal_fraction <= 0.0:
+            return None
+        return max(1, round(1.0 / self.rehearsal_fraction))
 
     @property
     def digest(self): return digest(self)
@@ -185,6 +229,67 @@ def _peak_memory_bytes() -> int | None:
     return None
 
 
+def _reference_weights_digest(model) -> str:
+    """Digest of the frozen (non-trainable) parameter bytes — the
+    identity of the reference model the KL term anchors to. Bound into
+    the receipt so 'the frozen reference' is a measured artifact, not
+    a name."""
+    import torch
+    h = hashlib.sha256()
+    for name, p in sorted(model.named_parameters()):
+        if p.requires_grad:
+            continue
+        h.update(name.encode())
+        t = p.detach().cpu()
+        if not t.is_contiguous():
+            t = t.contiguous()
+        try:
+            h.update(t.view(torch.uint8).numpy().tobytes())
+        except (RuntimeError, TypeError):
+            h.update(t.float().numpy().tobytes())
+    return h.hexdigest()
+
+
+def _frozen_kl(model, kl_encoded, kl_weight, gacc, pad_id):
+    """Mean next-token KL(frozen || adapted) over the KL prompt set.
+
+    The reference is the SAME model with the adapter disabled — the
+    frozen weights themselves, not a copy — so 'preservation' is
+    measured against the exact distribution the frozen arm evaluated.
+    KL is over every predicted position of each rendered prompt; the
+    prompt set is batched into one forward per side, so the KL term
+    costs two forwards per scheduled microbatch rather than 2 x N.
+    """
+    import torch
+    import torch.nn.functional as F
+    seqs = [e["input_ids"] for e in kl_encoded if len(e["input_ids"]) >= 2]
+    if not seqs:
+        return None
+    width = max(len(s) for s in seqs)
+    ids = torch.tensor([s + [pad_id] * (width - len(s)) for s in seqs],
+                       device=next(model.parameters()).device)
+    attn = torch.tensor([[1] * len(s) + [0] * (width - len(s))
+                         for s in seqs], device=ids.device)
+    # position weights: token t is predicted only where t and t+1 are real
+    pos_ok = (attn[:, 1:] * attn[:, :-1]).float()
+    with torch.no_grad():
+        if hasattr(model, "disable_adapter"):
+            with model.disable_adapter():
+                ref_logits = model(input_ids=ids,
+                                   attention_mask=attn).logits
+        else:                                    # pragma: no cover
+            raise RuntimeError(
+                "model exposes no disable_adapter() — cannot "
+                "produce a frozen reference")
+        ref_logp = F.log_softmax(ref_logits[:, :-1].float(), dim=-1)
+    cur_logits = model(input_ids=ids, attention_mask=attn).logits
+    cur_logp = F.log_softmax(cur_logits[:, :-1].float(), dim=-1)
+    # KL(ref || cur) per position, weighted to real (non-pad) positions
+    kl_pos = (ref_logp.exp() * (ref_logp - cur_logp)).sum(dim=-1)
+    kl = (kl_pos * pos_ok).sum() / pos_ok.sum().clamp(min=1.0)
+    return kl * kl_weight / gacc
+
+
 def adapter_artifact_digest(adapter_dir) -> str:
     """Digest of the produced adapter weight+config bytes only.
 
@@ -209,7 +314,9 @@ def adapter_artifact_digest(adapter_dir) -> str:
 def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                examples: Sequence[Mapping] | None = None,
                output_dir: str | Path, spec: LoraTrainSpec,
-               prompt_contract: PromptContract | None = None):
+               prompt_contract: PromptContract | None = None,
+               rehearsal_examples: Sequence[Mapping] | None = None,
+               kl_prompts: Sequence[str] | None = None):
     """Train a LoRA adapter and persist it.
 
     `examples` (v165+, structured {prompt,response} masking) takes
@@ -217,11 +324,24 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
     `prompt_contract` (default: the historical no-instruction surface
     built from the tokenizer), so training renders the same input the
     runner's generation contract renders. Returns (model, receipt).
+
+    `rehearsal_examples` — verified-correct {prompt,response} pairs
+    interleaved into the gradient stream on the spec's rehearsal
+    schedule (P2). `kl_prompts` — prompt strings whose next-token
+    distributions anchor the frozen-reference KL term (P3).
     """
     import torch
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
     if examples is None and not texts:
         raise ValueError("training texts or examples required")
+    if spec.rehearsal_fraction > 0 and not rehearsal_examples:
+        raise ValueError(
+            "rehearsal_fraction > 0 requires rehearsal_examples — "
+            "rehearsing nothing is not rehearsal")
+    if spec.kl_weight > 0 and not kl_prompts:
+        raise ValueError(
+            "kl_weight > 0 requires kl_prompts — a KL term without an "
+            "anchor set measures nothing")
     if prompt_contract is None:
         prompt_contract = build_prompt_contract(tokenizer,
                                                 DEFAULT_OUTPUT_CONTRACT)
@@ -246,9 +366,23 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
     pad_id = tokenizer.pad_token_id or tokenizer.eos_token_id or 0
     gacc = spec.gradient_accumulation_steps
     mb = spec.microbatch_size
+    rehearsal_period = spec.rehearsal_period
+
+    kl_encoded = None
+    reference_digest = None
+    kl_prompts_digest = None
+    rehearsal_corpus_digest = None
+    rehearsal_corpus_size = 0
+    if spec.kl_weight > 0:
+        kl_prompts_digest = digest([sha256_bytes(p.encode())
+                                    for p in kl_prompts])
+        kl_encoded = [{"input_ids": encode_generation(
+            tokenizer, p, prompt_contract)} for p in kl_prompts]
+        reference_digest = _reference_weights_digest(model)
 
     losses, rejected = [], 0
     grad_norms: list[float] = []
+    kl_trace: list[float] = []
     updates = 0
     started = time.time_ns()
     if examples is not None:
@@ -272,6 +406,29 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                         f"{exc}") from exc
         if not encoded:
             raise ValueError("every training example was rejected")
+        encoded_rehearsal: list = []
+        rehearsal_rejected = 0
+        if rehearsal_examples:
+            rehearsal_corpus_digest = digest(
+                [example_digest(str(e["prompt"]), str(e["response"]))
+                 for e in rehearsal_examples])
+            for e in rehearsal_examples:
+                try:
+                    encoded_rehearsal.append(supervised_tokens(
+                        tokenizer, str(e["prompt"]), str(e["response"]),
+                        spec.max_length, contract=prompt_contract))
+                except ValueError as exc:
+                    rehearsal_rejected += 1
+                    if spec.malformed_policy == "fail":
+                        raise ValueError(
+                            "malformed rehearsal example — run "
+                            f"invalidated: {exc}") from exc
+            if rehearsal_period is not None and not encoded_rehearsal:
+                raise ValueError(
+                    "rehearsal scheduled but every rehearsal example "
+                    "was rejected")
+            rehearsal_corpus_size = len(encoded_rehearsal)
+        rejected += rehearsal_rejected
         # Step 13: supervised-token accounting and the adapter's initial
         # parameter state, so a training run reports what it actually
         # supervised and how far the weights moved.
@@ -281,11 +438,16 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
         adapter_initial = _adapter_param_vector(model)
         rnd = random.Random(spec.seed)
         total_micro = spec.steps * gacc
-        sampled: list[int] = []
+        sampled: list[dict] = []
         for micro in range(total_micro):
-            idx = [rnd.randrange(len(encoded)) for _ in range(mb)]
-            sampled.extend(idx)
-            batch = [encoded[i] for i in idx]
+            is_rehearsal = (rehearsal_period is not None
+                            and micro % rehearsal_period
+                            == rehearsal_period - 1)
+            pool = encoded_rehearsal if is_rehearsal else encoded
+            src = "rehearsal" if is_rehearsal else "task"
+            idx = [rnd.randrange(len(pool)) for _ in range(mb)]
+            sampled.extend({"src": src, "idx": i} for i in idx)
+            batch = [pool[i] for i in idx]
             ids, labels, attn = _pad_batch(batch, pad_id)
             batch_t = {"input_ids": torch.tensor(ids, device=device),
                        "attention_mask": torch.tensor(attn, device=device),
@@ -299,6 +461,12 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                             attention_mask=batch_t["attention_mask"],
                             labels=concat_labels)
             loss = out.loss / gacc
+            if kl_encoded is not None and micro % spec.kl_every == 0:
+                kl_term = _frozen_kl(model, kl_encoded, spec.kl_weight,
+                                     gacc, pad_id)
+                if kl_term is not None:
+                    loss = loss + kl_term
+                    kl_trace.append(float(kl_term.detach().cpu()) * gacc)
             loss.backward()
             losses.append(float(loss.detach().cpu()) * gacc)
             if (micro + 1) % gacc == 0 or micro == total_micro - 1:
@@ -308,7 +476,10 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                 updates += 1
         example_count = len(encoded)
         presentations = len(sampled)
-        sample_order_digest = digest([int(i) for i in sampled])
+        rehearsal_presentations = sum(1 for s in sampled
+                                      if s["src"] == "rehearsal")
+        sample_order_digest = digest(
+            [{"src": s["src"], "idx": int(s["idx"])} for s in sampled])
     else:
         mode = "concatenated-legacy"
         order_d = digest([sha256_bytes(str(t).encode()) for t in texts])
@@ -322,15 +493,24 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
             labels = batch["input_ids"].clone()
             labels[batch["attention_mask"] == 0] = LABEL_IGNORE
             out = model(**batch, labels=labels)
-            out.loss.backward()
+            loss = out.loss
+            if kl_encoded is not None and step % spec.kl_every == 0:
+                kl_term = _frozen_kl(model, kl_encoded, spec.kl_weight,
+                                     1, pad_id)
+                if kl_term is not None:
+                    loss = loss + kl_term
+                    kl_trace.append(float(kl_term.detach().cpu()))
+            loss.backward()
             grad_norms.append(_grad_norm(model))
             opt.step()
             opt.zero_grad(set_to_none=True)
             updates += 1
-            losses.append(float(out.loss.detach().cpu()))
+            losses.append(float(loss.detach().cpu()))
         example_count = len(texts)
         presentations = len(sampled)
-        sample_order_digest = digest([int(i) for i in sampled])
+        rehearsal_presentations = 0
+        sample_order_digest = digest(
+            [{"src": "task", "idx": int(i)} for i in sampled])
 
     trainable = int(sum(p.numel() for p in model.parameters()
                         if p.requires_grad))
@@ -350,6 +530,14 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                "effective_batch_size": spec.effective_batch_size,
                "optimizer_updates": updates,
                "sample_presentations": presentations,
+               "rehearsal_presentations": rehearsal_presentations,
+               "rehearsal_fraction_config": spec.rehearsal_fraction,
+               "rehearsal_fraction_realized":
+                   (rehearsal_presentations / presentations)
+                   if presentations else 0.0,
+               "rehearsal_period_microbatches": rehearsal_period,
+               "rehearsal_corpus_digest": rehearsal_corpus_digest,
+               "rehearsal_corpus_size": rehearsal_corpus_size,
                "malformed_policy": spec.malformed_policy,
                "example_count": example_count,
                "rejected_examples": rejected,
@@ -364,6 +552,24 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                "trainable_params": trainable, "total_params": total,
                "library_versions": _library_versions(),
                "started_ns": started, "finished_ns": time.time_ns()}
+    if spec.kl_weight > 0:
+        receipt["kl_preservation"] = {            "kl_weight": spec.kl_weight,
+            "kl_every": spec.kl_every,
+            "n_kl_evaluations": len(kl_trace),
+            "kl_term_mean": (sum(kl_trace) / len(kl_trace))
+                            if kl_trace else None,
+            "kl_prompts_digest": kl_prompts_digest,
+            "kl_prompt_count": len(kl_prompts or []),
+            # the frozen reference is the base weights with the adapter
+            # disabled — its digest binds WHICH frozen model anchored
+            # the penalty, satisfying P3's identity-binding requirement
+            "reference_model": {
+                "identity": getattr(getattr(model, "config", None),
+                                    "_name_or_path", None)
+                            or getattr(getattr(model, "config", None),
+                                       "name_or_path", None),
+                "weights_digest": reference_digest,
+                "binding": "same-weights, adapter-disabled forward"}}
     if examples is not None:
         # SCI-301: the exact rendering contract this adapter was trained
         # under, so training/inference parity is auditable from the

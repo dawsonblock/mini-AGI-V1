@@ -1,4 +1,4 @@
-# Test results — Campaign 3B
+# Test results — Campaign 3B / 3B.3
 
 Every count below is from an executed run on this host
 (macOS, Python 3.12.0, torch 2.10.0). No result is fabricated, no
@@ -11,7 +11,7 @@ Command: `python3 -m pytest tests-python -q`
 
 | group | passed | failed | skipped | collected |
 |---|---|---|---|---|
-| `tests-python/v161` | 481 | 0 | 1 | 482 |
+| `tests-python/v161` | 576 | 0 | 4 | 580 |
 | `tests-python/runtime` | 432 | 0 | 17 | 449 |
 | `tests-python/security` | 77 | 0 | 0 | 77 |
 | `tests-python/research` | 41 | 0 | 0 | 41 |
@@ -20,9 +20,11 @@ Command: `python3 -m pytest tests-python -q`
 | `tests-python/apple` | 5 | 0 | 0 | 5 |
 | `tests-python/integration` | 3 | 0 | 0 | 3 |
 | `tests-python` (root modules) | 63 | 0 | 0 | 63 |
-| **total** | **1183** | **0** | **18** | **1201** |
+| **total** | **1272** | **0** | **21** | **1293** |
 
-New tests added by Campaign 3B: **30** (see below).
+Campaign 3B added 30 tests; Campaign 3B.3 adds **89 more** in
+`tests-python/v161` (the v161 group grew 481 → 576 passed and carries
+three new honestly-skipped evidence-dependent tests).
 
 ## Native suite
 
@@ -62,6 +64,11 @@ covers it:
 | governed runtime integration | `tests-python/runtime/*` | PASS |
 | governed safety & retention suite | `test_safety_regression_suite.py` | PASS |
 | end-to-end governed safety enforcement | `test_governed_safety_enforcement.py` | PASS |
+| strict case-sensitive oracle bound everywhere (3B.3) | `test_campaign_output_scoring.py` (`test_strict_oracle_is_case_sensitive`, `test_strict_metric_mirrors_the_registered_evaluator`) | PASS |
+| uncertainty-aware selector states reachable (3B.3) | `test_intervention_states.py` | PASS |
+| rehearsal + frozen-reference KL machinery (3B.3) | `test_campaign3b3_preservation.py` | PASS |
+| production confirmation fails closed (3B.3) | `test_confirmation_fail_closed.py` | PASS |
+| same-UID custody cannot claim independence (3B.3) | `test_sealed_custody_enforcement.py` | PASS |
 
 ## New tests in this campaign (30)
 
@@ -81,7 +88,19 @@ covers it:
 | `test_safety_regression_suite.py` | 28 | suite content, polarity, rollup, UNDEFINED handling, gate, inheritance |
 | `test_governed_safety_enforcement.py` | 4 | real qualifier: compliant qualifies, violation refuses, legacy NOT_APPLICABLE |
 
-## Skipped tests (18) — all environment-gated, none counted as passing
+## New tests in Campaign 3B.3
+
+| file | tests | what they pin |
+|---|---|---|
+| `test_campaign3b3_preservation.py` | 7 | rehearsal interleave changes gradients; KL via `disable_adapter` equals frozen reference; receipt binds corpus/reference digests |
+| `test_confirmation_fail_closed.py` | 4 | production mode refuses on missing custody/artifacts/signers; synthetic mode records `production_valid=false` |
+| `test_intervention_states.py` | 11 | every decision state reachable: RECOMMENDED/ELIGIBLE/INCONCLUSIVE/CONFOUNDED/INSUFFICIENT-EVIDENCE/FAILED-IMPLEMENTATION/REFUTED/HIGH-RISK |
+| `test_sealed_custody_enforcement.py` | 3 | same-UID custody is refused as non-independent |
+| plus updates | — | `test_campaign_output_scoring.py` gains v1/v2 split pins; selector fixture tests updated for the v2 report schema |
+
+Total: 1272 passed / 21 skipped / 0 failed; v161 group 481→576.
+
+## Skipped tests (21) — all environment- or evidence-gated, none counted as passing
 
 | reason | count |
 |---|---|
@@ -93,6 +112,7 @@ covers it:
 | kernel refuses `NOTE_TRACK` on this host | 1 |
 | `RLIMIT_AS` is not enforceable on macOS | 1 |
 | NsJail/systemd boundary (live-inference cancel) | 1 |
+| evidence-dependent 3B.3 checks (results tree absent on a source-only checkout) | 3 |
 
 These are the runtime's own Linux-boundary qualifications. They are
 **NOT RUN** here, not passed. The v16.4.10 record carries a privileged
@@ -147,7 +167,7 @@ working tree:
 | **G7** safety and retention | **PASS** | governed suite enforced on the executed run: 0 undefined mandatory categories, 8 categories measured, violations block; the frozen model's two violations are reported as a baseline property |
 | **G8** confirmation integrity | **PASS for executability; real confirmation NOT RUN** | the executor generates and scores real predictions under frozen rules and signs QUALIFIED/REFUSED (19 tests); no independent evaluator custody was available, so no candidate is reported as confirmed |
 | **G9** runtime preservation | **PASS** | `git diff` over the runtime security modules is empty; qualifier gate reasons only added |
-| **G10** regression | **PASS (host scope)** | Python 1183/0/18; native CTest 28/28. GPU and Linux-isolation suites **NOT RUN** here |
+| **G10** regression | **PASS (host scope)** | Python 1272/0/21; native CTest 28/28. GPU and Linux-isolation suites **NOT RUN** here |
 | **G11** release integrity | **PASS** | clean-extraction verification above; manifest + signature verify; separate evidence package verifies by SHA-256 and signature |
 | **G12** scientific honesty | **PASS** | every claim traces to a recorded run; the executed result is REFUSED and reported as REFUSED; the sealed lane is NOT RUN and reported as NOT RUN |
 

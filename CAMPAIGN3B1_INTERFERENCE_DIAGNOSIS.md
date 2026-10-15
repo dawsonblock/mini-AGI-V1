@@ -1,5 +1,15 @@
 # Campaign 3B.1 — Adapter interference diagnosis
 
+> **Superseded scoring (3B.3, RD-18).** Accuracy numbers in this
+> document were produced by `exact-match-v1` (case-insensitive), which
+> accepted wrong-case outputs on case-transformation tasks. Treat every
+> accuracy/delta below as **provisional**; strict `exact-match-v2`
+> rescores live in `results/campaign3b2/RESCORE_SUMMARY.json`, each
+> run's `RESCORE-STRICT.json`, and `CAMPAIGN3B_RESCORE_REPORT.md`.
+> Corrections in brief: frozen hidden 0.417 -> 0.333; L5b replay
+> advantage = one net row (p = 1.0), not two; rank-ladder magnitudes
+> are additionally confounded by alpha/r covariation (RD-13).
+
 Status: **diagnosis complete for steps 1-3; steps 4-7 not started.**
 The Campaign 3B release and its REFUSED result are preserved unchanged;
 this document reports analysis of that run's raw predictions, plus the

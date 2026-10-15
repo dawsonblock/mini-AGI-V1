@@ -246,7 +246,8 @@ def main() -> int:
         # Independent rescore plumbing (v3): prediction records join the
         # committed corpus by task id; expected answers never enter the
         # evidence artifacts.
-        from minagi.v161.evaluators import (containment_match, exact_match,
+        from minagi.v161.evaluators import (containment_match,
+                                            exact_match_strict,
                                             retention_score, score_row,
                                             security_regression)
         from minagi.v161.evidence_receipt_v3 import (
@@ -299,7 +300,7 @@ def main() -> int:
                     r3.evaluation_bundle_digest:
                 fail(where, "evaluation bundle digest mismatch vs receipt")
                 return None
-            block_index = {"hidden": (hid_rows_by_id, exact_match,
+            block_index = {"hidden": (hid_rows_by_id, exact_match_strict,
                                       "hidden_exact_match", "mean"),
                            "retention": (ret_rows_by_id, ret_fn,
                                          "retention", "mean"),
@@ -680,7 +681,7 @@ def main() -> int:
                              for rid in set(base) & set(armed)
                              if rid in hidx}
                     fa = false_activation_rate(base, armed, golds,
-                                               exact_match)
+                                               exact_match_strict)
                     if fa["status"] != "ESTIMATED":
                         fa_not_estimable += 1
                         continue
@@ -778,7 +779,7 @@ def main() -> int:
                 base_pooled, arm_pooled,
                 {rid: str(hid_rows_by_id[rid]["expected"])
                  for rid in set(base_pooled) & set(arm_pooled)
-                 if rid in hid_rows_by_id}, exact_match)
+                 if rid in hid_rows_by_id}, exact_match_strict)
             retention = retention_metric_status(
                 l6_ret, stats.get("retention_delayed", {}).get("L6"),
                 l1_ret, stats.get("retention_delayed", {}).get("L1"),
