@@ -190,12 +190,15 @@ def main() -> int:
             return tokenizer.decode(out[0, len(ids):],
                                     skip_special_tokens=True).strip()
 
+    # V4-07: recomputed accuracies use the versioned strict evaluator —
+    # the historical casefold comparison is provenance-only.
+    from minagi.v161.evaluators import exact_match_strict
+
     def accuracy(model, group):
         hits = 0
         for row in groups[group]:
             pred = generate(model, str(row["prompt"]))
-            hits += int(pred.strip().casefold()
-                        == str(row["expected"]).strip().casefold())
+            hits += int(exact_match_strict(pred, str(row["expected"])))
         return hits / len(groups[group])
 
     def evaluate_adapter(arm_id, adapter_path=None):

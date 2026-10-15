@@ -526,7 +526,7 @@ def score_sealed(rows, outputs_by_seed, arms, *,
                 out = str(outputs[a].get(rid, ""))
                 split = str(row.get("split", "hidden"))
                 if split == "hidden":
-                    s = float(exact_match_strict(out, str(row["expected"])))
+                    s = float(score_row(row, out, exact_match_strict))
                     hid.append(s)
                     per_row[a][f"{seed}:{rid}"] = s
                 elif split == "retention":

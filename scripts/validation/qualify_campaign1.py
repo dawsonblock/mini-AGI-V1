@@ -130,14 +130,19 @@ def main() -> int:
     # v165: the signed experiment protocol must be present and digest-bound
     proto = None
     if isinstance(plan, ColabCampaignPlanV165):
-        from minagi.v161.experiment_protocol import ExperimentProtocolV1
+        from minagi.v161.experiment_protocol import (ExperimentProtocolV1,
+                                                     ExperimentProtocolV2)
         proto_path = campaign_dir / "EXPERIMENT_PROTOCOL.json"
         if not proto_path.is_file():
             fail("protocol", "EXPERIMENT_PROTOCOL.json missing for v165 plan")
         else:
             try:
                 pdoc = json.loads(proto_path.read_text())
-                proto = ExperimentProtocolV1(**pdoc["value"])
+                proto_cls = (ExperimentProtocolV2
+                             if (pdoc["value"].get("schema") ==
+                                 "mini-agi-v4.0-experiment-protocol-v2")
+                             else ExperimentProtocolV1)
+                proto = proto_cls(**pdoc["value"])
                 if pdoc.get("digest") != proto.digest:
                     fail("protocol", "EXPERIMENT_PROTOCOL.json digest field "
                                      "does not match recomputed digest")
@@ -168,7 +173,8 @@ def main() -> int:
         fam_disjoint = bool(campaign_cfg.get("require_family_disjoint_hidden", True))
     from minagi.v161.dataset_manifest import (DatasetMember,
                                               DatasetMembershipManifest,
-                                              DatasetPartitionSet)
+                                              DatasetPartitionSet,
+                                              DatasetPartitionSetV3)
     from egai.common.canonical import sha256_bytes
     rows = [json.loads(line) for line in dataset_cfg.read_text().splitlines()
             if line.strip()]
@@ -182,14 +188,29 @@ def main() -> int:
                              str(row.get("generator", "manual")))
 
     by_split = {s: [r for r in rows if r["split"] == s]
-                for s in ("train", "validation", "hidden", "retention", "security")}
-    parts = DatasetPartitionSet(
-        DatasetMembershipManifest("train", tuple(_member(r) for r in by_split["train"])),
-        DatasetMembershipManifest("validation", tuple(_member(r) for r in by_split["validation"])),
-        DatasetMembershipManifest("hidden", tuple(_member(r) for r in by_split["hidden"])),
-        DatasetMembershipManifest("retention", tuple(_member(r) for r in by_split["retention"])),
-        DatasetMembershipManifest("security", tuple(_member(r) for r in by_split["security"])),
-        require_family_disjoint_hidden=fam_disjoint)
+                for s in ("train", "validation", "hidden", "retention",
+                          "security", "compositional")}
+    if by_split["compositional"]:
+        # v4.0 corpora declare a compositional split; the partition set
+        # must be rebuilt under the same V3 schema the runner used.
+        parts = DatasetPartitionSetV3(
+            DatasetMembershipManifest("train", tuple(_member(r) for r in by_split["train"])),
+            DatasetMembershipManifest("validation", tuple(_member(r) for r in by_split["validation"])),
+            DatasetMembershipManifest("hidden", tuple(_member(r) for r in by_split["hidden"])),
+            DatasetMembershipManifest("retention", tuple(_member(r) for r in by_split["retention"])),
+            DatasetMembershipManifest("security", tuple(_member(r) for r in by_split["security"])),
+            require_family_disjoint_hidden=fam_disjoint,
+            compositional=DatasetMembershipManifest(
+                "compositional",
+                tuple(_member(r) for r in by_split["compositional"])))
+    else:
+        parts = DatasetPartitionSet(
+            DatasetMembershipManifest("train", tuple(_member(r) for r in by_split["train"])),
+            DatasetMembershipManifest("validation", tuple(_member(r) for r in by_split["validation"])),
+            DatasetMembershipManifest("hidden", tuple(_member(r) for r in by_split["hidden"])),
+            DatasetMembershipManifest("retention", tuple(_member(r) for r in by_split["retention"])),
+            DatasetMembershipManifest("security", tuple(_member(r) for r in by_split["security"])),
+            require_family_disjoint_hidden=fam_disjoint)
     if parts.digest != plan.dataset_partition_digest:
         fail("dataset", "recomputed partition digest != plan digest")
     if parts.hidden.digest != hidden_digest:
@@ -266,16 +287,23 @@ def main() -> int:
                                   "retention_score")]
         sec_rows_by_id = {str(r["id"]): r for r in by_split["security"]}
         hid_rows_by_id = {str(r["id"]): r for r in by_split["hidden"]}
+        comp_rows_by_id = {str(r["id"]): r
+                           for r in by_split["compositional"]}
+        val_rows_by_id = {str(r["id"]): r
+                          for r in by_split["validation"]}
         ret_probe = [r for r in by_split["retention"]
                      if r.get("probe") != "delayed"]
         ret_delayed = [r for r in by_split["retention"]
                        if r.get("probe") == "delayed"]
         ret_rows_by_id = {str(r["id"]): r for r in ret_probe}
         delayed_rows_by_id = {str(r["id"]): r for r in ret_delayed}
-        eval_set_expected = _digest(
-            {"hidden": parts.hidden.digest,
-             "retention": parts.retention.digest,
-             "security": parts.security.digest})
+        eval_parts_exp = {"hidden": parts.hidden.digest,
+                          "retention": parts.retention.digest,
+                          "security": parts.security.digest}
+        if by_split["compositional"]:
+            eval_parts_exp["compositional"] = parts.compositional.digest
+            eval_parts_exp["validation"] = parts.validation.digest
+        eval_set_expected = _digest(eval_parts_exp)
         evaluator_set_expected = _digest(
             [plan.scorer_artifact_digest, plan.retention_artifact_digest,
              plan.security_artifact_digest])
@@ -307,7 +335,15 @@ def main() -> int:
                            "retention_delayed": (delayed_rows_by_id, ret_fn,
                                                  "retention_delayed", "mean"),
                            "security": (sec_rows_by_id, security_regression,
-                                        "security_regressions", "count")}
+                                        "security_regressions", "count"),
+                           "compositional": (comp_rows_by_id,
+                                             exact_match_strict,
+                                             "compositional_exact_match",
+                                             "mean"),
+                           "validation": (val_rows_by_id,
+                                          exact_match_strict,
+                                          "validation_exact_match",
+                                          "mean")}
             metrics = {}
             for rec in preds:
                 blk = rec.get("block")
@@ -586,7 +622,31 @@ def main() -> int:
         if toks and toks != {plan.tokenizer_digest}:
             fail("tokenizer", "receipt tokenizer_digest != plan tokenizer_digest")
 
+    # --- V4-15: declarative completeness audit -----------------------
+    # The arm x seed x cell matrix plus cross-cell identity agreement,
+    # reported as an explicit audit record — INCOMPLETE/INCONSISTENT
+    # matrices may not be presented as finished comparisons.
+    from minagi.v161.experiment_matrix import (CellIdentity, MatrixSpec,
+                                               audit_matrix)
+    mx_cells: dict = {(s, a): r for (s, a), r in receipts.items()}
+    if isinstance(plan, ColabCampaignPlanV164):
+        for (s, nm), r in (locals().get("delayed_receipts") or {}).items():
+            mx_cells[(s, nm)] = r
+    matrix_audit = audit_matrix(
+        MatrixSpec(
+            campaign_id=str(plan.campaign_id),
+            seeds=tuple(int(s) for s in plan.seeds),
+            arms=tuple(plan.arms),
+            per_arm_cells=(
+                {"L1": ("L1_delayed",), "L6": ("L6_delayed",)}
+                if isinstance(plan, ColabCampaignPlanV164) else {}),
+            expected_identity=CellIdentity(
+                model_digest=getattr(plan, "model_digest", ""),
+                tokenizer_digest=getattr(plan, "tokenizer_digest", ""))),
+        mx_cells)
+
     # --- Reconstruct outcomes ---
+    has_comp = bool(by_split["compositional"])
     per_seed = []
     for seed in plan.seeds:
         cell = {a: receipts.get((seed, a)) for a in plan.arms}
@@ -596,17 +656,28 @@ def main() -> int:
         n_sec = len(parts.security.members) if parts.security is not None else 1
         sec_rate = {a: 1.0 - float(cell[a].metrics.get("security_regressions", 0)) / max(1, n_sec)
                     for a in plan.arms}
-        per_seed.append({
+        row = {
             "seed": seed,
             "hidden_exact_match": h,
             "ft_vs_L1": {a: h[a] - h["L1"] for a in plan.arms if a != "L1"},
             "delta_ft_neural": h["L6"] - h["L5"],
+            # V4-10: the declared primary comparison when both arms are
+            # in the plan — adapter+verified-replay vs verified-replay
+            # alone isolates the neural adaptation on identical memory.
+            "delta_ft_primary": (h["L7"] - h["L5b"]
+                                 if "L7" in plan.arms
+                                 and "L5b" in plan.arms else None),
             "l6_retention": float(cell["L6"].metrics.get("retention", 0.0)),
             "l1_retention": float(cell["L1"].metrics.get("retention", 0.0)),
             "security_pass_rate": sec_rate,
             "security_regressions": int(sum(cell[a].metrics.get("security_regressions", 0)
                                           for a in plan.arms)),
-        })
+        }
+        if has_comp:
+            row["compositional_exact_match"] = {
+                a: float(cell[a].metrics.get("compositional_exact_match", 0.0))
+                for a in plan.arms}
+        per_seed.append(row)
 
     complete = not failures and len(per_seed) == len(plan.seeds)
     reasons: list[str] = []
@@ -621,6 +692,36 @@ def main() -> int:
         nc_mean = statistics.fmean(nc_fts)
         if statistics.fmean(deltas) < plan.minimum_neural_incremental_ft:
             reasons.append("mean neural incremental FT (L6-L5) below preregistered minimum")
+        # V4-10: gate the declared primary comparison (L7-L5b) with the
+        # same thresholds when the plan carries both arms — qualifying
+        # on a different comparison than the declared primary is not
+        # allowed.
+        p_deltas = [x["delta_ft_primary"] for x in per_seed
+                    if x["delta_ft_primary"] is not None]
+        if p_deltas:
+            stats["primary_comparison"] = {
+                "name": "L7-L5b",
+                "n": len(p_deltas),
+                "mean": statistics.fmean(p_deltas),
+                "stdev": (statistics.stdev(p_deltas)
+                          if len(p_deltas) > 1 else 0.0)}
+            if statistics.fmean(p_deltas) < \
+                    plan.minimum_neural_incremental_ft:
+                reasons.append(
+                    "mean primary comparison (L7-L5b) below "
+                    "preregistered minimum")
+            if isinstance(plan, ColabCampaignPlanV164) and \
+                    len(p_deltas) > 1:
+                n_comp = max(1, int(getattr(
+                    plan, "n_comparisons_preregistered", 1)))
+                pci = bootstrap_ci(p_deltas, plan.bootstrap_resamples,
+                                   plan.ci_alpha / n_comp)
+                stats["primary_comparison"]["bootstrap_ci"] = pci
+                if pci["lower"] <= plan.min_delta_ft_ci_lower:
+                    reasons.append(
+                        f"primary comparison bootstrap CI lower bound "
+                        f"{pci['lower']:.4f} <= "
+                        f"{plan.min_delta_ft_ci_lower}")
         if isinstance(plan, ColabCampaignPlanV164):
             n_pos = sum(1 for x in per_seed if x["delta_ft_neural"] > 0)
             if n_pos < plan.min_seeds_positive_ft:
@@ -646,9 +747,19 @@ def main() -> int:
                         fams.append(str(hidx.get(rid, {})
                                         .get("family", "unknown")))
                 if pairs and plan.cluster_unit == "family":
+                    # V4-12 (multiple-comparison control): the declared
+                    # number of preregistered confirmatory comparisons
+                    # divides the family alpha — Bonferroni. n=1 keeps the
+                    # historical gate unchanged.
+                    n_comp = max(1, int(getattr(
+                        plan, "n_comparisons_preregistered", 1)))
+                    eff_alpha = plan.ci_alpha / n_comp
                     cci = cluster_bootstrap_ci(
                         pairs, fams, plan.bootstrap_resamples,
-                        plan.ci_alpha)
+                        eff_alpha)
+                    cci["unadjusted_alpha"] = plan.ci_alpha
+                    cci["bonferroni_alpha"] = eff_alpha
+                    cci["n_comparisons"] = n_comp
                     stats["cluster_bootstrap_ci_row_delta"] = cci
                 if pairs:
                     # family-aware report (3B Step 15): per-family paired
@@ -658,11 +769,13 @@ def main() -> int:
                     # cluster, never independent evidence.
                     stats["family_analysis"] = family_delta_analysis(
                         pairs, fams, arm_scores=l6_scores)
-                    if cci["lower"] <= plan.min_delta_ft_ci_lower:
+                    if plan.cluster_unit == "family" and \
+                            cci["lower"] <= plan.min_delta_ft_ci_lower:
                         reasons.append(
                             f"family-clustered CI lower bound "
                             f"{cci['lower']:.4f} <= "
-                            f"{plan.min_delta_ft_ci_lower}")
+                            f"{plan.min_delta_ft_ci_lower} "
+                            f"(Bonferroni alpha {eff_alpha:.4f})")
                 # false activation: L6 changed a correct L1 answer to a
                 # wrong one — learned behavior firing off-task. The rate
                 # is conditioned on previously-correct L1 cases; the
@@ -738,6 +851,51 @@ def main() -> int:
             stats["offtarget_regression"] = {
                 "retention_drop_L1_minus_L6": l1_ret - l6_ret,
                 "security_drop_L1_minus_L6": l1_sec - l6_sec}
+
+            # ---- v4.0 gates (protocol v2) ----
+            # F9 / V4-08: a baseline that emits empty output on most
+            # hidden prompts makes the L6-L5 comparison NOT_ESTIMABLE —
+            # silence is not evidence of a zero effect.
+            l1_eval_rates = []
+            for s in plan.seeds:
+                outs = hidden_outputs.get((s, "L1"), {})
+                if outs:
+                    l1_eval_rates.append(
+                        sum(1 for o in outs.values() if str(o).strip())
+                        / len(outs))
+            if l1_eval_rates:
+                rate = statistics.fmean(l1_eval_rates)
+                stats["basemodel_evaluable_rate"] = rate
+                f9 = getattr(proto, "minimum_basemodel_eval_rate", 0.0)
+                stats["basemodel_evaluable_min"] = f9
+                if rate < f9:
+                    reasons.append(
+                        f"basemodel evaluable rate {rate:.3f} < F9 "
+                        f"threshold {f9} — within-family comparison "
+                        "NOT_ESTIMABLE (baseline produced empty output)")
+
+            # V4-05/V4-11: compositional split E — enforced only when the
+            # committed corpus declares the partition; otherwise reported
+            # NOT_APPLICABLE rather than silently absent.
+            if has_comp:
+                c1 = statistics.fmean(
+                    x["compositional_exact_match"]["L1"] for x in per_seed)
+                c6 = statistics.fmean(
+                    x["compositional_exact_match"]["L6"] for x in per_seed)
+                comp_min = getattr(proto, "minimum_compositional", 0.0)
+                stats["compositional"] = {
+                    "frozen_L1": c1, "adapted_L6": c6,
+                    "delta_L6_minus_L1": c6 - c1,
+                    "preregistered_min": comp_min,
+                    "primary_comparison":
+                        getattr(proto, "primary_comparison", "L6-L5"),
+                    "status": "EVALUATED"}
+                if c6 - c1 < comp_min:
+                    reasons.append(
+                        f"compositional delta {c6 - c1:.4f} < "
+                        f"preregistered minimum {comp_min}")
+            else:
+                stats["compositional"] = {"status": "NOT_APPLICABLE"}
 
             # ---- governed safety & retention suite (3B Step 18) ----
             # Recomputed here from the persisted per-row predictions.
@@ -880,6 +1038,7 @@ def main() -> int:
         "environment_digests": sorted({r.environment_digest
                                        for r in receipts.values()}),
         "matrix": matrix,
+        "matrix_audit": matrix_audit,
         "per_seed": per_seed,
         "delta_ft_neural_stats": stats,
         "decision": decision,
@@ -911,6 +1070,23 @@ def main() -> int:
 
         eval_signer = _role_signer("evaluation")
         qual_signer = _role_signer("qualification")
+        # V4-08 — fail closed: a v165 qualification record that cannot
+        # be signed by BOTH role authorities is INVALID_EVIDENCE-class
+        # output. The decision was computed before this block ran, so a
+        # QUALIFIED verdict must be flipped here, before anything signs
+        # or writes it, and the exit code must follow.
+        if eval_signer is None or qual_signer is None:
+            decision = "INVALID_EVIDENCE"
+            record["decision"] = decision
+            if eval_signer is None:
+                reasons.append(
+                    "evaluation authority key unavailable — record "
+                    "cannot carry authorized recomputed metrics")
+            if qual_signer is None:
+                reasons.append(
+                    "qualification authority key unavailable — record "
+                    "cannot carry an authorized gate decision")
+            record["reasons"] = reasons
         evidence_root = sha256_path(campaign_dir)
         bundle_body = {
             "schema": "mini-agi-v16.5-evaluation-record-v1",

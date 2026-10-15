@@ -116,23 +116,29 @@ def main() -> int:
     ap.add_argument("--kl-every", type=int, default=1)
     ap.add_argument("--kl-prompts", default="configs/preservation_prompts.txt",
                     help="plain-text prompts anchoring the frozen-"
-                         "reference KL term (default: the preservation "
-                         "prompt set)")
+                         "reference KL term — the frozen model's own "
+                         "greedy continuations become the teacher-forced "
+                         "reference (default: the preservation prompt set)")
+    ap.add_argument("--kl-corpus", default=None,
+                    help="jsonl of verified {prompt, response|expected} "
+                         "pairs to teacher-force through the KL term; "
+                         "each row is verified against the frozen model "
+                         "under the strict oracle before admission")
     ap.add_argument("--run-root", default="results/campaign3b2/runs",
                     help="parent directory for immutable per-run outputs")
     ap.add_argument("--run-id", default=None,
                     help="explicit run id; refused if it already exists")
     args = ap.parse_args()
 
+    # ------------------------------------------------------------------
+    # Phase 0 — cheap validation + run-destination reservation.
+    # V4-04: the run directory is claimed BEFORE torch/transformers and
+    # the tokenizer load — a colliding destination must be refused
+    # before any costly initialization, and the reservation itself
+    # closes the check-then-create race.
+    # ------------------------------------------------------------------
     import yaml
-    import torch
     from egai.common.canonical import digest, sha256_bytes
-    from minagi.platforms.cuda.hf_runtime import (HFLoadSpec, load_causal_lm,
-                                                  load_tokenizer)
-    from minagi.platforms.cuda.peft_trainer import LoraTrainSpec, train_lora
-    from minagi.v161.prompt_contract import (build_prompt_contract,
-                                             encode_generation,
-                                             output_contract_from_config)
 
     cfg = yaml.safe_load((ROOT / args.config).read_text())
     families = [f.strip() for f in args.families.split(",") if f.strip()]
@@ -189,16 +195,13 @@ def main() -> int:
 
     hidden = [r for r in rows if r["split"] == "hidden"]
 
-    # SCI-403: the contract is the ONLY source of the generation budget.
-    output_contract = output_contract_from_config(
-        cfg, int(cfg.get("max_new_tokens", 16)))
-    spec = HFLoadSpec(cfg["model"]["id"], cfg["model"]["revision"],
-                      "float32" if not torch.cuda.is_available()
-                      else str(cfg["model"].get("dtype", "auto")), "none",
-                      False)
-    tokenizer = load_tokenizer(spec)
-    contract = build_prompt_contract(tokenizer, output_contract)
-    max_new = int(contract.output.max_new_tokens)
+    # --- run identity + destination reservation (V4-04) ---------------
+    # Everything needed to name this run is cheap: the family set, the
+    # contrast allocation, the LoRA spec, the model identity, and the
+    # preservation flags. The prompt-contract digests still bind inside
+    # run_config/CONFIG.json below — they are just not needed to
+    # decide WHERE the run lives.
+    from minagi.platforms.cuda.peft_trainer import LoraTrainSpec
 
     lora = cfg["lora"]
     train_spec = LoraTrainSpec(
@@ -217,27 +220,20 @@ def main() -> int:
         kl_weight=float(args.kl_weight),
         kl_every=int(args.kl_every))
 
-    kl_prompts = None
-    kl_prompts_digest = None
-    if args.kl_weight > 0:
-        kp_path = ROOT / args.kl_prompts
-        if not kp_path.is_file():
-            raise SystemExit(f"KL prompt set missing: {kp_path}")
-        kl_prompts = [ln.strip() for ln in
-                      kp_path.read_text().splitlines() if ln.strip()]
-        if not kl_prompts:
-            raise SystemExit(f"KL prompt set empty: {kp_path}")
-        kl_prompts_digest = digest(
-            [sha256_bytes(p.encode()) for p in kl_prompts])
-
-    run_config = {
+    # --- run identity + collision reservation, BEFORE any model load ---
+    # run_id is derived from the cheap identity digest (families,
+    # contrast, LoRA spec, model id, preservation flags). The full
+    # run_config — which additionally binds the prompt/output contract
+    # digests — is written once the tokenizer exists; it remains the
+    # complete signed configuration record.
+    run_identity = {
+        "schema": "mini-agi-v4.0-fit-run-identity-v1",
         "families": families, "steps": args.steps, "rank": args.rank,
         "learning_rate": args.learning_rate, "seed": args.seed,
         "shuffle_labels": bool(args.shuffle_labels),
         "model_id": cfg["model"]["id"],
         "model_revision": cfg["model"]["revision"],
         "corpus": args.corpus, "config": args.config,
-        "subset_rows": len(subset), "hidden_rows": len(hidden),
         "contrast": {
             "allocation": allocation,
             "families": len(families),
@@ -249,26 +245,17 @@ def main() -> int:
             "presentations_per_example": (args.steps / len(train_rows))
             if train_rows else None,
         },
-        "prompt_contract_digest": contract.digest,
-        "output_contract_digest": contract.output_contract_digest,
-        "score_oracle": "exact-match-v2",
-        "max_new_tokens": max_new,
         "lora_spec_digest": train_spec.digest,
-        "rehearsal": {"fraction": args.rehearsal_fraction,
-                      "corpus": args.rehearsal_corpus or
-                                "verified-frozen-correct train rows",
-                      "note": "optimization-time gradient interleave "
-                              "(P2) — NOT inference-time replay (L7)"},
-        "kl_preservation": {"weight": args.kl_weight,
-                            "every_microbatches": args.kl_every,
-                            "prompts": args.kl_prompts,
-                            "prompts_digest": kl_prompts_digest,
-                            "reference": "same weights, adapter disabled"},
+        "rehearsal_fraction": args.rehearsal_fraction,
+        "rehearsal_corpus": args.rehearsal_corpus,
+        "kl_weight": args.kl_weight, "kl_every": args.kl_every,
+        "kl_prompts": args.kl_prompts,
+        "kl_corpus": args.kl_corpus,
     }
-    config_digest = digest(run_config)
+    identity_digest = digest(run_identity)
     attempt_id = f"{int(time.time())}-{uuid.uuid4().hex[:8]}"
     slug = "-".join(f.split("-")[-1] for f in families)[:24] or "fit"
-    run_id = args.run_id or f"{slug}-{config_digest[7:19]}-{attempt_id[:8]}"
+    run_id = args.run_id or f"{slug}-{identity_digest[7:19]}-{attempt_id[:8]}"
 
     run_root = ROOT / args.run_root
     run_root.mkdir(parents=True, exist_ok=True)
@@ -284,11 +271,14 @@ def main() -> int:
     print(f"run id   : {run_id}")
     print(f"staging  : {staging}")
 
+    ctx = {"config_digest": identity_digest}
+
     def fail(reason: str) -> int:
         """A failed run is recorded, never silently dropped."""
         (staging / "RUN_COMMIT.json").write_text(json.dumps({
             "run_id": run_id, "status": "FAILED", "reason": reason,
-            "config_digest": config_digest, "attempt_id": attempt_id,
+            "config_digest": ctx["config_digest"],
+            "attempt_id": attempt_id,
             "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                          time.gmtime()),
         }, indent=2, sort_keys=True) + "\n")
@@ -297,6 +287,75 @@ def main() -> int:
         os.replace(staging, final_dir)
         print(f"FAILED: {reason}\n  recorded at {final_dir}")
         return 2
+
+    # ------------------------------------------------------------------
+    # Phase 1 — model dependencies. Nothing above this line touches
+    # torch, the tokenizer, or the model surface.
+    # ------------------------------------------------------------------
+    import torch
+    from minagi.platforms.cuda.hf_runtime import (HFLoadSpec, load_causal_lm,
+                                                  load_tokenizer)
+    from minagi.platforms.cuda.peft_trainer import train_lora
+    from minagi.v161.prompt_contract import (build_prompt_contract,
+                                             encode_generation,
+                                             output_contract_from_config)
+
+    # SCI-403: the contract is the ONLY source of the generation budget.
+    output_contract = output_contract_from_config(
+        cfg, int(cfg.get("max_new_tokens", 16)))
+    spec = HFLoadSpec(cfg["model"]["id"], cfg["model"]["revision"],
+                      "float32" if not torch.cuda.is_available()
+                      else str(cfg["model"].get("dtype", "auto")), "none",
+                      False)
+    tokenizer = load_tokenizer(spec)
+    contract = build_prompt_contract(tokenizer, output_contract)
+    max_new = int(contract.output.max_new_tokens)
+
+    kl_prompts = None
+    kl_prompts_digest = None
+    if args.kl_weight > 0 and args.kl_prompts:
+        kp_path = ROOT / args.kl_prompts
+        if not kp_path.is_file():
+            return fail(f"KL prompt set missing: {kp_path}")
+        kl_prompts = [ln.strip() for ln in
+                      kp_path.read_text().splitlines() if ln.strip()]
+        if not kl_prompts:
+            return fail(f"KL prompt set empty: {kp_path}")
+        kl_prompts_digest = digest(
+            [sha256_bytes(p.encode()) for p in kl_prompts])
+
+    run_config = {
+        "families": families, "steps": args.steps, "rank": args.rank,
+        "learning_rate": args.learning_rate, "seed": args.seed,
+        "shuffle_labels": bool(args.shuffle_labels),
+        "model_id": cfg["model"]["id"],
+        "model_revision": cfg["model"]["revision"],
+        "corpus": args.corpus, "config": args.config,
+        "subset_rows": len(subset), "hidden_rows": len(hidden),
+        "contrast": run_identity["contrast"],
+        "run_identity_digest": identity_digest,
+        "prompt_contract_digest": contract.digest,
+        "output_contract_digest": contract.output_contract_digest,
+        "score_oracle": "exact-match-v2",
+        "max_new_tokens": max_new,
+        "lora_spec_digest": train_spec.digest,
+        "rehearsal": {"fraction": args.rehearsal_fraction,
+                      "corpus": args.rehearsal_corpus or
+                                "frozen-correct rows outside the "
+                                "trained families",
+                      "excludes_trained_families": True,
+                      "note": "optimization-time gradient interleave "
+                              "(P2) — NOT inference-time replay (L7)"},
+        "kl_preservation": {"weight": args.kl_weight,
+                            "every_microbatches": args.kl_every,
+                            "scope": "response_continuations",
+                            "prompts": args.kl_prompts,
+                            "corpus": args.kl_corpus,
+                            "prompts_digest": kl_prompts_digest,
+                            "reference": "same weights, adapter disabled"},
+    }
+    config_digest = digest(run_config)
+    ctx["config_digest"] = config_digest
 
     (staging / "CONFIG.json").write_text(
         json.dumps({**run_config, "config_digest": config_digest,
@@ -345,9 +404,6 @@ def main() -> int:
     frozen = load_causal_lm(spec, purpose="research")
     frozen_subset = per_row(frozen, subset)
     frozen_hidden = per_row(frozen, hidden)
-    del frozen
-    import gc
-    gc.collect()
 
     if args.shuffle_labels:
         from minagi.v161.arms import shuffled_label_examples
@@ -358,37 +414,95 @@ def main() -> int:
         examples = [{"prompt": str(r["prompt"]),
                      "response": str(r["expected"])} for r in train_rows]
 
-    # P2 rehearsal pool — VERIFIED-correct pairs only: rows the frozen
-    # model already answers correctly under the strict oracle, so the
-    # gradient mass lands on behavior that demonstrably exists. Default
-    # pool = the unique trained rows (frozen_subset was already scored
-    # above at zero extra generation cost); an explicit
-    # --rehearsal-corpus overrides it. Rehearsal always carries the TRUE
-    # expected answer even under --shuffle-labels.
+    # P2 rehearsal pool (V4-03) — VERIFIED-correct pairs of capabilities
+    # OTHER than the one being acquired. Rehearsing the trained rows
+    # themselves rehearses the capability under acquisition (it does not
+    # preserve anything distinct and can entrench the new behavior); the
+    # default pool is therefore frozen-correct TRAIN-split rows whose
+    # family is not among the trained families, plus frozen-correct
+    # non-trained rows from the validation split — never hidden,
+    # retention, security, or holdout rows (those are measurement
+    # surfaces; training on them would contaminate the measurement).
+    #
+    # A custom --rehearsal-corpus undergoes the IDENTICAL frozen-correct
+    # membership check: every candidate pair is regenerated under the
+    # frozen model and admitted only when the frozen output equals the
+    # claimed answer under the strict oracle. Unverifiable rows are
+    # rejected and counted, never silently admitted. Rehearsal always
+    # carries the TRUE expected answer even under --shuffle-labels.
+    def frozen_correct(candidates, cached=None):
+        """Filter to pairs the frozen model already answers correctly
+        (strict oracle). `cached` maps prompt->frozen output when a
+        scoring pass already produced it."""
+        verified, rejected = [], 0
+        cache = dict(cached or {})
+        for c in candidates:
+            out = cache.get(c["prompt"])
+            if out is None:
+                out = generate(frozen, c["prompt"])
+                cache[c["prompt"]] = out
+            if out.strip() == str(c["response"]).strip():
+                verified.append({"prompt": c["prompt"],
+                                 "response": str(c["response"])})
+            else:
+                rejected += 1
+        return verified, rejected, cache
+
     rehearsal_examples = None
-    if args.rehearsal_fraction > 0:
+    rehearsal_rejected = 0
+    trained_families = set(families)
+    if args.rehearsal_fraction > 0 or args.kl_corpus:
         if args.rehearsal_corpus:
-            pool_rows = [json.loads(ln) for ln in
-                         (ROOT / args.rehearsal_corpus)
-                         .read_text().splitlines() if ln.strip()]
-            rehearsal_examples = [{"prompt": str(r["prompt"]),
-                                   "response": str(r["expected"])}
-                                  for r in pool_rows]
+            cand = [{"prompt": str(r["prompt"]),
+                     "response": str(r.get("response",
+                                           r.get("expected", "")))}
+                    for r in (json.loads(ln) for ln in
+                              (ROOT / args.rehearsal_corpus)
+                              .read_text().splitlines() if ln.strip())
+                    if str(r.get("family", "")) not in trained_families]
         else:
-            verified_ids = {r["id"] for r in subset
-                            if frozen_subset.get(r["id"], {})
-                            .get("output", "").strip()
-                            == str(r["expected"]).strip()}
-            rehearsal_examples = [{"prompt": str(r["prompt"]),
-                                   "response": str(r["expected"])}
-                                  for r in train_rows
-                                  if r["id"] in verified_ids]
-        if not rehearsal_examples:
-            return fail("rehearsal requested but the verified pool is "
-                        "empty — cannot rehearse behavior the frozen "
-                        "model does not have")
-        print(f"rehearsal: {len(rehearsal_examples)} verified pairs, "
-              f"fraction {args.rehearsal_fraction} of microbatches")
+            cand = [{"prompt": str(r["prompt"]),
+                     "response": str(r["expected"])}
+                    for r in rows
+                    if r["split"] in ("train", "validation")
+                    and r["family"] not in trained_families]
+        rehearsal_examples, rehearsal_rejected, _ = \
+            frozen_correct(cand)
+        if args.rehearsal_fraction > 0 and not rehearsal_examples:
+            return fail(
+                "rehearsal requested but the verified pool is empty — "
+                "cannot rehearse behavior the frozen model does not "
+                "have outside the trained families")
+        if args.rehearsal_fraction > 0:
+            print(f"rehearsal: {len(rehearsal_examples)} verified pairs "
+                  f"({rehearsal_rejected} rejected) outside trained "
+                  f"families, fraction {args.rehearsal_fraction} of "
+                  "microbatches")
+
+    # P3 KL reference set (V4-02): verified {prompt,response} pairs are
+    # teacher-forced so the penalty constrains response continuations.
+    # --kl-corpus rows pass the same frozen-correct membership check;
+    # --kl-prompts are handed to the trainer, which derives the FROZEN
+    # model's own greedy continuations as the reference.
+    kl_examples = None
+    if args.kl_weight > 0 and args.kl_corpus:
+        cand = [{"prompt": str(r["prompt"]),
+                 "response": str(r.get("response",
+                                       r.get("expected", "")))}
+                for r in (json.loads(ln) for ln in
+                          (ROOT / args.kl_corpus)
+                          .read_text().splitlines() if ln.strip())]
+        kl_examples, kl_rejected, _ = frozen_correct(cand)
+        if not kl_examples:
+            return fail("kl-corpus supplied but no pair survived "
+                        "frozen-correct verification")
+        print(f"kl corpus: {len(kl_examples)} verified pairs "
+              f"({kl_rejected} rejected)")
+
+    # The frozen pass is done — rehearsal and KL membership are settled.
+    del frozen
+    import gc
+    gc.collect()
 
     model = load_causal_lm(spec, purpose="research")
     adapter_dir = staging / "adapter"
@@ -399,7 +513,7 @@ def main() -> int:
             output_dir=adapter_dir, spec=train_spec,
             prompt_contract=contract,
             rehearsal_examples=rehearsal_examples,
-            kl_prompts=kl_prompts)
+            kl_prompts=kl_prompts, kl_examples=kl_examples)
     except Exception as exc:                       # noqa: BLE001
         return fail(f"training raised {type(exc).__name__}: {exc}")
     train_secs = time.time() - t0
@@ -484,6 +598,16 @@ def main() -> int:
                                "pad_token_id": tokenizer.eos_token_id,
                                "stop_on_eos": bool(contract.output.stop_on_eos),
                                "source": "contract.output.max_new_tokens"},
+        "rehearsal_pool": {
+            "excluded_trained_families": sorted(trained_families),
+            "verified_pairs": len(rehearsal_examples or []),
+            "rejected_by_frozen_check": rehearsal_rejected,
+            "custom_corpus": args.rehearsal_corpus,
+            "membership_check": "frozen-model strict-oracle regeneration"},
+        "kl_reference": {
+            "kl_examples": len(kl_examples or []),
+            "kl_prompts": len(kl_prompts or []),
+            "scope": "response_continuations"},
     }
     (staging / "METRICS.json").write_text(
         json.dumps(metrics, indent=2, sort_keys=True) + "\n")

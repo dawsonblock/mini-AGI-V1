@@ -1,3 +1,128 @@
+# v4.0.0 — Verified Capability Acquisition (Campaign 3B repair)
+
+Independent-audit repair and upgrade release on the v16.4.10 codebase
+lineage (`minagi.__version__` is unchanged — v4.0.0 is the release
+version). The theme is measurement truth: every defect closed below
+was one that could make an experiment report a capability result the
+evidence did not support. **No claim of recursive self-improvement is
+made; the executed verification run produced an honestly reported null
+result on held-out generalization** (details below and in
+`DEFECT_REGISTER_V4.json`).
+
+## Repaired defects (P0)
+
+- **V4-01 declarative scoring leak.** `equals`, `one_of`, and
+  `json_field_equals` routed through the casefold oracle —
+  wrong-case answers scored correct. `evaluators.py` now centralizes
+  versioned match semantics: strict by default, `match:"normalized"`
+  only when a verify spec explicitly declares it, unknown semantics
+  fail closed (`DECLARATIVE_EVALUATOR_VERSION=declarative-evaluator-v2`).
+  The legacy `exact_match` oracle is retained for provenance only.
+- **V4-02 KL constrained the wrong tokens.** `_frozen_kl` measured
+  positions predicting *prompt* tokens, not the response continuations
+  it exists to protect. Replaced by response-aware teacher-forced KL:
+  verified `{prompt,response}` pairs (or frozen-model greedy
+  continuations for bare `kl_prompts`), causal `logits[:, :-1]` vs
+  `labels[:, 1:]` alignment, response-only mask, float32 log-softmax,
+  adapter-disabled reference whose weights digest is receipt-bound.
+- **V4-03 rehearsal corpus leaked the trained capability.** The
+  default pool drew frozen-correct rows from the same families under
+  training; custom corpora skipped verification. Rehearsal candidates
+  now must be frozen-verified-correct rows from families NOT under
+  training; `--rehearsal-corpus` rows pass the identical check; an
+  empty verified pool fails the run; digests and rejection counts are
+  bound into the run record.
+- **V4-05 broken campaign configs + missing splits.** Both campaign
+  configs pointed at a corpus that did not exist (v166 plans refused
+  empty holdout digests on top of that); the validation partition was
+  bound but never evaluated; no compositional split existed.
+  `scripts/gen_campaign3d.py` generates the sealed 413-row corpus +
+  64-row holdout (`configs/campaign3b_tasks.jsonl`,
+  `configs/holdout/`); `DatasetPartitionSetV3` binds the compositional
+  split; runner + qualifier evaluate and rescore validation (split B)
+  and compositional (split E) blocks.
+
+## Repaired defects (P1)
+
+- **V4-04** run-directory collision detection moved before
+  tokenizer/model load; staging is reserved up front; publish stays
+  atomic; failed runs commit `FAILED` state.
+- **V4-06** `run_colab_campaign` and `run_sealed_confirmation` route
+  per-row scoring through `score_row` — verify specs can no longer be
+  bypassed by a direct oracle call.
+- **V4-07** `positive_control_report` recomputes under
+  `exact_match_strict` (the metric of record).
+- **V4-08** missing authority keys now force the qualification
+  decision to `INVALID_EVIDENCE` instead of leaving a `QUALIFIED`
+  verdict on an unsigned record.
+- **V4-09** `assert_disjoint` now checks every partition pair (train
+  could previously overlap retention/security silently).
+- **V4-10** the declared primary comparison (L7−L5b) is now an actual
+  gate when both arms are in the plan — mean delta plus
+  multiplicity-adjusted cluster CI, not just a reported number.
+- **V4-12** `n_comparisons_preregistered` is consumed: family-cluster
+  and primary-comparison CIs are Bonferroni-adjusted and both alphas
+  are recorded.
+- **V4-15** `experiment_matrix.py` audits completeness (seeds × arms ×
+  cells) and consistency (model/tokenizer/evaluator/dataset digests);
+  wired into the qualifier as `matrix_audit`.
+
+## New mechanisms
+
+- `capability_controller.py` + `scripts/capability_control.py`:
+  evidence-driven failure diagnosis (10 hypothesis categories),
+  cost- and history-aware intervention selection, anti-repeat refusal
+  for previously failed interventions, append-only intervention
+  history, explicit `no_intervention` and `candidate_controlled`
+  markers.
+- `verified_routing.py`: `VerifiedAdapterRouter` — qualified-adapter
+  manifests bind adapter/model/scorer/evidence digests and declared
+  families; routing enforces eligibility + OOD abstention to frozen,
+  rolling-health suspension, revocation and snapshot rollback; every
+  decision is a structured event.
+- `train_family_adapters` (parameter-isolated per-family adapters) +
+  `scripts/capability_matrix.py` executing the strategy matrix
+  {frozen, fixed, rehearsal, kl, both, routed-family, skill-memory}
+  over one verified pipeline.
+- `ExperimentProtocolV2`: binds rehearsal/KL levers, corpus digests,
+  primary comparison, comparison count, compositional minimum, and
+  baseline-evaluability minimum into the signed protocol; V1 schema
+  untouched so executed-campaign digests stay valid.
+- `scripts/requalify_executed_campaign.py` + `results/REQUALIFICATION_STATUS.md`:
+  byte-exact commit verification + strict rescore of all 92 committed
+  positive-control runs — 12 VERIFIED (strict-era c3b3), 80
+  INCONSISTENT (v1-casefold-era reported metrics, now superseded).
+- `scripts/probe_stale_gating.py`: baseline-evaluability probe (F9);
+  the frozen model produced non-empty output on 4236/4236 committed
+  hidden predictions, so the executed evidence is unaffected.
+
+## Executed verification
+
+- Real end-to-end MPS run `results/campaign3b2/runs/v40-verify-s0`
+  through the repaired pipeline: fit gate 1.000 PASS; hidden
+  frozen 0.333 → adapted 0.333 (**null result, reported as such**);
+  1 frozen-correct row destroyed, 1 gained; 60 response-scope KL
+  evaluations (mean ≈ 0.0092); rehearsal drew exactly 2 verified
+  outside-family pairs and rejected 30.
+- Full Python suite: see `TEST_RESULTS.md`.
+
+## Migration notes
+
+- Corpus schemas are additive (`DatasetPartitionSetV3`,
+  `ExperimentProtocolV2`); V1/V2 digests are unchanged and remain
+  verifiable — opt into v2 via `protocol_version: v2` in the campaign
+  config.
+- Verify specs that relied on implicit case-insensitive matching must
+  declare `"match": "normalized"` explicitly; strict is the default.
+- `train_lora` accepts `kl_examples` (verified pairs, preferred),
+  `kl_prompts` (frozen continuations derived automatically), and
+  `rehearsal_examples`; `kl_weight > 0` with no reference set fails
+  closed.
+- Historical campaign-3b2 reported accuracies predate the strict
+  oracle: treat them as superseded per
+  `results/REQUALIFICATION_STATUS.md`; c3b3-era runs are
+  strict-verified.
+
 # v16.4.10 — Containment and Authority Closure
 
 Closes the independent audit's second-round containment and broker-

@@ -21,7 +21,7 @@ from minagi.platforms.cuda.peft_trainer import LoraTrainSpec, train_lora
 from minagi.v161.dataset_manifest import DatasetMember, DatasetMembershipManifest, DatasetPartitionSet
 from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
 from minagi.v161.evaluators import (exact_match_strict, retention_score,
-                                    security_regression)
+                                    score_row, security_regression)
 from minagi.v161.campaign_plan import ColabCampaignPlanV161
 from minagi.v161.executed_run import ExecutedRunReceiptV161
 from minagi.v161.runtime_closure3 import sha256_path
@@ -57,7 +57,7 @@ def evaluate(model,tokenizer,rows,max_new_tokens,scorer):
     scores=[]; outputs=[]
     for row in rows:
         pred=generate(model,tokenizer,str(row["prompt"]),max_new_tokens)
-        score=float(scorer(pred,str(row["expected"])))
+        score=float(score_row(row,pred,scorer))
         scores.append(score); outputs.append({"id":row["id"],"prediction":pred,"expected":row["expected"],"score":score})
     return (sum(scores)/len(scores) if scores else 0.0),outputs
 

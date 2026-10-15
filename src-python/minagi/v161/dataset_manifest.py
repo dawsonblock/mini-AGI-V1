@@ -79,8 +79,18 @@ class DatasetPartitionSet:
                 fam = part.family_ids & self.hidden.family_ids
                 if fam:
                     raise PermissionError(f"hidden task-family leakage from {name}: {sorted(fam)[:5]}")
-        if self.train.sample_ids & self.validation.sample_ids:
-            raise PermissionError("train/validation sample overlap")
+        # V4-09: every evaluation partition must also be sample-disjoint
+        # from every other non-hidden partition — a retention/security
+        # row leaking into train (or a validation row used for tuning)
+        # silently inflates the corresponding measurement.
+        others = [(n, p) for n, p in named if n != "hidden"]
+        for i, (n1, p1) in enumerate(others):
+            for n2, p2 in others[i + 1:]:
+                overlap = p1.sample_ids & p2.sample_ids
+                if overlap:
+                    raise PermissionError(
+                        f"partition sample leakage {n1}/{n2}: "
+                        f"{sorted(overlap)[:5]}")
 
     def proof(self) -> dict:
         self.assert_disjoint()
@@ -134,4 +144,51 @@ class DatasetPartitionSetV2(DatasetPartitionSet):
         p["schema"] = "mini-agi-v16.6-disjointness-proof-v1"
         p["final_holdout_digest"] = (self.final_holdout.digest
                                     if self.final_holdout else None)
+        return p
+
+
+@dataclass(frozen=True)
+class DatasetPartitionSetV3(DatasetPartitionSetV2):
+    """v4.0 partition set — adds the COMPOSITIONAL holdout (split E).
+
+    Compositional rows combine operations learned from TRAINED families
+    on unseen inputs, so they may share families with train/validation
+    but must be sample-disjoint from every other partition and
+    family-disjoint from hidden/final_holdout (the same independence
+    guarantee hidden carries).
+
+    NEW schema — V1/V2 partition digests used by executed campaigns stay
+    byte-stable.
+    """
+    compositional: DatasetMembershipManifest | None = None
+    schema: str = "mini-agi-v4.0-dataset-partition-set-v1"
+
+    def assert_disjoint(self) -> None:
+        super().assert_disjoint()
+        if self.compositional is None:
+            return
+        for name, part in (("train", self.train),
+                           ("validation", self.validation),
+                           ("hidden", self.hidden),
+                           ("retention", self.retention),
+                           ("security", self.security),
+                           ("final_holdout", self.final_holdout)):
+            if part is None:
+                continue
+            if part.sample_ids & self.compositional.sample_ids:
+                raise PermissionError(
+                    f"compositional sample leakage from {name}")
+        for name, part in (("hidden", self.hidden),
+                           ("final_holdout", self.final_holdout)):
+            if part is None:
+                continue
+            if part.family_ids & self.compositional.family_ids:
+                raise PermissionError(
+                    f"compositional family leakage from {name}")
+
+    def proof(self) -> dict:
+        p = super().proof()
+        p["schema"] = "mini-agi-v4.0-disjointness-proof-v1"
+        p["compositional_digest"] = (self.compositional.digest
+                                    if self.compositional else None)
         return p

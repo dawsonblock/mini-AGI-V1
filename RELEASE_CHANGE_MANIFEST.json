@@ -1,270 +1,388 @@
 {
-  "audit_mapping": {
-    "issue_register": "docs/security/ISSUE_REGISTER_V1648.md",
-    "repair_report": "docs/security/V16_4_8_REPAIR_REPORT.md",
-    "threat_model": "docs/security/WORKER_THREAT_MODEL.md"
+ "audit_mapping": {
+  "issue_register": "docs/security/ISSUE_REGISTER_V1648.md",
+  "repair_report": "docs/security/V16_4_8_REPAIR_REPORT.md",
+  "threat_model": "docs/security/WORKER_THREAT_MODEL.md"
+ },
+ "base_version": "16.4.10",
+ "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.10 + Campaign 3B/3B.3 repairs (all prior entries remain in effect; this manifest ADDS the v4.0.0 verified-capability-acquisition repairs and removes no control)",
+ "evidence": {
+  "governed_safety": "ENFORCED on the executed run: 0 undefined mandatory categories; 2 violations per adapted arm (frozen model obeys an embedded override and discloses the protected canary \u2014 a baseline property, not an adaptation regression). Suite digest sha256:70bc2a29...",
+  "native_ctest": "28/28 PASS \u2014 macOS CPU build (QW3_ENABLE_CUDA=OFF), 0 failed, 0 skipped",
+  "positive_control": "EXECUTED, REFUSED. 6 of 7 readiness gates pass. Corpus digest sha256:fe12aec4..., plan digest sha256:4830f2a1.... L6 hidden 0.167, L7 0.083, NC 0.250; frozen 0.417 UNDER THE SUPERSEDED v1 CASEFOLD ORACLE. Strict rescore (exact-match-v2): frozen 0.333, L5b 0.417 (net +1 row, sign-test p=1.0) \u2014 see CAMPAIGN3B_RESCORE_REPORT.md",
+  "python_tests": "pre-3B.3 baseline: 1244/18/0; 3B.3 final count in TEST_RESULTS.md (macOS dev, Python 3.12.0, torch 2.10.0)",
+  "runtime_security_surface": "unchanged \u2014 git diff over authority.py, runtime_admission.py, trusted_launcher.py, execution_sandbox.py, runtime_closure3.py, artifact_closure.py, experiment_budget.py is empty",
+  "sealed_confirmation": "P5 production attempt EXECUTED, NOT_QUALIFIED (P5_CONFIRMATION_ATTEMPT.json): refused at eligibility \u2014 campaign record is REFUSED; same-UID custody (uid 501 owns sealed data and research storage) cannot establish independent isolation",
+  "strict_rescore": "RD-18 fixed: 1302/9419 scored rows flip under exact-match-v2; pooled frozen hidden 0.411->0.297, adapted 0.311->0.172; every retained prediction carries a RESCORE-STRICT.json overlay; 80 runs rescored",
+  "v4_audit_repairs": "DEFECT_REGISTER_V4.json: 19 defects audited against source, all CLOSED/CLOSED-E. P0s: declarative casefold leak (V4-01), prompt-scope KL (V4-02), same-family rehearsal leak (V4-03), broken 3B/3C configs + missing compositional split (V4-05). Executed MPS run v40-verify-s0: fit gate 1.000 PASS, hidden frozen 0.333 -> adapted 0.333 (honest null), 60 response-scope KL evaluations, 2/30 rehearsal verified/rejected.",
+  "v4_historical_rescore": "results/REQUALIFICATION_STATUS.md: all 92 committed positive-control runs byte-verified + strict-rescored: 12 VERIFIED (c3b3 strict era), 80 INCONSISTENT (v1-casefold-era reported metrics superseded)."
+ },
+ "file_changes": [
+  {
+   "change": "new: versioned prompt + output contract (SCI-301/303)",
+   "path": "src-python/minagi/v161/prompt_contract.py"
   },
-  "base_version": "16.4.10",
-  "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.10 (SEC-901..906, VAL-901/902, REL-901 remain in effect; this manifest ADDS the Campaign 3B scientific repairs and removes no runtime control)",
-  "evidence": {
-    "governed_safety": "ENFORCED on the executed run: 0 undefined mandatory categories; 2 violations per adapted arm (frozen model obeys an embedded override and discloses the protected canary — a baseline property, not an adaptation regression). Suite digest sha256:70bc2a29...",
-    "native_ctest": "28/28 PASS — macOS CPU build (QW3_ENABLE_CUDA=OFF), 0 failed, 0 skipped",
-    "positive_control": "EXECUTED, REFUSED. 6 of 7 readiness gates pass. Corpus digest sha256:fe12aec4..., plan digest sha256:4830f2a1.... L6 hidden 0.167, L7 0.083, NC 0.250; frozen 0.417 UNDER THE SUPERSEDED v1 CASEFOLD ORACLE. Strict rescore (exact-match-v2): frozen 0.333, L5b 0.417 (net +1 row, sign-test p=1.0) — see CAMPAIGN3B_RESCORE_REPORT.md",
-    "python_tests": "pre-3B.3 baseline: 1244/18/0; 3B.3 final count in TEST_RESULTS.md (macOS dev, Python 3.12.0, torch 2.10.0)",
-    "runtime_security_surface": "unchanged — git diff over authority.py, runtime_admission.py, trusted_launcher.py, execution_sandbox.py, runtime_closure3.py, artifact_closure.py, experiment_budget.py is empty",
-    "sealed_confirmation": "P5 production attempt EXECUTED, NOT_QUALIFIED (P5_CONFIRMATION_ATTEMPT.json): refused at eligibility — campaign record is REFUSED; same-UID custody (uid 501 owns sealed data and research storage) cannot establish independent isolation",
-    "strict_rescore": "RD-18 fixed: 1302/9419 scored rows flip under exact-match-v2; pooled frozen hidden 0.411->0.297, adapted 0.311->0.172; every retained prediction carries a RESCORE-STRICT.json overlay; 80 runs rescored"
+  {
+   "change": "new: governed safety & retention suite (SCI-306)",
+   "path": "src-python/minagi/v161/safety_regression.py"
   },
-  "file_changes": [
-    {
-      "change": "new: versioned prompt + output contract (SCI-301/303)",
-      "path": "src-python/minagi/v161/prompt_contract.py"
-    },
-    {
-      "change": "new: governed safety & retention suite (SCI-306)",
-      "path": "src-python/minagi/v161/safety_regression.py"
-    },
-    {
-      "change": "new: evaluator-sealed confirmation executor (SCI-307/308)",
-      "path": "scripts/validation/run_sealed_confirmation.py"
-    },
-    {
-      "change": "OracleVerifiedReplayArm (L5b), matched L7 context (SCI-302)",
-      "path": "src-python/minagi/v161/arms.py"
-    },
-    {
-      "change": "NOT_ESTIMABLE undefined metrics, family-aware analysis (SCI-305/309)",
-      "path": "src-python/minagi/v161/stats.py"
-    },
-    {
-      "change": "contract-rendered supervision + readiness measurements (SCI-301/310)",
-      "path": "src-python/minagi/platforms/cuda/peft_trainer.py"
-    },
-    {
-      "change": "generation/scoring through the contract, governed safety rollup",
-      "path": "scripts/run_campaign1.py"
-    },
-    {
-      "change": "independent governed gate recomputation (gate reasons 17 -> 19)",
-      "path": "scripts/validation/qualify_campaign1.py"
-    },
-    {
-      "change": "governed probes + delayed-retention probes in the corpus",
-      "path": "scripts/generate_positive_control.py"
-    },
-    {
-      "change": "new: frozen output-contract calibration on development rows",
-      "path": "scripts/calibrate_generation.py"
-    },
-    {
-      "change": "new: Step 13 readiness gates over the diagnostic",
-      "path": "scripts/positive_control_report.py"
-    },
-    {
-      "change": "adds --no-sign for explicitly unsigned development artifacts",
-      "path": "scripts/validation/reissue_release.py"
-    },
-    {
-      "change": "new: preregistered diagnostic campaign (sealed holdout bound)",
-      "path": "configs/campaign3b_positive_control.yaml"
-    },
-    {
-      "change": "new: positive-control corpus (80 rows)",
-      "path": "configs/positive_control_tasks.jsonl"
-    },
-    {
-      "change": "new: token-level parity and boundary refusal",
-      "path": "tests-python/v161/test_campaign_prompt_parity.py"
-    },
-    {
-      "change": "new: Unicode/empty/punctuation/truncation/multi-turn boundaries",
-      "path": "tests-python/v161/test_campaign_answer_boundaries.py"
-    },
-    {
-      "change": "new: EOS stop and bounded generation",
-      "path": "tests-python/v161/test_campaign_eos_behavior.py"
-    },
-    {
-      "change": "new: strict vs diagnostic scoring separation",
-      "path": "tests-python/v161/test_campaign_output_scoring.py"
-    },
-    {
-      "change": "new: verified replay operates",
-      "path": "tests-python/v161/test_replay_nonempty.py"
-    },
-    {
-      "change": "new: provenance and out-of-split refusal",
-      "path": "tests-python/v161/test_replay_provenance.py"
-    },
-    {
-      "change": "new: empty denominator is NOT_ESTIMABLE",
-      "path": "tests-python/v161/test_false_activation_undefined.py"
-    },
-    {
-      "change": "new: family-aware uncertainty",
-      "path": "tests-python/v161/test_family_cluster_statistics.py"
-    },
-    {
-      "change": "new: positive control + receipt readiness measurements",
-      "path": "tests-python/v161/test_positive_control_learning.py"
-    },
-    {
-      "change": "new: sealed confirmation on synthetic fixtures",
-      "path": "tests-python/v161/test_sealed_confirmation_execution.py"
-    },
-    {
-      "change": "new: sealed-label denial and sealed-lane governed parity",
-      "path": "tests-python/v161/test_confirmation_access_denial.py"
-    },
-    {
-      "change": "new: governed suite properties and gate",
-      "path": "tests-python/v161/test_safety_regression_suite.py"
-    },
-    {
-      "change": "new: end-to-end enforcement through the real qualifier",
-      "path": "tests-python/v161/test_governed_safety_enforcement.py"
-    },
-    {
-      "change": "new: dependency-ordered root cause analysis",
-      "path": "CAMPAIGN3A_ROOT_CAUSE_ANALYSIS.md"
-    },
-    {
-      "change": "new: repair report",
-      "path": "CAMPAIGN3B_REPAIR_REPORT.md"
-    },
-    {
-      "change": "new: contract specification",
-      "path": "PROMPT_CONTRACT_SPEC.md"
-    },
-    {
-      "change": "new: replay validation",
-      "path": "REPLAY_BASELINE_VALIDATION.md"
-    },
-    {
-      "change": "new: executed diagnostic report",
-      "path": "LEARNABILITY_TEST_REPORT.md"
-    },
-    {
-      "change": "new: scoring and statistics report",
-      "path": "SCORING_AND_STATISTICS_REPORT.md"
-    },
-    {
-      "change": "new: governed safety report",
-      "path": "SAFETY_AND_RETENTION_REPORT.md"
-    },
-    {
-      "change": "new: confirmation protocol",
-      "path": "SEALED_CONFIRMATION_PROTOCOL.md"
-    },
-    {
-      "change": "new: runtime integration report",
-      "path": "RUNTIME_INTEGRATION_REPORT.md"
-    },
-    {
-      "change": "new: executed test results",
-      "path": "TEST_RESULTS.md"
-    },
-    {
-      "change": "new: remaining defects register",
-      "path": "REMAINING_DEFECTS.md"
-    },
-    {
-      "change": "3B.3: strict exact-match-v2 oracle; v1 retained for provenance only",
-      "path": "src-python/minagi/v161/evaluators.py"
-    },
-    {
-      "change": "3B.3: rehearsal-in-gradients + frozen-reference KL preservation (P2/P3), receipt binds corpus+reference digests",
-      "path": "src-python/minagi/platforms/cuda/peft_trainer.py"
-    },
-    {
-      "change": "3B.3: uncertainty-aware decision taxonomy — CONFOUNDED/INCONCLUSIVE never become REFUTED",
-      "path": "scripts/analysis/intervention_selection.py"
-    },
-    {
-      "change": "3B.3: strict rescore of all retained predictions",
-      "path": "scripts/analysis/rescore_strict.py"
-    },
-    {
-      "change": "3B.3: matched multi-seed sweep driver+aggregator (P4)",
-      "path": "scripts/analysis/campaign3b3_multiseed.py"
-    },
-    {
-      "change": "3B.3: production-mode confirmation attempt, fail-closed (P5)",
-      "path": "scripts/validation/attempt_production_confirmation.py"
-    },
-    {
-      "change": "3B.3: preservation prompt set for the KL anchor",
-      "path": "configs/preservation_prompts.txt"
-    },
-    {
-      "change": "3B.3: decision-state taxonomy pinned per state",
-      "path": "tests-python/v161/test_intervention_states.py"
-    },
-    {
-      "change": "3B.3: rehearsal/KL machinery pinned on a local model",
-      "path": "tests-python/v161/test_campaign3b3_preservation.py"
-    },
-    {
-      "change": "3B.3: rescore report — corrected baselines",
-      "path": "CAMPAIGN3B_RESCORE_REPORT.md"
-    },
-    {
-      "change": "3B.3: repair report for the 3B.2 series",
-      "path": "CAMPAIGN3B2_REPAIR_REPORT.md"
-    },
-    {
-      "change": "3B.3: honest learning/generalization statement",
-      "path": "LEARNING_GENERALIZATION_REPORT.md"
-    },
-    {
-      "change": "3B.3: custody model and same-UID limitation",
-      "path": "SEALED_EVALUATOR_CUSTODY.md"
-    },
-    {
-      "change": "3B.3: runtime security status",
-      "path": "RUNTIME_SECURITY_STATUS.md"
-    },
-    {
-      "change": "3B.3: campaign report",
-      "path": "CAMPAIGN3B3_REPORT.md"
-    }
-  ],
-  "release": "mini-AGI-V1-Campaign3B3-Scientific-Calibration",
-  "remaining_defects": {
-    "campaign3a_provenance": "rests on the manifests the 3A archive ships with; no independent attestation available",
-    "gpu": "GPU/CUDA tests NOT RUN on this host (no CUDA device)",
-    "lint": "15 pre-existing F401 findings in src-python/minagi/runtime/*, none in a file this work changed",
-    "linux_isolation": "18 environment-gated tests skipped honestly (NsJail/systemd/cgroup/uid-demotion/RLIMIT_AS); none counted as passing",
-    "reference": "REMAINING_DEFECTS.md",
-    "research_question": "unanswered — the executed diagnostic is REFUSED (fit gate unmet, cross-family transfer negative); single seed, 30 training examples",
-    "sealed_confirmation": "NOT RUN — no independent evaluator custody available",
-    "sealed_delayed_retention": "inherited from the qualified research record by explicit declaration, not re-measured on the sealed lane",
-    "signing": "envelope signed with the repository's existing release key; not an independently witnessed third-party attestation"
+  {
+   "change": "new: evaluator-sealed confirmation executor (SCI-307/308)",
+   "path": "scripts/validation/run_sealed_confirmation.py"
   },
-  "repairs": {
-    "SCI-301": "shared prompt/tokenization contract; training_input_ids[:prompt_length] == inference_prompt_input_ids asserted per example; boundary merges refused instead of concatenating independently tokenized strings",
-    "SCI-302": "OracleVerifiedReplayArm (L5b): train-only, provenance-bound replay records; hidden/validation/holdout labels refused and never persisted; L5a preserved and reported INACTIVE when empty (Campaign 3A admitted zero traces across ten seeds)",
-    "SCI-303": "frozen answer-only output contract bound by digest into signed metrics and the training receipt; strict exact match primary; correct-first-line, answer-prefix, format validity, generation length and finish reason recorded as diagnostics only; max-token truncation detected explicitly",
-    "SCI-305": "false_activation_rate conditions on the baseline-correct population; an empty denominator returns rate=null with status NOT_ESTIMABLE and the qualifier refuses, instead of reporting 0.0 for an unmeasurable safety claim",
-    "SCI-306": "governed safety and retention regression suite: eight mandatory categories with allowlisted declarative predicates; a category with no scorable evidence is UNDEFINED and blocks; a single violation blocks (binary safety property); the literal-marker evaluator is retained and labelled a smoke test; the qualifier recomputes the rollup from persisted predictions rather than trusting worker-reported metrics",
-    "SCI-307": "sealed confirmation executor: freeze -> eligibility -> artifact verification against signed receipts -> load sealed rows -> real generation -> frozen scoring -> family-level uncertainty, retention and safety -> signed QUALIFIED/REFUSED -> append-only ledger. A dataset digest alone is never treated as a completed confirmation",
-    "SCI-308": "research-side denial of sealed confirmation data: MINAGI_RESEARCH_WORKER refuses load_sealed before any filesystem access; a sealed set under the research storage is refused; tests prove the record and ledger carry no sealed content",
-    "SCI-309": "family-aware uncertainty: cluster bootstrap over task families, leave-one-family-out sensitivity, worst-family degradation and positive-family counts, so repeated seeds over the same templates are not treated as independent evidence",
-    "SCI-310": "training receipt readiness measurements: supervised-token counts, adapter weight delta (L2 and relative) with changed-parameter count, train seconds and peak accelerator bytes — a run whose weights never moved is now visible as a numerical failure rather than a learning result",
-    "SCI-311": "delayed-retention probes generated for the positive-control corpus: without them the delayed-retention metric was never computed and the campaign could never qualify"
+  {
+   "change": "OracleVerifiedReplayArm (L5b), matched L7 context (SCI-302)",
+   "path": "src-python/minagi/v161/arms.py"
   },
-  "schema": "mini-agi-v16.6-campaign3b-change-manifest-v1",
-  "signing_status": {
-    "attestation_public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
-    "attestation_reconciled": "manifest_sha256 + reissued_utc updated and a reissue_history entry appended (56 entries), matching the repository's established envelope-reissue workflow",
-    "key": "~/.config/miniagi/release-ed25519.pem (release machine, outside the repository)",
-    "limitation": "The signature establishes that this envelope was produced by the holder of the release key. It is a development-machine key, not an independently witnessed third-party attestation, and it says nothing about the correctness of the scientific claims in this package.",
-    "manifest_sha256": "76356dd02e6ebc21e836ca16adf889d962ff0a1c24fb714e069dc9084a0baa7c",
-    "public_key_pem_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
-    "status": "signed-development-envelope",
-    "verified": "the bundled RELEASE_PUBLIC_KEY.pem hash equals the attestation's pinned public_key_sha256, and the reissue reported the same fingerprint — this is the repository's existing release authority, not a new key"
+  {
+   "change": "NOT_ESTIMABLE undefined metrics, family-aware analysis (SCI-305/309)",
+   "path": "src-python/minagi/v161/stats.py"
   },
-  "source_archive": "mini-AGI-V1-Campaign3B-Full-Scientific-Hardening.zip",
-  "summary": "Campaign 3B scientific repair: shared versioned prompt/tokenization contract proving training/inference token parity; frozen answer-only output contract with strict exact match primary and format/termination diagnostics recorded separately; oracle-verified training replay (L5b) as an operational non-neural baseline with L5a preserved as the honest negative; family-aware statistics with undefined metrics reported as NOT_ESTIMABLE rather than zero; a governed eight-category safety and retention suite with fail-closed promotion gating; and an evaluator-sealed confirmation executor that generates and scores real predictions under frozen rules. The executed positive control is REFUSED (6 of 7 readiness gates pass): the pipeline is mechanically correct and LoRA learns within-family, but it does not fit to the 95% bar and degrades the held-out families. No improvement claim is made. Campaign 3B.3 adds: exact-match-v2 strict oracle rescoring all retained predictions (v1 retained for provenance); an uncertainty-aware intervention selector whose decision taxonomy (RECOMMENDED/ELIGIBLE/INCONCLUSIVE/CONFOUNDED/INSUFFICIENT-EVIDENCE/FAILED-IMPLEMENTATION/REFUTED/HIGH-RISK) is reachable from evidence logic rather than decorative; optimization-time rehearsal and frozen-reference KL preservation in the trainer with receipt-bound corpus digests; a matched 4-condition x 3-seed P4 sweep; and a fail-closed production confirmation attempt (NOT_QUALIFIED on same-UID custody). The scientific verdict remains negative: no adaptation condition beats frozen inference under the strict oracle.",
-  "version": "16.4.10+campaign3b3"
+  {
+   "change": "contract-rendered supervision + readiness measurements (SCI-301/310)",
+   "path": "src-python/minagi/platforms/cuda/peft_trainer.py"
+  },
+  {
+   "change": "generation/scoring through the contract, governed safety rollup",
+   "path": "scripts/run_campaign1.py"
+  },
+  {
+   "change": "independent governed gate recomputation (gate reasons 17 -> 19)",
+   "path": "scripts/validation/qualify_campaign1.py"
+  },
+  {
+   "change": "governed probes + delayed-retention probes in the corpus",
+   "path": "scripts/generate_positive_control.py"
+  },
+  {
+   "change": "new: frozen output-contract calibration on development rows",
+   "path": "scripts/calibrate_generation.py"
+  },
+  {
+   "change": "new: Step 13 readiness gates over the diagnostic",
+   "path": "scripts/positive_control_report.py"
+  },
+  {
+   "change": "adds --no-sign for explicitly unsigned development artifacts",
+   "path": "scripts/validation/reissue_release.py"
+  },
+  {
+   "change": "new: preregistered diagnostic campaign (sealed holdout bound)",
+   "path": "configs/campaign3b_positive_control.yaml"
+  },
+  {
+   "change": "new: positive-control corpus (80 rows)",
+   "path": "configs/positive_control_tasks.jsonl"
+  },
+  {
+   "change": "new: token-level parity and boundary refusal",
+   "path": "tests-python/v161/test_campaign_prompt_parity.py"
+  },
+  {
+   "change": "new: Unicode/empty/punctuation/truncation/multi-turn boundaries",
+   "path": "tests-python/v161/test_campaign_answer_boundaries.py"
+  },
+  {
+   "change": "new: EOS stop and bounded generation",
+   "path": "tests-python/v161/test_campaign_eos_behavior.py"
+  },
+  {
+   "change": "new: strict vs diagnostic scoring separation",
+   "path": "tests-python/v161/test_campaign_output_scoring.py"
+  },
+  {
+   "change": "new: verified replay operates",
+   "path": "tests-python/v161/test_replay_nonempty.py"
+  },
+  {
+   "change": "new: provenance and out-of-split refusal",
+   "path": "tests-python/v161/test_replay_provenance.py"
+  },
+  {
+   "change": "new: empty denominator is NOT_ESTIMABLE",
+   "path": "tests-python/v161/test_false_activation_undefined.py"
+  },
+  {
+   "change": "new: family-aware uncertainty",
+   "path": "tests-python/v161/test_family_cluster_statistics.py"
+  },
+  {
+   "change": "new: positive control + receipt readiness measurements",
+   "path": "tests-python/v161/test_positive_control_learning.py"
+  },
+  {
+   "change": "new: sealed confirmation on synthetic fixtures",
+   "path": "tests-python/v161/test_sealed_confirmation_execution.py"
+  },
+  {
+   "change": "new: sealed-label denial and sealed-lane governed parity",
+   "path": "tests-python/v161/test_confirmation_access_denial.py"
+  },
+  {
+   "change": "new: governed suite properties and gate",
+   "path": "tests-python/v161/test_safety_regression_suite.py"
+  },
+  {
+   "change": "new: end-to-end enforcement through the real qualifier",
+   "path": "tests-python/v161/test_governed_safety_enforcement.py"
+  },
+  {
+   "change": "new: dependency-ordered root cause analysis",
+   "path": "CAMPAIGN3A_ROOT_CAUSE_ANALYSIS.md"
+  },
+  {
+   "change": "new: repair report",
+   "path": "CAMPAIGN3B_REPAIR_REPORT.md"
+  },
+  {
+   "change": "new: contract specification",
+   "path": "PROMPT_CONTRACT_SPEC.md"
+  },
+  {
+   "change": "new: replay validation",
+   "path": "REPLAY_BASELINE_VALIDATION.md"
+  },
+  {
+   "change": "new: executed diagnostic report",
+   "path": "LEARNABILITY_TEST_REPORT.md"
+  },
+  {
+   "change": "new: scoring and statistics report",
+   "path": "SCORING_AND_STATISTICS_REPORT.md"
+  },
+  {
+   "change": "new: governed safety report",
+   "path": "SAFETY_AND_RETENTION_REPORT.md"
+  },
+  {
+   "change": "new: confirmation protocol",
+   "path": "SEALED_CONFIRMATION_PROTOCOL.md"
+  },
+  {
+   "change": "new: runtime integration report",
+   "path": "RUNTIME_INTEGRATION_REPORT.md"
+  },
+  {
+   "change": "new: executed test results",
+   "path": "TEST_RESULTS.md"
+  },
+  {
+   "change": "new: remaining defects register",
+   "path": "REMAINING_DEFECTS.md"
+  },
+  {
+   "change": "3B.3: strict exact-match-v2 oracle; v1 retained for provenance only",
+   "path": "src-python/minagi/v161/evaluators.py"
+  },
+  {
+   "change": "3B.3: rehearsal-in-gradients + frozen-reference KL preservation (P2/P3), receipt binds corpus+reference digests",
+   "path": "src-python/minagi/platforms/cuda/peft_trainer.py"
+  },
+  {
+   "change": "3B.3: uncertainty-aware decision taxonomy \u2014 CONFOUNDED/INCONCLUSIVE never become REFUTED",
+   "path": "scripts/analysis/intervention_selection.py"
+  },
+  {
+   "change": "3B.3: strict rescore of all retained predictions",
+   "path": "scripts/analysis/rescore_strict.py"
+  },
+  {
+   "change": "3B.3: matched multi-seed sweep driver+aggregator (P4)",
+   "path": "scripts/analysis/campaign3b3_multiseed.py"
+  },
+  {
+   "change": "3B.3: production-mode confirmation attempt, fail-closed (P5)",
+   "path": "scripts/validation/attempt_production_confirmation.py"
+  },
+  {
+   "change": "3B.3: preservation prompt set for the KL anchor",
+   "path": "configs/preservation_prompts.txt"
+  },
+  {
+   "change": "3B.3: decision-state taxonomy pinned per state",
+   "path": "tests-python/v161/test_intervention_states.py"
+  },
+  {
+   "change": "3B.3: rehearsal/KL machinery pinned on a local model",
+   "path": "tests-python/v161/test_campaign3b3_preservation.py"
+  },
+  {
+   "change": "3B.3: rescore report \u2014 corrected baselines",
+   "path": "CAMPAIGN3B_RESCORE_REPORT.md"
+  },
+  {
+   "change": "3B.3: repair report for the 3B.2 series",
+   "path": "CAMPAIGN3B2_REPAIR_REPORT.md"
+  },
+  {
+   "change": "3B.3: honest learning/generalization statement",
+   "path": "LEARNING_GENERALIZATION_REPORT.md"
+  },
+  {
+   "change": "3B.3: custody model and same-UID limitation",
+   "path": "SEALED_EVALUATOR_CUSTODY.md"
+  },
+  {
+   "change": "3B.3: runtime security status",
+   "path": "RUNTIME_SECURITY_STATUS.md"
+  },
+  {
+   "change": "3B.3: campaign report",
+   "path": "CAMPAIGN3B3_REPORT.md"
+  },
+  {
+   "change": "v4.0: machine-readable defect register (19 defects, file:line evidence)",
+   "path": "DEFECT_REGISTER_V4.json"
+  },
+  {
+   "change": "v4.0: centralized versioned match semantics; declarative strict-by-default (V4-01)",
+   "path": "src-python/minagi/v161/evaluators.py"
+  },
+  {
+   "change": "v4.0: response-aware teacher-forced KL + verified rehearsal + per-family adapters (V4-02/03/17)",
+   "path": "src-python/minagi/platforms/cuda/peft_trainer.py"
+  },
+  {
+   "change": "v4.0: pairwise disjointness + DatasetPartitionSetV3 compositional split (V4-09/11)",
+   "path": "src-python/minagi/v161/dataset_manifest.py"
+  },
+  {
+   "change": "v4.0: ExperimentProtocolV2 binds preservation levers/corpora/primary comparison (V4-16)",
+   "path": "src-python/minagi/v161/experiment_protocol.py"
+  },
+  {
+   "change": "v4.0: experiment matrix completeness/consistency audit (V4-15)",
+   "path": "src-python/minagi/v161/experiment_matrix.py"
+  },
+  {
+   "change": "v4.0: capability acquisition controller \u2014 diagnosis, selection, cost history (V4-13)",
+   "path": "src-python/minagi/v161/capability_controller.py"
+  },
+  {
+   "change": "v4.0: verified adapter routing \u2014 qualification-bound, OOD abstain, rollback (V4-14)",
+   "path": "src-python/minagi/v161/verified_routing.py"
+  },
+  {
+   "change": "v4.0: early collision refusal + verified rehearsal/KL corpus wiring (V4-03/04)",
+   "path": "scripts/positive_control_fit.py"
+  },
+  {
+   "change": "v4.0: strict-metric report (V4-07)",
+   "path": "scripts/positive_control_report.py"
+  },
+  {
+   "change": "v4.0: validation/compositional blocks + protocol-v2 corpus binding (V4-05/11/16)",
+   "path": "scripts/run_campaign1.py"
+  },
+  {
+   "change": "v4.0: shared score_row dispatch (V4-06)",
+   "path": "scripts/run_colab_campaign.py"
+  },
+  {
+   "change": "v4.0: rescore of new blocks, L7-L5b + Bonferroni + F9 + compositional gates, fail-closed unsigned records (V4-08/10/11/12/19)",
+   "path": "scripts/validation/qualify_campaign1.py"
+  },
+  {
+   "change": "v4.0: shared score_row dispatch (V4-06)",
+   "path": "scripts/validation/run_sealed_confirmation.py"
+  },
+  {
+   "change": "v4.0: fresh disjoint campaign corpus + sealed holdout (V4-05)",
+   "path": "configs/campaign3b_tasks.jsonl"
+  },
+  {
+   "change": "v4.0: sealed holdout rows (digest-bound; worker never opens)",
+   "path": "configs/holdout/campaign3b_holdout.jsonl"
+  },
+  {
+   "change": "v4.0: sealed corpus + protocol v2 opt-in (V4-05)",
+   "path": "configs/campaign3b.yaml"
+  },
+  {
+   "change": "v4.0: sealed corpus + protocol v2 opt-in (V4-05)",
+   "path": "configs/campaign3c.yaml"
+  },
+  {
+   "change": "v4.0: deterministic corpus/holdout generator",
+   "path": "scripts/gen_campaign3d.py"
+  },
+  {
+   "change": "v4.0: strategy comparison matrix executor",
+   "path": "scripts/capability_matrix.py"
+  },
+  {
+   "change": "v4.0: controller CLI (diagnose/select/record)",
+   "path": "scripts/capability_control.py"
+  },
+  {
+   "change": "v4.0: historical-run byte verification + strict rescore tool",
+   "path": "scripts/requalify_executed_campaign.py"
+  },
+  {
+   "change": "v4.0: baseline-evaluability (F9) probe",
+   "path": "scripts/probe_stale_gating.py"
+  },
+  {
+   "change": "v4.0: evaluator semantics regression tests (20)",
+   "path": "tests-python/v161/test_v40_evaluators.py"
+  },
+  {
+   "change": "v4.0: dataset V3/compositional tests",
+   "path": "tests-python/v161/test_v40_dataset_v3.py"
+  },
+  {
+   "change": "v4.0: matrix completeness tests",
+   "path": "tests-python/v161/test_v40_completeness.py"
+  },
+  {
+   "change": "v4.0: controller tests",
+   "path": "tests-python/v161/test_v40_controller.py"
+  },
+  {
+   "change": "v4.0: verified routing tests",
+   "path": "tests-python/v161/test_v40_routing.py"
+  },
+  {
+   "change": "v4.0: KL/protocol/family-adapter tests on tiny model",
+   "path": "tests-python/v161/test_v40_trainer_protocol.py"
+  }
+ ],
+ "release": "mini-AGI-V1-Campaign3B3-Scientific-Calibration",
+ "remaining_defects": {
+  "campaign3a_provenance": "rests on the manifests the 3A archive ships with; no independent attestation available",
+  "gpu": "GPU/CUDA tests NOT RUN on this host (no CUDA device)",
+  "lint": "15 pre-existing F401 findings in src-python/minagi/runtime/*, none in a file this work changed",
+  "linux_isolation": "18 environment-gated tests skipped honestly (NsJail/systemd/cgroup/uid-demotion/RLIMIT_AS); none counted as passing",
+  "reference": "REMAINING_DEFECTS.md",
+  "research_question": "unanswered \u2014 the executed diagnostic is REFUSED (fit gate unmet, cross-family transfer negative); single seed, 30 training examples",
+  "sealed_confirmation": "NOT RUN \u2014 no independent evaluator custody available",
+  "sealed_delayed_retention": "inherited from the qualified research record by explicit declaration, not re-measured on the sealed lane",
+  "signing": "envelope signed with the repository's existing release key; not an independently witnessed third-party attestation"
+ },
+ "repairs": {
+  "SCI-301": "shared prompt/tokenization contract; training_input_ids[:prompt_length] == inference_prompt_input_ids asserted per example; boundary merges refused instead of concatenating independently tokenized strings",
+  "SCI-302": "OracleVerifiedReplayArm (L5b): train-only, provenance-bound replay records; hidden/validation/holdout labels refused and never persisted; L5a preserved and reported INACTIVE when empty (Campaign 3A admitted zero traces across ten seeds)",
+  "SCI-303": "frozen answer-only output contract bound by digest into signed metrics and the training receipt; strict exact match primary; correct-first-line, answer-prefix, format validity, generation length and finish reason recorded as diagnostics only; max-token truncation detected explicitly",
+  "SCI-305": "false_activation_rate conditions on the baseline-correct population; an empty denominator returns rate=null with status NOT_ESTIMABLE and the qualifier refuses, instead of reporting 0.0 for an unmeasurable safety claim",
+  "SCI-306": "governed safety and retention regression suite: eight mandatory categories with allowlisted declarative predicates; a category with no scorable evidence is UNDEFINED and blocks; a single violation blocks (binary safety property); the literal-marker evaluator is retained and labelled a smoke test; the qualifier recomputes the rollup from persisted predictions rather than trusting worker-reported metrics",
+  "SCI-307": "sealed confirmation executor: freeze -> eligibility -> artifact verification against signed receipts -> load sealed rows -> real generation -> frozen scoring -> family-level uncertainty, retention and safety -> signed QUALIFIED/REFUSED -> append-only ledger. A dataset digest alone is never treated as a completed confirmation",
+  "SCI-308": "research-side denial of sealed confirmation data: MINAGI_RESEARCH_WORKER refuses load_sealed before any filesystem access; a sealed set under the research storage is refused; tests prove the record and ledger carry no sealed content",
+  "SCI-309": "family-aware uncertainty: cluster bootstrap over task families, leave-one-family-out sensitivity, worst-family degradation and positive-family counts, so repeated seeds over the same templates are not treated as independent evidence",
+  "SCI-310": "training receipt readiness measurements: supervised-token counts, adapter weight delta (L2 and relative) with changed-parameter count, train seconds and peak accelerator bytes \u2014 a run whose weights never moved is now visible as a numerical failure rather than a learning result",
+  "SCI-311": "delayed-retention probes generated for the positive-control corpus: without them the delayed-retention metric was never computed and the campaign could never qualify"
+ },
+ "schema": "mini-agi-v16.6-campaign3b-change-manifest-v1",
+ "signing_status": {
+  "attestation_public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
+  "attestation_reconciled": "manifest_sha256 + reissued_utc updated and a reissue_history entry appended (56 entries), matching the repository's established envelope-reissue workflow",
+  "key": "~/.config/miniagi/release-ed25519.pem (release machine, outside the repository)",
+  "limitation": "The signature establishes that this envelope was produced by the holder of the release key. It is a development-machine key, not an independently witnessed third-party attestation, and it says nothing about the correctness of the scientific claims in this package.",
+  "manifest_sha256": "76356dd02e6ebc21e836ca16adf889d962ff0a1c24fb714e069dc9084a0baa7c",
+  "public_key_pem_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
+  "status": "signed-development-envelope",
+  "verified": "the bundled RELEASE_PUBLIC_KEY.pem hash equals the attestation's pinned public_key_sha256, and the reissue reported the same fingerprint \u2014 this is the repository's existing release authority, not a new key"
+ },
+ "source_archive": "mini-AGI-V1-Campaign3B-Full-Scientific-Hardening.zip",
+ "summary": "Campaign 3B scientific repair: shared versioned prompt/tokenization contract proving training/inference token parity; frozen answer-only output contract with strict exact match primary and format/termination diagnostics recorded separately; oracle-verified training replay (L5b) as an operational non-neural baseline with L5a preserved as the honest negative; family-aware statistics with undefined metrics reported as NOT_ESTIMABLE rather than zero; a governed eight-category safety and retention suite with fail-closed promotion gating; and an evaluator-sealed confirmation executor that generates and scores real predictions under frozen rules. The executed positive control is REFUSED (6 of 7 readiness gates pass): the pipeline is mechanically correct and LoRA learns within-family, but it does not fit to the 95% bar and degrades the held-out families. No improvement claim is made. Campaign 3B.3 adds: exact-match-v2 strict oracle rescoring all retained predictions (v1 retained for provenance); an uncertainty-aware intervention selector whose decision taxonomy (RECOMMENDED/ELIGIBLE/INCONCLUSIVE/CONFOUNDED/INSUFFICIENT-EVIDENCE/FAILED-IMPLEMENTATION/REFUTED/HIGH-RISK) is reachable from evidence logic rather than decorative; optimization-time rehearsal and frozen-reference KL preservation in the trainer with receipt-bound corpus digests; a matched 4-condition x 3-seed P4 sweep; and a fail-closed production confirmation attempt (NOT_QUALIFIED on same-UID custody). The scientific verdict remains negative: no adaptation condition beats frozen inference under the strict oracle.",
+ "version": "16.4.10+campaign3b3"
 }

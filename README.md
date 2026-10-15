@@ -53,7 +53,7 @@ every release ships a signed manifest verifiable offline.
 
 | Item | State |
 |---|---|
-| Current release | **v16.4.10 — Containment and Authority Closure** (`v16.4.10-containment-and-authority-closure`) · previous: v16.4.9 |
+| Current release | **v4.0.0 — Verified Capability Acquisition** (Campaign 3B audit repair; `minagi` package lineage v16.4.10) · previous: v16.4.10 |
 | Release integrity | ✅ **PASS** — `scripts/verify_release.py`: signed manifest, Ed25519 signature, attestation/version reconciliation |
 | CI | ✅ **green** — lint (ruff · Flake8 · Pylint error-gate), ubuntu + macOS validation, native CMake/CTest, tag-gated release-integrity |
 | Unified Python suite | ✅ **793 passed, 1 skipped** (`tests-python/`) |
@@ -66,6 +66,42 @@ every release ships a signed manifest verifiable offline.
 | Campaign 2 — `campaign2-v164` | ❌ **REFUSE** — ΔFT = +0.01125 (CI excludes zero, below the ≥0.02 floor); security guardrail breached (−0.125 vs −0.10 bound) |
 | Campaign 3A — `campaign3a` | ⏳ **PREREGISTERED + EXECUTING** — halved-optimization-pressure arm, sealed digest-bound holdout, resumable per-seed evidence banking |
 | Validated designation | **v16.2** — the v16.3+ promotion gate required Campaign 2 to qualify; it did not |
+
+## What's new in v4.0.0 — Verified Capability Acquisition
+
+An independent source audit of the Campaign 3B experimental stack found
+(and this release repairs) a class of defects that could make an
+experiment report a capability result the evidence did not support.
+`DEFECT_REGISTER_V4.json` is the machine-readable register; the
+CHANGELOG carries the full repair list.
+
+- **Correctness scoring is honest.** Declarative `equals`/`one_of`/
+  `json_field_equals` leaked through the casefold oracle; matching is
+  now centralized, versioned (`declarative-evaluator-v2`), strict by
+  default, and fails closed on unknown semantics.
+- **KL preservation constrains the right tokens.** The old term
+  measured prompt-position distributions; the new one is response-aware
+  and teacher-forced, with the adapter-disabled frozen reference bound
+  into every receipt.
+- **Rehearsal preserves other capabilities, not the one being trained.**
+  Pool membership is frozen-verified-correct and excludes trained
+  families; rejection counts and digests are recorded.
+- **The experiment matrix refuses to lie.** Completeness/consistency
+  audits, a real L7−L5b primary-comparison gate, Bonferroni-adjusted
+  CIs, and `INVALID_EVIDENCE` for unsigned qualification records.
+- **New machinery, wired in.** `capability_controller` (diagnosis →
+  intervention → cost-aware history), `verified_routing`
+  (qualified-adapter manifests, OOD abstention to frozen, rollback),
+  per-family parameter-isolated adapters, and `scripts/capability_matrix.py`
+  for the strategy comparison surface.
+- **Honest historical accounting.** `results/REQUALIFICATION_STATUS.md`
+  byte-verifies and strict-rescores all 92 committed positive-control
+  runs: 12 VERIFIED, 80 INCONSISTENT under strict semantics
+  (v1-era reported metrics superseded).
+- **Executed end-to-end check** (`results/campaign3b2/runs/v40-verify-s0`):
+  the repaired pipeline fits its training families (gate 1.000 PASS)
+  while honestly reporting **no hidden-set improvement**
+  (0.333 → 0.333) — a null result recorded as a null result.
 
 ## What's new in v16.4.4
 

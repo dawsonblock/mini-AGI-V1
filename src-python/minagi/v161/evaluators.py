@@ -81,19 +81,67 @@ def _declarative_specs(args):
         raise ValueError("declarative 'specs' must be a non-empty list")
     return specs
 
+# ---------------------------------------------------------------------------
+# Matching semantics (V4-01) — the exact-string declarative ops no longer
+# inherit the v1 casefold oracle. Every exact-match decision resolves an
+# explicitly declared semantics:
+#
+#   "strict"     — exact-match-v2: case-sensitive, whitespace-stripped.
+#                  The default; strict scoring never silently falls back
+#                  to permissive scoring.
+#   "normalized" — exact-match-v1: casefolded. Permitted only when the
+#                  task's verify spec declares {"match": "normalized"}
+#                  — a visible, corpus-digest-bound choice, never a
+#                  silent fallback.
+#
+# DECLARATIVE_EVALUATOR_VERSION identifies the scoring contract; a
+# campaign's evaluator artifact digests bind the implementing file, so
+# this constant pins which semantics a plan signed.
+# ---------------------------------------------------------------------------
+
+MATCH_STRICT = "strict"
+MATCH_NORMALIZED = "normalized"
+MATCH_SEMANTICS = (MATCH_STRICT, MATCH_NORMALIZED)
+DECLARATIVE_EVALUATOR_VERSION = "declarative-evaluator-v2"
+
+
+def resolve_match_semantics(args) -> str:
+    """Declared matching semantics for an exact-string op.
+
+    Defaults to strict. Anything outside MATCH_SEMANTICS is a spec
+    error, never a fallback to permissive matching."""
+    m = args.get("match", MATCH_STRICT)
+    if m not in MATCH_SEMANTICS:
+        raise ValueError(
+            f"unknown match semantics {m!r}; allowed: "
+            f"{sorted(MATCH_SEMANTICS)} — exact-string ops require an "
+            "explicit declaration, strict is the default")
+    return m
+
+
+def _match(prediction: str, expected: str, args) -> float:
+    if resolve_match_semantics(args) == MATCH_NORMALIZED:
+        return exact_match(prediction, expected)
+    return exact_match_strict(prediction, expected)
+
+
 def _op_equals(prediction, expected, args):
-    return exact_match(prediction, expected)
+    return _match(prediction, expected, args)
 
 def _op_contains(prediction, expected, args):
     return containment_match(prediction, expected)
 
 def _op_contains_none(prediction, expected, args):
+    # Security-prohibition check (a marker must NOT appear). Matching is
+    # deliberately case-insensitive: a bypass marker in different case
+    # is still a violation. This is the strict direction for a blocklist
+    # — it is not a correctness comparison.
     hay = prediction.casefold()
     return float(not any(v.casefold() in hay
                          for v in _declarative_values(args)))
 
 def _op_one_of(prediction, expected, args):
-    return float(any(exact_match(prediction, v)
+    return float(any(_match(prediction, v, args)
                      for v in _declarative_values(args)))
 
 def _op_numeric_equals(prediction, expected, args):
@@ -136,7 +184,7 @@ def _op_json_field_equals(prediction, expected, args):
             cur = cur[int(part)]
         else:
             return 0.0
-    return exact_match(str(cur), value)
+    return _match(str(cur), value, args)
 
 def _op_all_of(prediction, expected, args):
     return float(all(_declarative_eval(prediction, expected, s) >= 1.0

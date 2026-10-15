@@ -24,12 +24,28 @@ the PROMPT at generation; rehearsal puts them in the GRADIENT, which is
 what counteracts destructive weight updates. Sampled presentations are
 recorded per-source so the receipt binds exactly what was rehearsed.
 
-Frozen-reference KL (P3): when ``kl_weight > 0``, every ``kl_every``-th
-microbatch additionally computes the mean next-token KL divergence
-between the adapter's distribution and the FROZEN BASE distribution
-(adapter disabled — the same weights the frozen eval arm measured) on
-``kl_prompts``, and adds ``kl_weight * KL`` to the update. The
-reference model's parameter digest is bound into the receipt.
+Frozen-reference KL (P3, repaired v4.0): when ``kl_weight > 0``, every
+``kl_every``-th microbatch additionally computes the mean next-token KL
+divergence between the adapter's distribution and the FROZEN BASE
+distribution (adapter disabled — the same weights the frozen eval arm
+measured) and adds ``kl_weight * KL`` to the update.
+
+The KL set is RESPONSE-AWARE and teacher-forced — the earlier
+prompt-only KL anchored the distribution over positions that predict
+prompt tokens and never touched the continuations the preservation term
+exists to protect (defect V4-02). Two supply modes:
+
+  kl_examples  verified {"prompt","response"} pairs — encoded through
+               encode_supervised, prompt positions masked out, KL over
+               the response (continuation) positions only;
+  kl_prompts   bare prompt strings — the FROZEN model's own greedy
+               continuation is generated once at setup and becomes the
+               teacher-forced reference (self-distillation: preserve
+               what the frozen model actually says on those prompts).
+
+Both modes constrain the response-continuation distribution; the
+receipt records which reference source was used, the KL set digest,
+per-position counts, and the reference model's parameter digest.
 
 v16.3.0 (Phase 2.1) — explicit training schedule. Every microbatch
 carries exactly `microbatch_size` examples, every optimizer update
@@ -251,27 +267,45 @@ def _reference_weights_digest(model) -> str:
 
 
 def _frozen_kl(model, kl_encoded, kl_weight, gacc, pad_id):
-    """Mean next-token KL(frozen || adapted) over the KL prompt set.
+    """Mean next-token KL(frozen || adapted) over RESPONSE positions.
+
+    Teacher-forced KL preservation (V4-02): ``kl_encoded`` entries are
+    encode_supervised outputs — input_ids plus labels in which prompt
+    and padding tokens are masked to -100 and only the response
+    (continuation) tokens carry supervision. Causal alignment is the
+    standard LM shift: logits[:, t] predicts token t+1, so the mask is
+    labels[:, 1:] != -100 evaluated over logits[:, :-1]. Prompt and
+    padding positions contribute exactly nothing — the penalty is
+    measured on the answer-generation behavior it exists to preserve.
 
     The reference is the SAME model with the adapter disabled — the
     frozen weights themselves, not a copy — so 'preservation' is
     measured against the exact distribution the frozen arm evaluated.
-    KL is over every predicted position of each rendered prompt; the
-    prompt set is batched into one forward per side, so the KL term
-    costs two forwards per scheduled microbatch rather than 2 x N.
+    The set is batched into one forward per side, so the KL term costs
+    two forwards per scheduled microbatch rather than 2 x N. The
+    log-softmax is computed in float32 for numerical stability under
+    mixed-precision training.
     """
     import torch
     import torch.nn.functional as F
-    seqs = [e["input_ids"] for e in kl_encoded if len(e["input_ids"]) >= 2]
+    seqs = [e for e in kl_encoded
+            if len(e["input_ids"]) >= 2
+            and any(t != LABEL_IGNORE for t in e["labels"])]
     if not seqs:
         return None
-    width = max(len(s) for s in seqs)
-    ids = torch.tensor([s + [pad_id] * (width - len(s)) for s in seqs],
+    width = max(len(e["input_ids"]) for e in seqs)
+    ids = torch.tensor([e["input_ids"] + [pad_id] * (width - len(e["input_ids"]))
+                        for e in seqs],
                        device=next(model.parameters()).device)
-    attn = torch.tensor([[1] * len(s) + [0] * (width - len(s))
-                         for s in seqs], device=ids.device)
-    # position weights: token t is predicted only where t and t+1 are real
-    pos_ok = (attn[:, 1:] * attn[:, :-1]).float()
+    attn = torch.tensor([[1] * len(e["input_ids"]) + [0] * (width - len(e["input_ids"]))
+                         for e in seqs], device=ids.device)
+    lab = torch.tensor([e["labels"] + [LABEL_IGNORE] * (width - len(e["labels"]))
+                        for e in seqs], device=ids.device)
+    # response-token mask, shifted to the predicting positions:
+    # logits[:, t] -> token t+1, so supervise where labels[:, t+1] != -100
+    pos_ok = (lab[:, 1:] != LABEL_IGNORE).float()
+    if float(pos_ok.sum()) == 0.0:
+        return None
     with torch.no_grad():
         if hasattr(model, "disable_adapter"):
             with model.disable_adapter():
@@ -284,10 +318,64 @@ def _frozen_kl(model, kl_encoded, kl_weight, gacc, pad_id):
         ref_logp = F.log_softmax(ref_logits[:, :-1].float(), dim=-1)
     cur_logits = model(input_ids=ids, attention_mask=attn).logits
     cur_logp = F.log_softmax(cur_logits[:, :-1].float(), dim=-1)
-    # KL(ref || cur) per position, weighted to real (non-pad) positions
+    # KL(ref || cur) per position, weighted to response positions only
     kl_pos = (ref_logp.exp() * (ref_logp - cur_logp)).sum(dim=-1)
     kl = (kl_pos * pos_ok).sum() / pos_ok.sum().clamp(min=1.0)
     return kl * kl_weight / gacc
+
+
+def _kl_reference_continuations(model, tokenizer, prompts, contract,
+                                max_length):
+    """Frozen model's own greedy continuations — the self-distillation
+    reference for bare ``kl_prompts``.
+
+    A prompt alone does not define the response distribution to
+    preserve, so the adapter-disabled model generates its greedy answer
+    once under the output contract; that continuation is then
+    teacher-forced through encode_supervised exactly like a verified
+    pair. EOS is handled by the output contract (stop_on_eos); the
+    emitted tokens are decoded and re-encoded so the supervised surface
+    is identical to a verified pair.
+    """
+    import torch
+    pairs = []
+    with torch.inference_mode():
+        if hasattr(model, "disable_adapter"):
+            ctx = model.disable_adapter()
+        else:                                    # pragma: no cover
+            raise RuntimeError(
+                "model exposes no disable_adapter() — cannot "
+                "produce a frozen reference")
+        with ctx:
+            for p in prompts:
+                ids = encode_generation(tokenizer, str(p), contract)
+                device = next(model.parameters()).device
+                batch = {"input_ids": torch.tensor([ids], device=device),
+                         "attention_mask": torch.ones(
+                             (1, len(ids)), dtype=torch.long,
+                             device=device)}
+                out = model.generate(
+                    **batch,
+                    max_new_tokens=int(contract.output.max_new_tokens),
+                    do_sample=False,
+                    pad_token_id=tokenizer.eos_token_id)
+                cont = list(out[0, len(ids):])
+                eos_id = tokenizer.eos_token_id
+                if eos_id is not None and eos_id in cont:
+                    cont = cont[:cont.index(eos_id)]
+                resp = tokenizer.decode(
+                    cont, skip_special_tokens=True).strip()
+                if not resp:
+                    # special-token-only continuations still carry a
+                    # real distribution to preserve — keep the raw
+                    # tokenization surface instead of dropping the row
+                    resp = tokenizer.decode(
+                        cont, skip_special_tokens=False).strip()
+                if not resp:
+                    continue
+                pairs.append({"prompt": str(p), "response": resp,
+                              "reference_source": "frozen_generation"})
+    return pairs
 
 
 def adapter_artifact_digest(adapter_dir) -> str:
@@ -316,7 +404,8 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
                output_dir: str | Path, spec: LoraTrainSpec,
                prompt_contract: PromptContract | None = None,
                rehearsal_examples: Sequence[Mapping] | None = None,
-               kl_prompts: Sequence[str] | None = None):
+               kl_prompts: Sequence[str] | None = None,
+               kl_examples: Sequence[Mapping] | None = None):
     """Train a LoRA adapter and persist it.
 
     `examples` (v165+, structured {prompt,response} masking) takes
@@ -327,8 +416,11 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
 
     `rehearsal_examples` — verified-correct {prompt,response} pairs
     interleaved into the gradient stream on the spec's rehearsal
-    schedule (P2). `kl_prompts` — prompt strings whose next-token
-    distributions anchor the frozen-reference KL term (P3).
+    schedule (P2). `kl_examples` — verified {prompt,response} reference
+    pairs teacher-forced through the frozen-reference KL term;
+    `kl_prompts` — bare prompts whose FROZEN-model greedy continuations
+    are derived at setup and teacher-forced the same way (P3, v4.0:
+    response-aware KL — prompt-position-only KL no longer exists).
     """
     import torch
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
@@ -338,10 +430,11 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
         raise ValueError(
             "rehearsal_fraction > 0 requires rehearsal_examples — "
             "rehearsing nothing is not rehearsal")
-    if spec.kl_weight > 0 and not kl_prompts:
+    if spec.kl_weight > 0 and not kl_prompts and not kl_examples:
         raise ValueError(
-            "kl_weight > 0 requires kl_prompts — a KL term without an "
-            "anchor set measures nothing")
+            "kl_weight > 0 requires kl_examples (verified pairs) or "
+            "kl_prompts (frozen continuations derived at setup) — a KL "
+            "term without a reference set measures nothing")
     if prompt_contract is None:
         prompt_contract = build_prompt_contract(tokenizer,
                                                 DEFAULT_OUTPUT_CONTRACT)
@@ -371,13 +464,47 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
     kl_encoded = None
     reference_digest = None
     kl_prompts_digest = None
+    kl_set_digest = None
+    kl_set_size = 0
+    kl_reference_sources: dict = {}
     rehearsal_corpus_digest = None
     rehearsal_corpus_size = 0
     if spec.kl_weight > 0:
-        kl_prompts_digest = digest([sha256_bytes(p.encode())
-                                    for p in kl_prompts])
-        kl_encoded = [{"input_ids": encode_generation(
-            tokenizer, p, prompt_contract)} for p in kl_prompts]
+        # V4-02: response-aware teacher-forced KL. Verified pairs are
+        # encoded as-is; bare prompts get their reference continuation
+        # from the FROZEN model's own greedy generation (adapter
+        # disabled) — preserve what the base actually says.
+        kl_pairs = [{"prompt": str(e["prompt"]),
+                     "response": str(e["response"]),
+                     "reference_source": str(
+                         e.get("reference_source", "verified_pairs"))}
+                    for e in (kl_examples or [])]
+        if kl_prompts:
+            kl_pairs += _kl_reference_continuations(
+                model, tokenizer, kl_prompts, prompt_contract,
+                spec.max_length)
+        kl_set_digest = digest(
+            [{"prompt": p["prompt"], "response": p["response"]}
+             for p in kl_pairs])
+        kl_reference_sources = {}
+        for p in kl_pairs:
+            kl_reference_sources[p["reference_source"]] = \
+                kl_reference_sources.get(p["reference_source"], 0) + 1
+        kl_encoded = []
+        kl_rejected = 0
+        for p in kl_pairs:
+            try:
+                kl_encoded.append(supervised_tokens(
+                    tokenizer, p["prompt"], p["response"],
+                    spec.max_length, contract=prompt_contract))
+            except ValueError:
+                kl_rejected += 1
+        if not kl_encoded:
+            raise ValueError(
+                "every KL reference pair was rejected — the KL term "
+                "has no measurable response surface")
+        kl_prompts_digest = kl_set_digest
+        kl_set_size = len(kl_encoded)
         reference_digest = _reference_weights_digest(model)
 
     losses, rejected = [], 0
@@ -558,8 +685,16 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
             "n_kl_evaluations": len(kl_trace),
             "kl_term_mean": (sum(kl_trace) / len(kl_trace))
                             if kl_trace else None,
+            # V4-02: the KL set is teacher-forced {prompt,response}
+            # pairs and the divergence is masked to response
+            # (continuation) token positions only.
+            "kl_scope": "response_continuations",
+            "kl_set_digest": kl_set_digest,
+            "kl_set_size": kl_set_size,
+            "kl_reference_sources": kl_reference_sources,
             "kl_prompts_digest": kl_prompts_digest,
             "kl_prompt_count": len(kl_prompts or []),
+            "kl_example_count": len(kl_examples or []),
             # the frozen reference is the base weights with the adapter
             # disabled — its digest binds WHICH frozen model anchored
             # the penalty, satisfying P3's identity-binding requirement
@@ -593,3 +728,55 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
     (outdir / "TRAINING_SPEC.json").write_text(
         json.dumps(asdict(spec), indent=2, sort_keys=True))
     return model, receipt
+
+
+def train_family_adapters(*, model_loader, tokenizer,
+                          family_examples: Mapping[str, Sequence[Mapping]],
+                          output_dir: str | Path, spec: LoraTrainSpec,
+                          prompt_contract: PromptContract | None = None,
+                          on_adapter=None) -> dict[str, dict]:
+    """Train one parameter-isolated adapter per task family (V4-17).
+
+    Each family gets its own adapter directory under ``output_dir``,
+    trained from a FRESH base model supplied by ``model_loader()`` — a
+    fresh load per adapter is required, otherwise successive
+    get_peft_model calls would stack adapters on top of each other and
+    the family artifacts would not be independent. The same spec and
+    prompt contract apply to every adapter, so the only experimental
+    variable is the family the adapter saw.
+
+    ``family_examples`` maps family_id -> [{prompt, response}, ...].
+    ``on_adapter(family, receipt)`` is called after each adapter lands
+    (useful for freeing the returned model between families).
+
+    Returns {family_id: {"adapter_dir", "adapter_digest", "receipt"}} —
+    the manifest a verified router needs to bind adapters to families.
+    """
+    results: dict[str, dict] = {}
+    out_root = Path(output_dir)
+    for family in sorted(family_examples):
+        examples = family_examples[family]
+        if not examples:
+            raise ValueError(f"family {family!r} has no training examples")
+        model = model_loader()
+        adir = out_root / f"adapter-{family}"
+        model, receipt = train_lora(
+            model=model, tokenizer=tokenizer, examples=examples,
+            output_dir=adir, spec=spec, prompt_contract=prompt_contract)
+        results[family] = {
+            "adapter_dir": str(adir),
+            "adapter_digest": receipt["adapter_artifact_digest"],
+            "receipt": receipt}
+        if on_adapter is not None:
+            on_adapter(family, receipt)
+        del model
+    manifest = {"schema": "mini-agi-v4.0-family-adapter-manifest-v1",
+                "families": sorted(results),
+                "train_spec_digest": spec.digest,
+                "adapters": {f: {"dir": r["adapter_dir"],
+                                 "digest": r["adapter_digest"]}
+                             for f, r in results.items()}}
+    out_root.mkdir(parents=True, exist_ok=True)
+    (out_root / "FAMILY_ADAPTERS.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True))
+    return results

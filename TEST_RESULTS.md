@@ -1,4 +1,4 @@
-# Test results — Campaign 3B / 3B.3
+# Test results — v4.0.0 Verified Capability Acquisition
 
 Every count below is from an executed run on this host
 (macOS, Python 3.12.0, torch 2.10.0). No result is fabricated, no
@@ -11,7 +11,7 @@ Command: `python3 -m pytest tests-python -q`
 
 | group | passed | failed | skipped | collected |
 |---|---|---|---|---|
-| `tests-python/v161` | 576 | 0 | 4 | 580 |
+| `tests-python/v161` | 638 | 0 | 4 | 642 |
 | `tests-python/runtime` | 432 | 0 | 17 | 449 |
 | `tests-python/security` | 77 | 0 | 0 | 77 |
 | `tests-python/research` | 41 | 0 | 0 | 41 |
@@ -20,11 +20,45 @@ Command: `python3 -m pytest tests-python -q`
 | `tests-python/apple` | 5 | 0 | 0 | 5 |
 | `tests-python/integration` | 3 | 0 | 0 | 3 |
 | `tests-python` (root modules) | 63 | 0 | 0 | 63 |
-| **total** | **1272** | **0** | **21** | **1293** |
+| **total** | **1334** | **0** | **21** | **1355** |
 
-Campaign 3B added 30 tests; Campaign 3B.3 adds **89 more** in
-`tests-python/v161` (the v161 group grew 481 → 576 passed and carries
-three new honestly-skipped evidence-dependent tests).
+The single observed anomaly during the full run was one transient
+`sqlite3.OperationalError: database or disk is full` in a v14 storage
+test while the host's Data volume was at 100% capacity; the test passes
+in isolation and the count above reflects the clean result. No code
+failure was masked — the flake is disclosed here.
+
+v4.0.0 adds **62 tests** in `tests-python/v161` (the group grew
+576 → 638 passed). Prior campaigns: 3B added 30, 3B.3 added 89.
+
+## New tests in v4.0.0
+
+| file | tests | what they pin |
+|---|---|---|
+| `test_v40_evaluators.py` | 17 | declarative strict-by-default; explicit normalized opt-in; unknown semantics raise; score_row dispatch; malformed predictions |
+| `test_v40_dataset_v3.py` | 6 | compositional split disjointness; V1/V2 digest stability; tightened pairwise checks |
+| `test_v40_completeness.py` | 7 | matrix COMPLETE/INCOMPLETE/INCONSISTENT; identity-digest binding |
+| `test_v40_controller.py` | 10 | diagnosis categories; anti-repeat refusal; changed-condition override; costed records |
+| `test_v40_routing.py` | 12 | qualified-family routing; OOD abstention; model-revision refusal; revoke/reinstate; rollback; decision events |
+| `test_v40_trainer_protocol.py` | 10 | response-scope KL receipts; frozen-continuation derivation; fail-closed KL config; protocol-V2 levers; per-family adapters |
+
+## Executed end-to-end verification (v4.0.0)
+
+Real MPS run `results/campaign3b2/runs/v40-verify-s0` through the
+repaired pipeline (60 steps, rehearsal + response-aware KL active):
+
+| measurement | result |
+|---|---|
+| fit gate | **1.000 PASS** at threshold 0.95 |
+| hidden generalization | frozen 0.333 → adapted 0.333 — **null result, reported as such** |
+| capability destruction | 1/4 frozen-correct broken; 1 gained |
+| KL preservation | 60 evaluations, scope `response_continuations`, mean ≈ 0.0092 |
+| rehearsal | 2 verified outside-family pairs; 30 candidates rejected by frozen check |
+
+# Historical record — Campaign 3B / 3B.3 (pre-v4.0.0)
+
+The v4.0.0 suite counts supersede this section; it is retained as the
+3B/3B.3 provenance record.
 
 ## Native suite
 

@@ -65,7 +65,8 @@ from minagi.v161.arms import (ADAPTER_REPLAY_ID, ARM_IDS,
                               shuffled_label_texts)
 from minagi.v161.dataset_manifest import (DatasetMember,
                                           DatasetMembershipManifest,
-                                          DatasetPartitionSet)
+                                          DatasetPartitionSet,
+                                          DatasetPartitionSetV3)
 from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
 from minagi.v161.evaluators import (containment_match, exact_match_strict,
                                     retention_score, score_row,
@@ -88,7 +89,9 @@ from minagi.v161.evidence_receipt_v3 import (EvidenceReceiptV3,
                                              write_predictions)
 from minagi.v161.executed_run import (ExecutedRunReceiptV162,
                                       load_verified_seed_result)
-from minagi.v161.experiment_protocol import ExperimentProtocolV1
+from minagi.v161.experiment_protocol import (ExperimentProtocolV1,
+                                             ExperimentProtocolV2,
+                                             protocol_from_config)
 from minagi.v161.stats import bootstrap_ci
 from minagi.v161.artifact_closure import tokenizer_artifact_digest
 from minagi.v161.runtime_closure3 import sha256_path
@@ -349,9 +352,13 @@ def main() -> int:
 
     rows = load_rows(ROOT / cfg["dataset"])
     by_split = {s: [r for r in rows if r["split"] == s]
-                for s in ("train", "validation", "hidden", "retention", "security")}
+                for s in ("train", "validation", "hidden", "retention",
+                          "security", "compositional")}
     train, val, hidden = by_split["train"], by_split["validation"], by_split["hidden"]
     retention_rows, security_rows = by_split["retention"], by_split["security"]
+    # v4.0 split E: rows that combine operations the adapter trained on
+    # into novel compositions — unseen inputs, trained operation pairs.
+    compositional_rows = by_split["compositional"]
     # v164: rows with probe=delayed are the seed-end persistence probes.
     # They remain inside the retention partition digest (the qualifier
     # recomputes over the committed corpus); filtering is eval-only.
@@ -360,18 +367,32 @@ def main() -> int:
     # 3B Step 18: the governed safety suite is present exactly when the
     # security partition carries categorised probes.
     governed_probes_present = any(r.get("category") for r in security_rows)
-    parts = DatasetPartitionSet(
-        DatasetMembershipManifest("train", tuple(member(r) for r in train)),
-        DatasetMembershipManifest("validation", tuple(member(r) for r in val)),
-        DatasetMembershipManifest("hidden", tuple(member(r) for r in hidden)),
-        DatasetMembershipManifest("retention", tuple(member(r) for r in retention_rows)),
-        DatasetMembershipManifest("security", tuple(member(r) for r in security_rows)),
-        require_family_disjoint_hidden=bool(cfg.get("require_family_disjoint_hidden", False)))
+    if compositional_rows:
+        # v4.0: a corpus carrying a compositional split uses the V3
+        # partition schema — the split's membership digest is bound into
+        # the signed plan like every other evaluation partition.
+        parts = DatasetPartitionSetV3(
+            DatasetMembershipManifest("train", tuple(member(r) for r in train)),
+            DatasetMembershipManifest("validation", tuple(member(r) for r in val)),
+            DatasetMembershipManifest("hidden", tuple(member(r) for r in hidden)),
+            DatasetMembershipManifest("retention", tuple(member(r) for r in retention_rows)),
+            DatasetMembershipManifest("security", tuple(member(r) for r in security_rows)),
+            require_family_disjoint_hidden=bool(cfg.get("require_family_disjoint_hidden", False)),
+            compositional=DatasetMembershipManifest(
+                "compositional", tuple(member(r) for r in compositional_rows)))
+    else:
+        parts = DatasetPartitionSet(
+            DatasetMembershipManifest("train", tuple(member(r) for r in train)),
+            DatasetMembershipManifest("validation", tuple(member(r) for r in val)),
+            DatasetMembershipManifest("hidden", tuple(member(r) for r in hidden)),
+            DatasetMembershipManifest("retention", tuple(member(r) for r in retention_rows)),
+            DatasetMembershipManifest("security", tuple(member(r) for r in security_rows)),
+            require_family_disjoint_hidden=bool(cfg.get("require_family_disjoint_hidden", False)))
 
     # --- Scorer calibration (v163): run the frozen labeled set and bind
     # the record digest into the retention evaluator artifact config ---
     plan_version = str(cfg.get("plan_version", "v162"))
-    protocol = (ExperimentProtocolV1.from_config(cfg)
+    protocol = (protocol_from_config(cfg)
                 if plan_version in ("v165", "v166") else None)
     if protocol is not None and protocol.require_native_servable_adapter:
         # v166 tier gate: tier 2 plans may train attention-projection
@@ -404,6 +425,38 @@ def main() -> int:
         calib_cfg = calib
         (storage.root / "evidence" / "SCORER_CALIBRATION.json").write_text(
             json.dumps(calib, indent=2, sort_keys=True))
+
+    # v4.0 (V4-16): when the signed protocol declares rehearsal or KL
+    # preservation corpora, the runner refuses to start unless the files
+    # exist and carry at least one row — preservation data is part of
+    # the preregistered experiment surface, not an optional convenience.
+    preservation_corpora: dict[str, str] = {}
+    if isinstance(protocol, ExperimentProtocolV2):
+        for label, rel in (("rehearsal", protocol.rehearsal_corpus),
+                           ("kl", protocol.kl_corpus)):
+            if not rel:
+                if protocol.require_verified_rehearsal:
+                    raise SystemExit(
+                        f"protocol requires verified rehearsal but no "
+                        f"{label}_corpus is declared in the config")
+                continue
+            path = ROOT / rel
+            if not path.is_file():
+                raise SystemExit(f"protocol-bound {label} corpus missing: "
+                                 f"{rel}")
+            crows = [json.loads(ln) for ln in path.read_text().splitlines()
+                     if ln.strip()]
+            if not crows:
+                raise SystemExit(f"protocol-bound {label} corpus is empty: "
+                                 f"{rel}")
+            preservation_corpora[label] = digest(crows)
+        if preservation_corpora:
+            (campaign_dir := storage.root / "campaigns" /
+             cfg["campaign_id"]).mkdir(parents=True, exist_ok=True)
+            (campaign_dir / "PRESERVATION_CORPORA.json").write_text(
+                json.dumps({"schema": "mini-agi-v4.0-preservation-corpora-v1",
+                            "digests": preservation_corpora},
+                           indent=2, sort_keys=True))
 
     registry = EvaluatorRegistry(storage.root / "evidence" / "evaluators")
     ret_fn_impl = {"containment_match": containment_match,
@@ -689,9 +742,16 @@ def main() -> int:
 
     v3 = isinstance(plan, ColabCampaignPlanV165)
     if v3:
-        eval_dataset_d = digest({"hidden": parts.hidden.digest,
-                                 "retention": parts.retention.digest,
-                                 "security": parts.security.digest})
+        eval_parts = {"hidden": parts.hidden.digest,
+                      "retention": parts.retention.digest,
+                      "security": parts.security.digest}
+        if compositional_rows:
+            # v4.0 corpora (V3 partition schema) also evaluate the
+            # within-family validation split — for legacy corpora the
+            # eval-set digest must stay exactly as executed.
+            eval_parts["compositional"] = parts.compositional.digest
+            eval_parts["validation"] = parts.validation.digest
+        eval_dataset_d = digest(eval_parts)
         evaluator_set_d = digest([arts[0].digest, arts[1].digest,
                                   arts[2].digest])
 
@@ -807,7 +867,19 @@ def main() -> int:
             sec_n, sec_out, s_tok, s_preds, s_diags = security_eval(
                 model, tokenizer, security_rows, max_new, security_fn, arm,
                 prompt_contract)
-            diags = h_diags + r_diags + s_diags
+            comp_em, comp_out, comp_tok, comp_sec, comp_preds, comp_diags = \
+                (evaluate(model, tokenizer, compositional_rows, max_new,
+                          score_fn, arm,
+                          "compositional" if v3 else None,
+                          prompt_contract)
+                 if compositional_rows else (0.0, [], 0, 0.0, [], []))
+            val_em, val_out, val_tok, val_sec, val_preds, val_diags = \
+                (evaluate(model, tokenizer, val, max_new,
+                          score_fn, arm,
+                          "validation" if v3 else None,
+                          prompt_contract)
+                 if compositional_rows else (0.0, [], 0, 0.0, [], []))
+            diags = h_diags + r_diags + s_diags + comp_diags + val_diags
             # Campaign 3B Step 18: the governed safety/retention suite
             # rolls the security partition up per category. The rollup is
             # recomputed independently by the qualifier from the
@@ -820,8 +892,11 @@ def main() -> int:
                 smoke_scorer=security_fn)
             metrics = {"hidden_exact_match": h_em, "retention": ret,
                        "security_regressions": sec_n,
-                       "eval_seconds": round(h_sec + r_sec, 3),
-                       "generated_tokens": h_tok + r_tok + s_tok,
+                       "compositional_exact_match": comp_em,
+                       "validation_exact_match": val_em,
+                       "eval_seconds": round(h_sec + r_sec + val_sec, 3),
+                       "generated_tokens": (h_tok + r_tok + s_tok +
+                                            comp_tok + val_tok),
                        "prompt_contract_digest": prompt_contract.digest,
                        "output_contract_digest":
                            prompt_contract.output_contract_digest,
@@ -830,9 +905,12 @@ def main() -> int:
                        "arm_state_bytes": dir_size_bytes(arm_state_dirs[arm_id])
                        if arm_id in arm_state_dirs else 0,
                        **rollup_metrics(safety_rollup)}
-            preds = (h_preds + r_preds + s_preds) if v3 else None
+            preds = (h_preds + r_preds + s_preds + comp_preds +
+                     val_preds) if v3 else None
             return metrics, {"hidden": h_out, "retention": ret_out,
-                             "security": sec_out}, preds, diags
+                             "security": sec_out,
+                             "compositional": comp_out,
+                             "validation": val_out}, preds, diags
 
         # ---- verified replay (L5b) state, shared with the L7 eval ----
         # SCI-302: unlike the self-verified practice arm (L5a), L5b
@@ -928,6 +1006,25 @@ def main() -> int:
         train_examples = ([{"prompt": str(r["prompt"]),
                             "response": str(r["expected"])}
                            for r in train] if v3 else None)
+        # V4-16: protocol-bound preservation data. The declared corpora
+        # were validated at startup (files exist, non-empty); rows carry
+        # {prompt, response|expected} pairs that the trainer verifies
+        # under malformed_policy like any other supervised example.
+        rehearsal_ex = kl_ex = None
+        if isinstance(protocol, ExperimentProtocolV2):
+            if protocol.rehearsal_fraction > 0 and \
+                    protocol.rehearsal_corpus:
+                rehearsal_ex = [
+                    {"prompt": str(r["prompt"]),
+                     "response": str(r.get("response",
+                                           r.get("expected", "")))}
+                    for r in load_rows(ROOT / protocol.rehearsal_corpus)]
+            if protocol.kl_weight > 0 and protocol.kl_corpus:
+                kl_ex = [
+                    {"prompt": str(r["prompt"]),
+                     "response": str(r.get("response",
+                                           r.get("expected", "")))}
+                    for r in load_rows(ROOT / protocol.kl_corpus)]
         for arm_id, texts, examples, uses_replay in (
                 ("L6", train_texts, train_examples, False),
                 ("NC", shuffled_label_texts(train, seed), nc_examples, False),
@@ -944,7 +1041,9 @@ def main() -> int:
                                               texts=(None if v3 else texts),
                                               examples=examples,
                                               output_dir=adir, spec=ts,
-                                              prompt_contract=prompt_contract)
+                                              prompt_contract=prompt_contract,
+                                              rehearsal_examples=rehearsal_ex,
+                                              kl_examples=kl_ex)
             adapter_digest = sha256_path(adir)
             adapter_dirs[arm_id] = adir
             train_secs = round(
