@@ -88,7 +88,7 @@
   "qualification": "macOS suite green; Linux boundary run pending",
   "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
  },
- "manifest_sha256": "c5f708f9c6d7a9e20c16af2583abc59587192caa639808b0ed093dfd2e99fe87",
+ "manifest_sha256": "178e1ade459d97a967902b3296a07e26a7f88e04d348b90786de5f5f3e68c8de",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "1067 passed, 18 skipped, 0 failed (macOS); container: 62/62 v16.4.10 + 50/50 executor-isolation + 2/2 G10",
@@ -500,9 +500,14 @@
    "manifest_sha256": "c5f708f9c6d7a9e20c16af2583abc59587192caa639808b0ed093dfd2e99fe87",
    "reason": "v4.0.0 verified capability acquisition: 19-defect audit repair (strict scoring, response-aware KL, verified rehearsal, matrix/compositional/governance gates, controller, verified routing, family adapters); fresh sealed corpus; 1334 passed/21 skipped; executed run v40-verify-s0 reports an honest null on hidden generalization",
    "utc": "2026-10-15T07:29:30Z"
+  },
+  {
+   "manifest_sha256": "178e1ade459d97a967902b3296a07e26a7f88e04d348b90786de5f5f3e68c8de",
+   "reason": "v4.0.0 re-issue: lint closure \u2014 F821 frozen-reference made explicit-parameter, unused imports removed; no behavior change",
+   "utc": "2026-10-15T07:33:00Z"
   }
  ],
- "reissued_utc": "2026-10-15T07:29:30Z",
+ "reissued_utc": "2026-10-15T07:33:00Z",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
