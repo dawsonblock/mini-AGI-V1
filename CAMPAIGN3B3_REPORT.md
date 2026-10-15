@@ -116,3 +116,15 @@ tree, but ad-hoc `python -c` from the wrong cwd can silently import a
 sibling's `minagi` — observed during this campaign. Keep repo tooling
 path-anchored; treat bare-interpreter imports of `minagi` as suspect
 outside `src-python`.
+
+The same leak reaches **IDE linting**: Pylint launched with the sibling
+checkout as workspace root resolves `minagi` to that tree's stale
+modules and reports `E0611`/`E1123` on 3B.3 symbols
+(`exact_match_strict`, `rehearsal_fraction`, `kl_weight`,
+`rehearsal_examples`, `kl_prompts`, `run_confirmation(mode=)`). These
+are resolution artifacts, not code defects — the same pylint version
+rates all six flagged files 10.00/10 from this worktree, ruff is clean,
+and the P4 sweep executed with exactly those call signatures. The
+worktree `pyproject.toml` init-hook repairs path resolution whenever
+pylint loads this tree's config; the failure mode is a launch cwd in a
+different checkout.
