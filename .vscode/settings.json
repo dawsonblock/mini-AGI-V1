@@ -7,6 +7,10 @@
     "python.analysis.extraPaths": [
         "src-python"
     ],
+    // Interpreter pinned to the worktree-local venv: its site-packages
+    // carries a .pth binding src-python of THIS tree, so `import minagi`
+    // resolves here regardless of the IDE's launch cwd.
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
     // Pylint discovers its config from the launch cwd; forcing the
     // workspace folder makes it load this tree's pyproject.toml
     // init-hook, which puts THIS src-python on sys.path.

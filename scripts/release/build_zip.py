@@ -22,7 +22,7 @@ import zipfile
 from pathlib import Path
 
 BANNED_PARTS = {"__pycache__", ".pytest_cache", ".ruff_cache", ".git",
-                "dist"}
+                "dist", ".venv", "venv"}
 # Generated run evidence ships in the evidence package, not the source
 # archive (matches scripts/release/source_audit.py PRUNE_DIRS).
 BANNED_TOP_DIRS = {"results"}

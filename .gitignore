@@ -70,6 +70,8 @@ release-ed25519*.pem
 .idea/
 .vscode/
 .claude/settings.local.json
+.venv/
+venv/
 *.pem
 *.p12
 !RELEASE_PUBLIC_KEY.pem

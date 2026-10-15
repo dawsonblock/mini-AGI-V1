@@ -113,7 +113,10 @@ def main() -> int:
         # tree is a false positive. A clean extraction never contains
         # them, so this cannot hide real drift.
         artifact_dir = parts and parts[0].startswith('build')
-        return (rel in excluded or artifact_dir or '__pycache__' in parts
+        venv_dir = '.venv' in parts or 'venv' in parts
+        results_dir = parts and parts[0] == 'results'
+        return (rel in excluded or artifact_dir or venv_dir
+                or results_dir or '__pycache__' in parts
                 or '.git' in parts or '.pytest_cache' in parts
                 or '.ruff_cache' in parts
                 or p.name.endswith('.pyc')
