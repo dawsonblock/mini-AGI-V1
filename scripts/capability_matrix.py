@@ -16,8 +16,16 @@ Strategies executed:
   lora_both       — rehearsal + KL
   routed_family   — one parameter-isolated adapter per trained family;
                     selection by the verified router (family binding +
-                    OOD abstention), evaluated on validation (within-
-                    family) and hidden (must abstain -> frozen)
+                    OOD abstention + artifact-content verification),
+                    evaluated TWO ways on validation and hidden:
+                    "hinted" routes with the row's declared family
+                    (dispatch-metadata path — an oracle the production
+                    router does not have) and "inferred" routes with NO
+                    family hint (the production-realistic measurement —
+                    family_terms lexical overlap only). Hidden rows must
+                    abstain to frozen under BOTH modes; any activation
+                    there is a routing error and is reported as the
+                    false-activation count.
   skill_memory    — delegated to the campaign lane (L5b verified
                     replay); recorded as DELEGATED, not fabricated
 
@@ -66,14 +74,15 @@ def routed_family_eval(args, run_root: Path) -> dict:
     from minagi.platforms.cuda.hf_runtime import (HFLoadSpec,
                                                   load_causal_lm,
                                                   load_tokenizer)
-    from minagi.platforms.cuda.peft_trainer import (LoraTrainSpec,
-                                                    train_family_adapters)
+    from minagi.platforms.cuda.peft_trainer import (
+        LoraTrainSpec, adapter_artifact_digest, train_family_adapters)
     from minagi.v161.evaluators import exact_match_strict
     from minagi.v161.prompt_contract import (build_prompt_contract,
                                              encode_generation,
                                              output_contract_from_config)
     from minagi.v161.verified_routing import (QualifiedAdapterManifest,
-                                              VerifiedAdapterRouter)
+                                              VerifiedAdapterRouter,
+                                              lexical_terms)
     from egai.common.canonical import digest
     import yaml
 
@@ -115,20 +124,38 @@ def routed_family_eval(args, run_root: Path) -> dict:
     train_secs = round(time.time() - started, 3)
 
     # Verified router: one qualified manifest per trained adapter.
+    def _family_terms(fam: str) -> tuple[str, ...]:
+        # The vocabulary the INFERRED routing path can legitimately use:
+        # the surface text of the family's task instruction — a real
+        # request carries no "pc-upper" label, so the family id itself is
+        # never a routing term.
+        task = next(str(r["prompt"]).split("\n")[0]
+                    for r in train_rows if r["family"] == fam)
+        return lexical_terms(task)
+
     manifests = [QualifiedAdapterManifest(
         adapter_id=f"fam-{f}",
         adapter_digest=fam_results[f]["adapter_digest"],
         model_id=spec.model_id, model_revision=spec.revision,
         qualified_families=(f,),
         # provisional: no independent qualification yet — the manifest
-        # binds the training receipt identity, and routing evidence is
-        # measured here, not claimed
+        # binds the training receipt identity, is UNSIGNED, and every
+        # routing event records controls.signature_enforced=false so
+        # this evidence can never be read as authorized routing
         qualification_evidence_digest=digest(
             {"provisional_training_receipt":
              fam_results[f]["adapter_digest"]}),
         scorer_artifact_digest=digest({"scorer": "exact-match-v2"}),
-        family_terms=(f,)) for f in families]
-    router = VerifiedAdapterRouter(manifests)
+        family_terms=_family_terms(f)) for f in families]
+    # Artifact contents ARE verified: the resolver re-hashes each
+    # adapter's weights+config at registration (and on any registry
+    # reload) — a directory that no longer matches its manifest digest
+    # makes the adapter ineligible, not silently served.
+    router = VerifiedAdapterRouter(
+        manifests,
+        artifact_resolver=lambda aid: fam_results[
+            aid.removeprefix("fam-")]["adapter_dir"],
+        artifact_digester=adapter_artifact_digest)
 
     def gen(model, prompt):
         with torch.inference_mode():
@@ -142,46 +169,82 @@ def routed_family_eval(args, run_root: Path) -> dict:
             return tokenizer.decode(out[0, len(ids):],
                                     skip_special_tokens=True).strip()
 
-    # Evaluation: route by the row's declared family — adapters activate
-    # only on families they trained for; hidden rows abstain to frozen.
-    routed_val = {"hits": 0, "n": 0, "activated": 0}
-    routed_hid = {"hits": 0, "n": 0, "activated": 0}
+    # Evaluation — the two routing paths are different measurements:
+    #   inferred : NO family hint — eligibility comes from lexical
+    #              family_terms overlap and the OOD threshold. This is
+    #              the production-realistic measurement (a real request
+    #              carries no benchmark label) and is the result of
+    #              record for "can the router find the capability".
+    #   hinted   : family=r["family"] — dispatch metadata handed to the
+    #              router. Reported separately so the two are never
+    #              conflated again (the pre-v4.0.1 evaluation reported
+    #              routed accuracy under this oracle path only).
+    # correct_selection = the adapter of the row's OWN family was chosen
+    # (meaningful only for rows whose family was trained); any selection
+    # of a different adapter — and ANY selection on a hidden row — is a
+    # false activation.
+    modes = ("inferred", "hinted")
+    acc = {(m, s): {"hits": 0, "n": 0, "activated": 0,
+                    "correct_selection": 0, "false_activations": 0}
+           for m in modes for s in ("validation", "hidden")}
     loaded: dict = {}
     frozen = load_causal_lm(spec, purpose="research")
-    for split_name, rowset, acc in (("validation", val_rows, routed_val),
-                                    ("hidden", hidden, routed_hid)):
+    for split_name, rowset in (("validation", val_rows),
+                               ("hidden", hidden)):
         for r in rowset:
             fam = str(r["family"])
-            dec = router.route(str(r["prompt"]), family=fam,
-                               model_revision=spec.revision)
-            if dec.selected:
-                acc["activated"] += 1
-                fam_id = dec.selected.removeprefix("fam-")
-                if fam_id not in loaded:
-                    loaded[fam_id] = load_causal_lm(
-                        spec, adapter_path=fam_results[fam_id]["adapter_dir"],
-                        purpose="research")
-                model = loaded[fam_id]
-            else:
-                model = frozen  # abstention -> frozen fallback
-            out = gen(model, str(r["prompt"]))
-            acc["hits"] += int(exact_match_strict(out, str(r["expected"])))
-            acc["n"] += 1
+            expected_aid = f"fam-{fam}"
+            for mode in modes:
+                dec = router.route(
+                    str(r["prompt"]),
+                    family=(fam if mode == "hinted" else None),
+                    model_revision=spec.revision)
+                cell = acc[(mode, split_name)]
+                if dec.selected:
+                    cell["activated"] += 1
+                    if dec.selected == expected_aid:
+                        cell["correct_selection"] += 1
+                    else:
+                        cell["false_activations"] += 1
+                    fam_id = dec.selected.removeprefix("fam-")
+                    if fam_id not in loaded:
+                        loaded[fam_id] = load_causal_lm(
+                            spec,
+                            adapter_path=fam_results[fam_id]["adapter_dir"],
+                            purpose="research")
+                    model = loaded[fam_id]
+                else:
+                    model = frozen  # abstention -> frozen fallback
+                out = gen(model, str(r["prompt"]))
+                cell["hits"] += int(exact_match_strict(
+                    out, str(r["expected"])))
+                cell["n"] += 1
+
+    def _block(split: str, mode: str) -> dict:
+        cell = acc[(mode, split)]
+        return {"accuracy": (cell["hits"] / cell["n"]
+                             if cell["n"] else 0.0),
+                "n": cell["n"],
+                "adapter_activated": cell["activated"],
+                "correct_selection": cell["correct_selection"],
+                "false_activations": cell["false_activations"]}
+
     return {
         "strategy": "routed_family",
         "train_seconds": train_secs,
         "n_adapters": len(fam_results),
-        "validation": {"accuracy": (routed_val["hits"] / routed_val["n"]
-                                    if routed_val["n"] else 0.0),
-                       "n": routed_val["n"],
-                       "adapter_activated": routed_val["activated"]},
-        "hidden": {"accuracy": (routed_hid["hits"] / routed_hid["n"]
-                                if routed_hid["n"] else 0.0),
-                   "n": routed_hid["n"],
-                   "adapter_activated": routed_hid["activated"],
+        "result_of_record": "inferred",
+        "validation": {m: _block("validation", m) for m in modes},
+        "hidden": {**{m: _block("hidden", m) for m in modes},
                    "note": "hidden families are disjoint from trained "
                            "families — activation here would be a "
-                           "routing error; abstention->frozen is correct"},
+                           "routing error; abstention->frozen is "
+                           "correct"},
+        "routing_modes": {
+            "inferred": "no family hint — lexical family_terms + OOD "
+                        "threshold (production-realistic)",
+            "hinted": "gold family label as dispatch metadata — "
+                      "diagnostic only, not a production capability"},
         "router_events": len(router.events),
     }
 

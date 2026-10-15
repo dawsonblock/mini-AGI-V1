@@ -1,3 +1,43 @@
+# Unreleased — v4.0.1 external-review hardening
+
+Repairs for the four defects an external architecture review confirmed
+against the v4.0.0 tree (details in `DEFECT_REGISTER_V4.json`).
+
+- **V4-21 revoked adapters resurrected on save/reload.**
+  `VerifiedAdapterRouter.to_json` serialized only the adapter list —
+  revocations, suspensions and health history were silently dropped, so
+  a revoked adapter became routable after `from_json`. Registry schema
+  v2 now persists all three; a v1 file cannot prove its pre-save safety
+  state, so it loads marked `state_complete = False` with a recorded
+  warning and is refused outright under `strict_state=True`.
+- **V4-22 manifests carried no verifiable authorization.**
+  `QualifiedAdapterManifest` gained an Ed25519 envelope over the full
+  unsigned body (`sign`/`verify`, schema v2). The router now takes a
+  `manifest_verifier`, an `authority` (`AuthorityRegistry` —
+  `required_role="qualification"`), and an `artifact_resolver` +
+  `artifact_digester`; unsigned, wrongly-signed, wrong-role, or
+  artifact-mismatched manifests never enter the registry and appear in
+  every decision's `refused` list. Artifact digests are re-verified at
+  every `from_json`. `scripts/sign_adapter_manifest.py` is the
+  authority-side signing tool.
+- **V4-23 routed evaluation ran under oracle family labels.**
+  `capability_matrix.py` routed every eval row with `family=` set to the
+  benchmark's gold label — an explicit hint bypasses lexical family
+  matching entirely, so routed accuracy was measured with the answer
+  handed to the router. The matrix now reports `inferred` (no hint —
+  the production-realistic measurement, designated the result of
+  record) and `hinted` (dispatch-metadata diagnostic) separately, with
+  correct/false-selection counts and real `family_terms` derived from
+  task text.
+- **V4-24 campaign3b corpus had no within-family split.** Its
+  "validation" partition carried `val3-*` families disjoint from train
+  — effectively a second cross-family set. `scripts/gen_campaign3e.py`
+  generates `configs/campaign3e_tasks.jsonl` where validation is the
+  trained `tr3-*` functions on word-disjoint unseen inputs (asserted by
+  `--check` and pinned by tests); the shipped campaign3b corpus is
+  byte-identical for executed-campaign provenance. New config
+  `configs/campaign3e.yaml` binds the new sealed holdout.
+
 # v4.0.0 — Verified Capability Acquisition (Campaign 3B repair)
 
 Independent-audit repair and upgrade release on the v16.4.10 codebase
