@@ -671,7 +671,7 @@
     "scripts/export_results.py": "f07e1e2aa08cd38ea4d38d4fd063fabe4901a790ddcee2801c9c484c77bf2040",
     "scripts/export_rms_fp4_sm120_aot.py": "a945517346747f0e12f79ca7881c90e607fff366c9c0039cc7c9019443a292c2",
     "scripts/freeze_dataset.py": "06913a425ee6c83359e50880f1b5b96844c6dc5af1a2c0b056b3f6cbde085889",
-    "scripts/gen_campaign3d.py": "1bf173039ac96e10f7dd45f5b7b516b7571073442e85e25b36a4efa1560d99ed",
+    "scripts/gen_campaign3d.py": "39dc689510497dc3c48be2c1ddf807ca3e4fa90b98d895d974cf8d706e8c011b",
     "scripts/generate_campaign1_tasks.py": "ccb89ca69ab960d089aba8da2650ebdce31e5c79e185024410c3bb586e567b89",
     "scripts/generate_campaign2_tasks.py": "4af6f693ec9c27432db2e58de848c99ffa4df0a3c04533c7c25fa63be2f206b9",
     "scripts/generate_campaign3_tasks.py": "ba85bbe655a75e578991f3fd79179759f82af4264518dc59284a605364a3947b",
