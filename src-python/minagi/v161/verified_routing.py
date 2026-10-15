@@ -38,9 +38,9 @@ import json
 import math
 import re
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable
 
 from egai.common.canonical import digest, validate_digest
 

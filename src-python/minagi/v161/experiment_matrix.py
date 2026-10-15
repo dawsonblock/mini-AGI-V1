@@ -26,7 +26,7 @@ matrix as a finished comparison.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping, Sequence
+from typing import Mapping
 
 COMPLETE = "COMPLETE"
 INCOMPLETE = "INCOMPLETE"

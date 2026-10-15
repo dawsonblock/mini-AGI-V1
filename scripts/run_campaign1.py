@@ -89,8 +89,7 @@ from minagi.v161.evidence_receipt_v3 import (EvidenceReceiptV3,
                                              write_predictions)
 from minagi.v161.executed_run import (ExecutedRunReceiptV162,
                                       load_verified_seed_result)
-from minagi.v161.experiment_protocol import (ExperimentProtocolV1,
-                                             ExperimentProtocolV2,
+from minagi.v161.experiment_protocol import (ExperimentProtocolV2,
                                              protocol_from_config)
 from minagi.v161.stats import bootstrap_ci
 from minagi.v161.artifact_closure import tokenizer_artifact_digest

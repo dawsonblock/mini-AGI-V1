@@ -34,9 +34,9 @@ digestible decision records.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Iterable, Sequence
 
 from egai.common.canonical import digest
 
@@ -144,7 +144,7 @@ def diagnose(ev: FailureEvidence) -> tuple[Hypothesis, ...]:
                                 tuple(why)))
 
     tf, wf = ev.train_fit, ev.within_family
-    cf, comp = ev.cross_family, ev.compositional
+    comp = ev.compositional
     fb = ev.frozen_baseline if ev.frozen_baseline is not None else 0.0
 
     if ev.empty_output_rate and ev.empty_output_rate > 0.5:

@@ -430,7 +430,7 @@ def main() -> int:
     # claimed answer under the strict oracle. Unverifiable rows are
     # rejected and counted, never silently admitted. Rehearsal always
     # carries the TRUE expected answer even under --shuffle-labels.
-    def frozen_correct(candidates, cached=None):
+    def frozen_correct(candidates, model, cached=None):
         """Filter to pairs the frozen model already answers correctly
         (strict oracle). `cached` maps prompt->frozen output when a
         scoring pass already produced it."""
@@ -439,7 +439,7 @@ def main() -> int:
         for c in candidates:
             out = cache.get(c["prompt"])
             if out is None:
-                out = generate(frozen, c["prompt"])
+                out = generate(model, c["prompt"])
                 cache[c["prompt"]] = out
             if out.strip() == str(c["response"]).strip():
                 verified.append({"prompt": c["prompt"],
@@ -467,7 +467,7 @@ def main() -> int:
                     if r["split"] in ("train", "validation")
                     and r["family"] not in trained_families]
         rehearsal_examples, rehearsal_rejected, _ = \
-            frozen_correct(cand)
+            frozen_correct(cand, frozen)
         if args.rehearsal_fraction > 0 and not rehearsal_examples:
             return fail(
                 "rehearsal requested but the verified pool is empty — "
@@ -492,7 +492,7 @@ def main() -> int:
                 for r in (json.loads(ln) for ln in
                           (ROOT / args.kl_corpus)
                           .read_text().splitlines() if ln.strip())]
-        kl_examples, kl_rejected, _ = frozen_correct(cand)
+        kl_examples, kl_rejected, _ = frozen_correct(cand, frozen)
         if not kl_examples:
             return fail("kl-corpus supplied but no pair survived "
                         "frozen-correct verification")
