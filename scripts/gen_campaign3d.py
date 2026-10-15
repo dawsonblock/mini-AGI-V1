@@ -31,6 +31,7 @@ import argparse
 import json
 import random
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,7 +72,7 @@ def _fam_rev_swap(w):  # reverse then swap first/last → for composites
     return s[-1] + s[1:-1] + s[0] if len(s) > 2 else s[::-1]
 
 
-TRAIN_FAMS = {
+TRAIN_FAMS: dict[str, tuple[str, Callable[[str], str]]] = {
     "tr3-swapcase": ("Swap the case of every letter of the input word "
                      "(lowercase becomes uppercase and vice versa).",
                      lambda w: w.swapcase()),
@@ -97,7 +98,7 @@ TRAIN_FAMS = {
 
 # ---------- validation families -------------------------------------
 
-VAL_FAMS = {
+VAL_FAMS: dict[str, tuple[str, Callable[[str], str]]] = {
     "val3-rot2": ("Shift each letter of the input word two positions "
                   "forward in the alphabet (wrap around).",
                   lambda w: "".join(chr((ord(c) - 97 + 2) % 26 + 97)
@@ -111,7 +112,7 @@ VAL_FAMS = {
 
 # ---------- hidden families (family-disjoint generalization) --------
 
-HIDDEN_FAMS = {
+HIDDEN_FAMS: dict[str, tuple[str, Callable[[str], str]]] = {
     "hid3-drop-second": ("Remove the second character of the input "
                          "word.", lambda w: w[0] + w[2:]),
     "hid3-first-two": ("Answer with only the first two characters of "
@@ -147,7 +148,7 @@ def _compose(*fns):
     return f
 
 
-COMP_FAMS = {
+COMP_FAMS: dict[str, tuple[str, Callable[[str], str]]] = {
     "comp3-swapcase-mirror": (
         "Swap the case of every letter, then write the result followed "
         "by its reverse.",
