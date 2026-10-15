@@ -893,7 +893,8 @@ def main() -> int:
                        "security_regressions": sec_n,
                        "compositional_exact_match": comp_em,
                        "validation_exact_match": val_em,
-                       "eval_seconds": round(h_sec + r_sec + val_sec, 3),
+                       "eval_seconds": round(h_sec + r_sec + comp_sec +
+                                             val_sec, 3),
                        "generated_tokens": (h_tok + r_tok + s_tok +
                                             comp_tok + val_tok),
                        "prompt_contract_digest": prompt_contract.digest,
@@ -993,6 +994,68 @@ def main() -> int:
             emit(arm_id, ZERO_DIGEST, sd, metrics, outputs, preds=preds,
                  diags=diags)
 
+        # ---- v4.0 preservation corpus verification (V4-03/V4-16) ----
+        # Enforced on the live frozen model BEFORE it is released: each
+        # declared corpus row is regenerated under strict scoring and
+        # admitted only when the frozen model already produces the
+        # claimed response; rows whose family is under training are
+        # rejected outright. Zero verified rows under an active lever
+        # aborts the seed — preservation cannot run on unverifiable
+        # data. Stats are committed per-seed for audit.
+        rehearsal_ex = kl_ex = None
+        _preservation_verified = False
+        if isinstance(protocol, ExperimentProtocolV2):
+            trained_fams = {str(r.get("family", "")) for r in train}
+            pstats = {}
+            for label, rel, active in (
+                    ("rehearsal", protocol.rehearsal_corpus,
+                     protocol.rehearsal_fraction > 0),
+                    ("kl", protocol.kl_corpus,
+                     protocol.kl_weight > 0)):
+                if not rel or not active:
+                    continue
+                crows = [{"prompt": str(r["prompt"]),
+                          "response": str(r.get(
+                              "response", r.get("expected", ""))),
+                          "family": str(r.get("family", ""))}
+                         for r in load_rows(ROOT / rel)]
+                verified, rejected = [], 0
+                for c in crows:
+                    if c["family"] in trained_fams:
+                        rejected += 1
+                        continue
+                    pred, _, _ = generate(model, tokenizer,
+                                          c["prompt"], max_new,
+                                          prompt_contract)
+                    if float(score_fn(pred, c["response"])) == 1.0:
+                        verified.append({"prompt": c["prompt"],
+                                         "response": c["response"]})
+                    else:
+                        rejected += 1
+                pstats[label] = {"declared": len(crows),
+                                 "verified": len(verified),
+                                 "rejected": rejected,
+                                 "method": "frozen-model strict-oracle "
+                                          "regeneration",
+                                 "excluded_trained_families":
+                                     sorted(trained_fams)}
+                if not verified:
+                    raise SystemExit(
+                        f"protocol-bound {label} corpus produced zero "
+                        f"verified rows for seed-{seed}")
+                if label == "rehearsal":
+                    rehearsal_ex = verified
+                else:
+                    kl_ex = verified
+            if pstats:
+                _preservation_verified = True
+                (run_dir / "PRESERVATION_VERIFICATION.json").write_text(
+                    json.dumps(
+                        {"schema": "mini-agi-v4.0-preservation-"
+                                   "verification-v1",
+                         "seed": int(seed), "stats": pstats},
+                        indent=2, sort_keys=True))
+
         free_model(model)
 
         # ---- parametric arms: train -> save -> destroy -> reload -> eval ----
@@ -1005,25 +1068,19 @@ def main() -> int:
         train_examples = ([{"prompt": str(r["prompt"]),
                             "response": str(r["expected"])}
                            for r in train] if v3 else None)
-        # V4-16: protocol-bound preservation data. The declared corpora
-        # were validated at startup (files exist, non-empty); rows carry
-        # {prompt, response|expected} pairs that the trainer verifies
-        # under malformed_policy like any other supervised example.
-        rehearsal_ex = kl_ex = None
-        if isinstance(protocol, ExperimentProtocolV2):
-            if protocol.rehearsal_fraction > 0 and \
-                    protocol.rehearsal_corpus:
-                rehearsal_ex = [
-                    {"prompt": str(r["prompt"]),
-                     "response": str(r.get("response",
-                                           r.get("expected", "")))}
-                    for r in load_rows(ROOT / protocol.rehearsal_corpus)]
-            if protocol.kl_weight > 0 and protocol.kl_corpus:
-                kl_ex = [
-                    {"prompt": str(r["prompt"]),
-                     "response": str(r.get("response",
-                                           r.get("expected", "")))}
-                    for r in load_rows(ROOT / protocol.kl_corpus)]
+        # V4-16/V4-03: protocol-bound preservation data is verified on
+        # THIS lane too — require_verified_rehearsal is meaningless if
+        # membership is never checked. Every declared row is regenerated
+        # under the frozen model (strict oracle) and must come from a
+        # family not under training — the same contract
+        # positive_control_fit enforces. The lists were produced in the
+        # frozen-model section above, before free_model released it.
+        if isinstance(protocol, ExperimentProtocolV2) and \
+                (protocol.rehearsal_fraction > 0 or
+                 protocol.kl_weight > 0) and not _preservation_verified:
+            raise SystemExit(
+                "protocol declares preservation levers but no verified "
+                "preservation corpus was produced this seed")
         for arm_id, texts, examples, uses_replay in (
                 ("L6", train_texts, train_examples, False),
                 ("NC", shuffled_label_texts(train, seed), nc_examples, False),

@@ -144,10 +144,14 @@ class VerifiedAdapterRouter:
                        "adapters": sorted(self._adapters)})
 
     def rollback(self) -> None:
-        """Restore the most recent snapshot and drop it from the stack."""
+        """Restore the most recent adapter snapshot and drop it.
+
+        Revocations are safety actions and are NEVER undone by rollback —
+        a rolled-back registry keeps every revocation issued since the
+        snapshot. Suspension is health-derived and is cleared (it will
+        re-engage on the next bad outcome window)."""
         if self._snapshots:
             self._adapters = self._snapshots.pop()
-            self._revoked.clear()
             self._suspended.clear()
 
     # ---- health ------------------------------------------------------

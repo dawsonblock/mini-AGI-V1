@@ -1,8 +1,9 @@
 # v4.0.0 — Verified Capability Acquisition (Campaign 3B repair)
 
 Independent-audit repair and upgrade release on the v16.4.10 codebase
-lineage (`minagi.__version__` is unchanged — v4.0.0 is the release
-version). The theme is measurement truth: every defect closed below
+lineage — VERSION, pyproject, `minagi.__version__`, SBOM and
+RELEASE_VALIDATION all agree on 4.0.0 (the repo's own version-identity
+test pins the agreement). The theme is measurement truth: every defect closed below
 was one that could make an experiment report a capability result the
 evidence did not support. **No claim of recursive self-improvement is
 made; the executed verification run produced an honestly reported null

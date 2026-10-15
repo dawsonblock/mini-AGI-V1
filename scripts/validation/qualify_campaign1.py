@@ -644,6 +644,15 @@ def main() -> int:
                 model_digest=getattr(plan, "model_digest", ""),
                 tokenizer_digest=getattr(plan, "tokenizer_digest", ""))),
         mx_cells)
+    if matrix_audit.get("status") == "INCONSISTENT":
+        # V4-15: identity disagreement between committed cells (e.g. a
+        # cell trained against a different model digest) is invalid
+        # evidence — a fail, not a gate reason. INCOMPLETE matrices are
+        # already covered by the per-seed completeness check below.
+        v = matrix_audit.get("identity_violations") or []
+        fail("matrix",
+             f"identity violations across cells — first: {v[0]}"
+             if v else "identity violations across cells")
 
     # --- Reconstruct outcomes ---
     has_comp = bool(by_split["compositional"])

@@ -503,7 +503,12 @@ def train_lora(*, model, tokenizer, texts: Sequence[str] | None = None,
             raise ValueError(
                 "every KL reference pair was rejected — the KL term "
                 "has no measurable response surface")
-        kl_prompts_digest = kl_set_digest
+        # binds the raw prompt strings (same contract as the runner's
+        # run_config prompts_digest); stays None when no bare prompts
+        # were supplied — the pair-set digest is kl_set_digest
+        if kl_prompts:
+            kl_prompts_digest = digest(
+                [sha256_bytes(str(p).encode()) for p in kl_prompts])
         kl_set_size = len(kl_encoded)
         reference_digest = _reference_weights_digest(model)
 

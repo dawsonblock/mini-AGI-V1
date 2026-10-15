@@ -53,7 +53,7 @@ every release ships a signed manifest verifiable offline.
 
 | Item | State |
 |---|---|
-| Current release | **v4.0.0 — Verified Capability Acquisition** (Campaign 3B audit repair; `minagi` package lineage v16.4.10) · previous: v16.4.10 |
+| Current release | **v4.0.0 — Verified Capability Acquisition** (Campaign 3B audit repair; package lineage 16.4.10 → 4.0.0) · previous: v16.4.10 |
 | Release integrity | ✅ **PASS** — `scripts/verify_release.py`: signed manifest, Ed25519 signature, attestation/version reconciliation |
 | CI | ✅ **green** — lint (ruff · Flake8 · Pylint error-gate), ubuntu + macOS validation, native CMake/CTest, tag-gated release-integrity |
 | Unified Python suite | ✅ **793 passed, 1 skipped** (`tests-python/`) |

@@ -589,7 +589,7 @@
   "threat_model": "docs/research/THREAT_MODEL_V1645.md"
  },
  "signature_algorithm": "Ed25519",
- "status": "v16.4.10 containment and authority closure: independent-audit SEC-901..906 repaired (strict cgroup.events fail-closed parsing; shared ContainmentState; broker-generated opaque worker ids + root-constrained workspaces; euid==0 shortcut removed; signed AuthorizedLaunchRecord independently verified at launch; mandatory production preflight probe + host-bound qualification record). VAL-901 mid-generation cancellation and VAL-902 signed activation/rollback/cold-recovery/revocation qualified inside the jail. QUALIFICATION: PASS on the privileged Linux container profile; bare-metal/GPU remain.",
+ "status": "v4.0.0 verified capability acquisition: 20-defect audit repair \u2014 strict-by-default declarative scoring, response-aware teacher-forced KL, frozen-verified outside-family rehearsal enforced on both lanes, early run-collision refusal, DatasetPartitionSetV3 compositional split + validation eval, ExperimentProtocolV2 bound levers, qualifier primary-comparison/Bonferroni/F9/compositional gates + fail-closed unsigned records + enforced matrix-consistency audit; capability controller, verified routing (revocation survives rollback), per-family adapters. Executed MPS run v40-verify-s0: fit gate PASS, hidden 0.333->0.333 NULL (no capability-acquisition claim). Historical rescore: 12/92 verified, 80/92 superseded. QUALIFICATION: tests 1335 passed/21 skipped; full-campaign CUDA lane pending.",
  "worker_isolation_v1646": {
   "defects_closed": [
    "SEC-501",

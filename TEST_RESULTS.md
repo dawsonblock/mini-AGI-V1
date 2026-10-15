@@ -11,7 +11,7 @@ Command: `python3 -m pytest tests-python -q`
 
 | group | passed | failed | skipped | collected |
 |---|---|---|---|---|
-| `tests-python/v161` | 638 | 0 | 4 | 642 |
+| `tests-python/v161` | 639 | 0 | 4 | 643 |
 | `tests-python/runtime` | 432 | 0 | 17 | 449 |
 | `tests-python/security` | 77 | 0 | 0 | 77 |
 | `tests-python/research` | 41 | 0 | 0 | 41 |
@@ -20,7 +20,7 @@ Command: `python3 -m pytest tests-python -q`
 | `tests-python/apple` | 5 | 0 | 0 | 5 |
 | `tests-python/integration` | 3 | 0 | 0 | 3 |
 | `tests-python` (root modules) | 63 | 0 | 0 | 63 |
-| **total** | **1334** | **0** | **21** | **1355** |
+| **total** | **1335** | **0** | **21** | **1356** |
 
 The single observed anomaly during the full run was one transient
 `sqlite3.OperationalError: database or disk is full` in a v14 storage
@@ -28,8 +28,8 @@ test while the host's Data volume was at 100% capacity; the test passes
 in isolation and the count above reflects the clean result. No code
 failure was masked — the flake is disclosed here.
 
-v4.0.0 adds **62 tests** in `tests-python/v161` (the group grew
-576 → 638 passed). Prior campaigns: 3B added 30, 3B.3 added 89.
+v4.0.0 adds **63 tests** in `tests-python/v161` (the group grew
+576 → 639 passed). Prior campaigns: 3B added 30, 3B.3 added 89.
 
 ## New tests in v4.0.0
 
@@ -39,7 +39,7 @@ v4.0.0 adds **62 tests** in `tests-python/v161` (the group grew
 | `test_v40_dataset_v3.py` | 6 | compositional split disjointness; V1/V2 digest stability; tightened pairwise checks |
 | `test_v40_completeness.py` | 7 | matrix COMPLETE/INCOMPLETE/INCONSISTENT; identity-digest binding |
 | `test_v40_controller.py` | 10 | diagnosis categories; anti-repeat refusal; changed-condition override; costed records |
-| `test_v40_routing.py` | 12 | qualified-family routing; OOD abstention; model-revision refusal; revoke/reinstate; rollback; decision events |
+| `test_v40_routing.py` | 13 | qualified-family routing; OOD abstention; model-revision refusal; revoke/reinstate; rollback; decision events |
 | `test_v40_trainer_protocol.py` | 10 | response-scope KL receipts; frozen-continuation derivation; fail-closed KL config; protocol-V2 levers; per-family adapters |
 
 ## Executed end-to-end verification (v4.0.0)

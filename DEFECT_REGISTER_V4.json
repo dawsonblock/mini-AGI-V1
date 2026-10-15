@@ -2,8 +2,17 @@
   "schema": "mini-agi-v4.0-defect-register-v1",
   "release": "mini-AGI-V1-Verified-Capability-Acquisition-v4.0.0",
   "audit_basis": "full source audit of research/campaign3b-diagnostics tree (v16.4.10+3B.3); every entry cites file:line evidence in this checkout, not README claims",
-  "severity_scale": {"P0": "produces wrong scientific verdicts or destroys evidence", "P1": "measurement integrity gap or missing required mechanism", "P2": "consistency/honesty gap"},
-  "status_scale": {"CLOSED": "repair implemented, integrated, and covered by a passing regression test", "CLOSED-E": "repair implemented; covered by executed evidence + unit tests", "OPEN": "identified, not yet repaired", "MITIGATED": "risk reduced; residual documented"},
+  "severity_scale": {
+    "P0": "produces wrong scientific verdicts or destroys evidence",
+    "P1": "measurement integrity gap or missing required mechanism",
+    "P2": "consistency/honesty gap"
+  },
+  "status_scale": {
+    "CLOSED": "repair implemented, integrated, and covered by a passing regression test",
+    "CLOSED-E": "repair implemented; covered by executed evidence + unit tests",
+    "OPEN": "identified, not yet repaired",
+    "MITIGATED": "risk reduced; residual documented"
+  },
   "defects": [
     {
       "id": "V4-01",
@@ -11,9 +20,9 @@
       "status": "CLOSED",
       "component": "declarative evaluator",
       "location": "src-python/minagi/v161/evaluators.py:84-125,128-129,143-145,170-187",
-      "evidence": "equals/one_of/json_field_equals routed through the v1 casefold oracle — wrong-case answers scored correct in the declarative path",
+      "evidence": "equals/one_of/json_field_equals routed through the v1 casefold oracle \u2014 wrong-case answers scored correct in the declarative path",
       "root_cause": "ops written against the legacy oracle; matching semantics implicit",
-      "repair": "versioned centralized matching (MATCH_STRICT default, MATCH_NORMALIZED only when a verify spec declares match:'normalized'; unknown semantics raise — strict never silently falls back); DECLARATIVE_EVALUATOR_VERSION=declarative-evaluator-v2 binds the contract; legacy exact_match retained for provenance and explicit opt-in only",
+      "repair": "versioned centralized matching (MATCH_STRICT default, MATCH_NORMALIZED only when a verify spec declares match:'normalized'; unknown semantics raise \u2014 strict never silently falls back); DECLARATIVE_EVALUATOR_VERSION=declarative-evaluator-v2 binds the contract; legacy exact_match retained for provenance and explicit opt-in only",
       "regression_test": "tests-python/v161/test_v40_evaluators.py (20 tests)"
     },
     {
@@ -22,9 +31,9 @@
       "status": "CLOSED-E",
       "component": "LoRA trainer KL preservation",
       "location": "src-python/minagi/platforms/cuda/peft_trainer.py:269-378,464-509",
-      "evidence": "KL was computed over positions predicting PROMPT tokens — the response continuation the term exists to protect was never constrained",
+      "evidence": "KL was computed over positions predicting PROMPT tokens \u2014 the response continuation the term exists to protect was never constrained",
       "root_cause": "the KL set was a bare prompt list; no verified answer or frozen continuation was teacher-forced",
-      "repair": "response-aware teacher-forced KL: kl_examples are verified {prompt,response} pairs encoded via supervised_tokens; kl_prompts derive the FROZEN model's own greedy continuations (adapter-disabled generate) and teacher-force them; the KL mask is labels[:,1:]!=-100 over logits[:,:-1] (causal alignment), float32 log-softmax, adapter-disabled reference = the same base weights whose digest is bound into the receipt (kl_scope=response_continuations, kl_set_digest, kl_reference_sources, n_kl_evaluations)",
+      "repair": "response-aware teacher-forced KL: kl_examples are verified {prompt,response} pairs encoded via supervised_tokens; kl_prompts derive the FROZEN model's own greedy continuations (adapter-disabled generate) and teacher-force them; the KL mask is labels[:,1:]!=-100 over logits[:,:-1] (causal alignment), float32 log-softmax, adapter-disabled reference = the same base weights whose digest is bound into the receipt (kl_scope=response_continuations, kl_set_digest, kl_reference_sources, n_kl_evaluations); receipt hygiene fixed: kl_prompts_digest binds the raw prompt strings (matching the runner's prompts_digest) and stays null when no bare prompts were given",
       "regression_test": "tests-python/v161/test_v40_trainer_protocol.py (4 KL tests) + executed run results/campaign3b2/runs/v40-verify-s0 (60 KL evaluations, nonzero measured term)"
     },
     {
@@ -35,8 +44,8 @@
       "location": "scripts/positive_control_fit.py:417-481",
       "evidence": "default rehearsal pool drew frozen-correct rows from the SAME families being trained (rehearsing the capability under acquisition); custom corpora skipped the frozen-correct check",
       "root_cause": "capability exclusion unspecified; custom path unverified",
-      "repair": "default pool = frozen-verified-correct rows from families NOT under training (plus preservation-style material), excluding hidden/retention/security; custom --rehearsal-corpus rows pass the identical frozen-correct membership check under the strict oracle; empty verified pool fails the run; pool digests + rejection counts bound into run_config and metrics",
-      "regression_test": "executed run results/campaign3b2/runs/v40-verify-s0 — rehearsal_pool metrics record excluded families, 2 verified pairs, 30 rejected"
+      "repair": "default pool = frozen-verified-correct rows from families NOT under training (plus preservation-style material), excluding hidden/retention/security; custom --rehearsal-corpus rows pass the identical frozen-correct membership check under the strict oracle; empty verified pool fails the run; pool digests + rejection counts bound into run_config and metrics; run_campaign1.py now performs the identical frozen-model strict-oracle membership check on the campaign lane (PRESERVATION_VERIFICATION.json per seed), rejecting trained-family rows and failing the seed on an empty verified pool \u2014 require_verified_rehearsal is enforced, not just declared",
+      "regression_test": "executed run results/campaign3b2/runs/v40-verify-s0 \u2014 rehearsal_pool metrics record excluded families, 2 verified pairs, 30 rejected"
     },
     {
       "id": "V4-04",
@@ -66,7 +75,7 @@
       "status": "CLOSED",
       "component": "per-row scoring dispatch",
       "location": "scripts/run_colab_campaign.py:59, scripts/validation/run_sealed_confirmation.py:528",
-      "evidence": "hidden rows scored via direct strict-oracle calls — a row with a verify spec would be scored by the wrong authority",
+      "evidence": "hidden rows scored via direct strict-oracle calls \u2014 a row with a verify spec would be scored by the wrong authority",
       "root_cause": "score_row introduced after those lanes were written",
       "repair": "both lanes route per-row scoring through score_row",
       "regression_test": "tests-python/v161/test_v40_evaluators.py::test_score_row_dispatches_verify_declarative_strict"
@@ -77,7 +86,7 @@
       "status": "CLOSED",
       "component": "positive-control report",
       "location": "scripts/positive_control_report.py:193-203",
-      "evidence": "accuracy() casefolded — the live diagnostic could overstate strict-match correctness",
+      "evidence": "accuracy() casefolded \u2014 the live diagnostic could overstate strict-match correctness",
       "root_cause": "v1-era consumer never migrated",
       "repair": "recomputed accuracies use exact_match_strict; labeled as the metric of record",
       "regression_test": "covered by strict-evaluator tests; report output labeled"
@@ -88,7 +97,7 @@
       "status": "CLOSED",
       "component": "qualifier fail-closed authority",
       "location": "scripts/validation/qualify_campaign1.py:1014-1048",
-      "evidence": "missing evaluation/qualification authority keys left decision=QUALIFIED with exit code 0 — an unsigned record read as success",
+      "evidence": "missing evaluation/qualification authority keys left decision=QUALIFIED with exit code 0 \u2014 an unsigned record read as success",
       "root_cause": "signing failures appended after the decision was computed and never flipped it",
       "repair": "when either role key is unavailable the decision is forced to INVALID_EVIDENCE with explicit reasons before any record is signed or written; exit code follows the decision",
       "regression_test": "fail-closed path covered by qualifier-chain tests + manual reasoning in test_v40_* additions"
@@ -110,7 +119,7 @@
       "status": "CLOSED",
       "component": "primary-comparison gating",
       "location": "scripts/validation/qualify_campaign1.py:652-660,686-717",
-      "evidence": "the declared primary comparison (L7-L5b) was reported but never gated — a plan could qualify on a different comparison",
+      "evidence": "the declared primary comparison (L7-L5b) was reported but never gated \u2014 a plan could qualify on a different comparison",
       "root_cause": "the L7-L5b gate existed only in the sealed-confirmation lane",
       "repair": "when the plan's arms contain L7+L5b the qualifier computes per-seed delta_ft_primary and gates mean + Bonferroni-adjusted bootstrap CI against the same preregistered thresholds",
       "regression_test": "gate covered by qualifier-chain tests"
@@ -154,9 +163,9 @@
       "status": "CLOSED",
       "component": "adapter/skill routing",
       "location": "src-python/minagi/v161/verified_routing.py",
-      "evidence": "the only live router (kvcontinual AdapterRouter) is lexical overlap — no family binding, no model-revision binding, no qualification check, no OOD abstention, no recorded fallback, no rollback",
+      "evidence": "the only live router (kvcontinual AdapterRouter) is lexical overlap \u2014 no family binding, no model-revision binding, no qualification check, no OOD abstention, no recorded fallback, no rollback",
       "root_cause": "routing predates the qualification substrate",
-      "repair": "VerifiedAdapterRouter: QualifiedAdapterManifest binds adapter/model/scorer/qualification-evidence digests + qualified families; routing requires family eligibility (explicit hint or lexical overlap), enforces OOD threshold, abstains to frozen fallback, suspends on rolling health, supports revoke/reinstate (new evidence required) and snapshot/rollback; every decision emits a structured event",
+      "repair": "VerifiedAdapterRouter: QualifiedAdapterManifest binds adapter/model/scorer/qualification-evidence digests + qualified families; routing requires family eligibility (explicit hint or lexical overlap), enforces OOD threshold, abstains to frozen fallback, suspends on rolling health, supports revoke/reinstate (new evidence required) and snapshot/rollback; every decision emits a structured event; rollback restores adapter snapshots but NEVER undoes revocations (safety actions persist across rollback; test_v40_routing pins this)",
       "regression_test": "tests-python/v161/test_v40_routing.py (12 tests)"
     },
     {
@@ -167,7 +176,7 @@
       "location": "src-python/minagi/v161/experiment_matrix.py",
       "evidence": "no standalone component rejected incomplete/inconsistent matrices on all required axes",
       "root_cause": "the check was a side effect of receipt iteration",
-      "repair": "MatrixSpec + audit_matrix enumerate required cells (seeds x arms x required + per-arm cells), verify identity-field consistency (model/tokenizer/evaluator/environment/dataset digests) against bound values, and return COMPLETE/INCOMPLETE/INCONSISTENT; wired into the qualifier's matrix_audit record field",
+      "repair": "MatrixSpec + audit_matrix enumerate required cells (seeds x arms x required + per-arm cells), verify identity-field consistency (model/tokenizer/evaluator/environment/dataset digests) against bound values, and return COMPLETE/INCOMPLETE/INCONSISTENT; wired into the qualifier's matrix_audit record field; an INCONSISTENT audit (identity disagreement across committed cells) now fails the qualification \u2014 it is a gate, not only a record",
       "regression_test": "tests-python/v161/test_v40_completeness.py (7 tests)"
     },
     {
@@ -189,7 +198,7 @@
       "location": "src-python/minagi/platforms/cuda/peft_trainer.py:733-783 + scripts/capability_matrix.py",
       "evidence": "only single fixed-rank LoRA existed; task-conditioned selection and per-family adapters were absent",
       "root_cause": "never implemented",
-      "repair": "train_family_adapters produces parameter-isolated per-family adapters (fresh base load per family — no stacking); scripts/capability_matrix.py executes the strategy matrix {frozen, fixed, rehearsal, kl, both, routed_family, skill_memory(DELEGATED)} where routed_family is evaluated through VerifiedAdapterRouter (hidden rows abstain to frozen; activation there is a routing error); strategies share one verified pipeline so cells are comparable",
+      "repair": "train_family_adapters produces parameter-isolated per-family adapters (fresh base load per family \u2014 no stacking); scripts/capability_matrix.py executes the strategy matrix {frozen, fixed, rehearsal, kl, both, routed_family, skill_memory(DELEGATED)} where routed_family is evaluated through VerifiedAdapterRouter (hidden rows abstain to frozen; activation there is a routing error); strategies share one verified pipeline so cells are comparable",
       "regression_test": "tests-python/v161/test_v40_trainer_protocol.py (family-adapter tests) + tests-python/v161/test_v40_routing.py"
     },
     {
@@ -200,7 +209,7 @@
       "location": "results/campaign3b2, results/campaign3b3 (92 committed run dirs)",
       "evidence": "casefold-era reported metrics could not be reproduced under strict scoring",
       "root_cause": "v1 oracle inflation (e.g. adapted.hidden 0.5 reported vs 0.333 strict)",
-      "repair": "scripts/requalify_executed_campaign.py verifies every run's RUN_COMMIT file inventory byte-for-byte and strict-rescores all committed predictions: 12/92 VERIFIED (the c3b3 strict-era runs), 80/92 INCONSISTENT (v1-reported, superseded by strict rescore — not evidence of new defects); written to results/REQUALIFICATION_STATUS.md",
+      "repair": "scripts/requalify_executed_campaign.py verifies every run's RUN_COMMIT file inventory byte-for-byte and strict-rescores all committed predictions: 12/92 VERIFIED (the c3b3 strict-era runs), 80/92 INCONSISTENT (v1-reported, superseded by strict rescore \u2014 not evidence of new defects); written to results/REQUALIFICATION_STATUS.md",
       "regression_test": "requalification output committed"
     },
     {
@@ -209,16 +218,27 @@
       "status": "CLOSED",
       "component": "basemodel evaluability (F9)",
       "location": "scripts/validation/qualify_campaign1.py:788-808 + scripts/probe_stale_gating.py",
-      "evidence": "a baseline emitting empty output on most hidden prompts makes the within-family comparison NOT_ESTIMABLE — silence is not a measured zero",
+      "evidence": "a baseline emitting empty output on most hidden prompts makes the within-family comparison NOT_ESTIMABLE \u2014 silence is not a measured zero",
       "root_cause": "no gate existed for baseline evaluability",
-      "repair": "protocol v2 field minimum_basemodel_eval_rate; qualifier recomputes the frozen-L1 non-empty rate from committed hidden predictions and refuses below the bound; offline probe over all committed frozen predictions measured 4236/4236 (1.000) non-empty — the executed evidence is unaffected",
+      "repair": "protocol v2 field minimum_basemodel_eval_rate; qualifier recomputes the frozen-L1 non-empty rate from committed hidden predictions and refuses below the bound; offline probe over all committed frozen predictions measured 4236/4236 (1.000) non-empty \u2014 the executed evidence is unaffected",
       "regression_test": "gate + probe output committed"
+    },
+    {
+      "id": "V4-20",
+      "severity": "P2",
+      "status": "CLOSED",
+      "component": "campaign runner cost accounting",
+      "location": "scripts/run_campaign1.py:894",
+      "evidence": "eval_seconds omitted the compositional block's timing \u2014 the v4.0 split-E evaluation cost was uncounted",
+      "root_cause": "the eval_seconds sum predates the compositional block",
+      "repair": "eval_seconds now sums hidden+retention+compositional+validation block times",
+      "regression_test": "covered by qualifier rescore path"
     }
   ],
   "residual_known_limitations": [
     "Governance custody: the release/authority keys are development-machine held; no multi-party approval or HSM custody exists. Cryptographic mechanisms are real; operational custody is a documented limitation, not a claim.",
     "Deployment isolation: a learner that escapes the model-code sandbox could in principle read role keys on the same host; OS-level isolation is the declared control and is NOT independently verified.",
     "The colab campaign lane (run_campaign1.py) still requires CUDA for full campaign execution; the v4.0 additions were verified by unit/integration tests plus the CPU/MPS positive-control run, not by a new full campaign.",
-    "INTERVENTION_SELECTION.json (3B.3 analysis) remains a campaign-specific artifact; capability_controller.py is the general mechanism it inspired — they are not the same component."
+    "INTERVENTION_SELECTION.json (3B.3 analysis) remains a campaign-specific artifact; capability_controller.py is the general mechanism it inspired \u2014 they are not the same component."
   ]
 }

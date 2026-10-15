@@ -105,10 +105,25 @@ def test_rollback_restores_snapshot():
     r.snapshot()
     r.register(m2)
     assert len(r._adapters) == 2
-    r.revoke("a1")
     r.rollback()
     assert "a2" not in r._adapters
     assert r.route("reverse", family="tr-reverse").selected == "a1"
+
+
+def test_rollback_never_undoes_revocation():
+    """A revocation is a safety action — rolling the registry back must
+    not silently re-enable a revoked adapter."""
+    m1, m2 = _manifest("a1"), _manifest("a2", families=("tr-upper",))
+    r = VerifiedAdapterRouter([m1])
+    r.snapshot()
+    r.register(m2)
+    r.revoke("a1")
+    r.rollback()
+    assert "a2" not in r._adapters            # snapshot restored
+    assert "a1" in r._adapters
+    assert r.route("reverse", family="tr-reverse").selected is None
+    assert r.route("reverse", family="tr-reverse").refused == \
+        ("a1: revoked",)
 
 
 def test_registry_roundtrip(tmp_path):
