@@ -237,6 +237,34 @@ def test_frozen_evaluation_precedes_reference_freeing():
     free_at = src.index("del frozen")
     for call in ("per_row(frozen, subset)", "per_row(frozen, hidden)",
                  "per_row(frozen, validation)",
-                 "per_row(frozen, compositional)"):
+                 "per_row(frozen, compositional)",
+                 "per_row(frozen, within_holdout)",
+                 "per_row(frozen, retention)"):
         assert src.index(call) < free_at, (
             f"{call} appears after the frozen reference is freed")
+
+
+# ----------------------------------------------------------------- v4.1.0
+
+def test_within_holdout_and_retention_surfaces_are_evaluated():
+    """The campaign4a confirmation + preservation surfaces must flow
+    through the fit runner: rows collected, both models evaluated,
+    per-split prediction files written, and the Phase-5
+    destruction/acquisition rates reported on the retention set."""
+    src = _source()
+    assert 'r["split"] == "within_holdout"' in src
+    assert 'r["split"] == "retention"' in src
+    for call in ("per_row(frozen, within_holdout)",
+                 "per_row(frozen, retention)",
+                 "per_row(model, within_holdout)",
+                 "per_row(model, retention)"):
+        assert call in src, f"missing evaluation call: {call}"
+    for tag in ('"WITHIN_HOLDOUT"', '"RETENTION"'):
+        assert tag in src, f"prediction writer omits {tag}"
+    for field in ('"within_holdout_rows"', '"retention_rows"',
+                  '"destruction_rate"', '"acquisition_rate"'):
+        assert field in src, f"metrics omit {field}"
+    # the confirmation surface must NEVER feed the rehearsal pool —
+    # the pool admits only the whitelisted train/validation splits, so
+    # within_holdout/retention rows cannot contaminate training
+    assert 'r["split"] in ("train", "validation")' in src

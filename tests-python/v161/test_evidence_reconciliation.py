@@ -256,3 +256,97 @@ def test_missing_commit_is_invalid(tmp_path):
     d = build_run(tmp_path)
     (d / "RUN_COMMIT.json").unlink()
     assert verify_run(d)["status"] == INVALID
+
+
+# ---------- v4.1.0 surfaces: within_holdout + retention ---------------
+
+def build_run_v41(root: Path, run_id="v41-run") -> Path:
+    """A run dir whose corpus declares the v4.1.0 splits."""
+    d = build_run(root, run_id)
+    who_f = [_rec("w1", "famA", "A", "A", "within_holdout"),
+             _rec("w2", "famA", "B", "X", "within_holdout")]
+    who_a = [_rec("w1", "famA", "A", "A", "within_holdout"),
+             _rec("w2", "famA", "B", "B", "within_holdout")]
+    ret_f = [_rec("p1", "ret", "C", "C", "retention"),
+             _rec("p2", "ret", "D", "X", "retention"),
+             _rec("p3", "ret", "E", "X", "retention")]
+    ret_a = [_rec("p1", "ret", "C", "X", "retention"),   # destroyed
+             _rec("p2", "ret", "D", "D", "retention"),   # gained
+             _rec("p3", "ret", "E", "X", "retention")]
+    _write_jsonl(d / "PREDICTIONS-FROZEN-WITHIN_HOLDOUT.jsonl", who_f)
+    _write_jsonl(d / "PREDICTIONS-ADAPTED-WITHIN_HOLDOUT.jsonl", who_a)
+    _write_jsonl(d / "PREDICTIONS-FROZEN-RETENTION.jsonl", ret_f)
+    _write_jsonl(d / "PREDICTIONS-ADAPTED-RETENTION.jsonl", ret_a)
+
+    c = json.loads((d / "CONFIG.json").read_text())
+    c["within_holdout_rows"] = 2
+    c["retention_rows"] = 3
+    c["config_digest"] = digest(
+        {k: v for k, v in c.items()
+         if k not in ("config_digest", "attempt_id", "run_id")})
+    (d / "CONFIG.json").write_text(json.dumps(c))
+    commit = json.loads((d / "RUN_COMMIT.json").read_text())
+    commit["config_digest"] = c["config_digest"]
+
+    m = json.loads((d / "METRICS.json").read_text())
+    m["frozen"]["within_holdout"] = 0.5
+    m["adapted"]["within_holdout"] = 1.0
+    m["frozen"]["retention"] = 1 / 3
+    m["adapted"]["retention"] = 1 / 3
+    m["within_holdout"] = {
+        "rows": 2, "frozen": 0.5, "adapted": 1.0,
+        "within_family": {"frozen": 0.5, "adapted": 1.0},
+        "untrained_family": {"frozen": None, "adapted": None},
+        "correct": {"w1": 1, "w2": 1},
+        "frozen_correct": {"w1": 1, "w2": 0}}
+    m["retention"] = {
+        "rows": 3, "frozen": 1 / 3, "adapted": 1 / 3,
+        "n_frozen_correct": 1,
+        "destroyed_ids": ["p1"], "n_destroyed": 1,
+        "gained_ids": ["p2"], "n_gained": 1,
+        "destruction_rate": 1.0, "acquisition_rate": 0.5,
+        "correct": {"p1": 0, "p2": 1, "p3": 0},
+        "frozen_correct": {"p1": 1, "p2": 0, "p3": 0}}
+    (d / "METRICS.json").write_text(json.dumps(m, sort_keys=True))
+    (d / "RUN_COMMIT.json").write_text(json.dumps(commit))
+    _recommit(d)
+    return d
+
+
+def test_v41_surfaces_verify(tmp_path):
+    res = verify_run(build_run_v41(tmp_path))
+    assert res["status"] == VERIFIED, res["mismatches"]
+    assert len(res["rescore"]) == 11   # 7 legacy + 4 new-split files
+
+
+def test_v41_missing_retention_file_is_inconsistent(tmp_path):
+    d = build_run_v41(tmp_path)
+    (d / "PREDICTIONS-ADAPTED-RETENTION.jsonl").unlink()
+    _recommit(d)
+    res = verify_run(d)
+    assert res["status"] == INCONSISTENT
+    assert any("absent" in m for m in res["mismatches"])
+
+
+def test_v41_retention_rates_rescored(tmp_path):
+    d = build_run_v41(tmp_path)
+    m = json.loads((d / "METRICS.json").read_text())
+    m["retention"]["destruction_rate"] = 0.0      # claim no damage
+    (d / "METRICS.json").write_text(json.dumps(m, sort_keys=True))
+    _recommit(d)
+    res = verify_run(d)
+    assert res["status"] == INCONSISTENT
+    assert any("retention.destruction_rate" in m
+               for m in res["mismatches"])
+
+
+def test_v41_within_holdout_decomposition_rescored(tmp_path):
+    d = build_run_v41(tmp_path)
+    m = json.loads((d / "METRICS.json").read_text())
+    m["within_holdout"]["within_family"]["adapted"] = 0.99
+    (d / "METRICS.json").write_text(json.dumps(m, sort_keys=True))
+    _recommit(d)
+    res = verify_run(d)
+    assert res["status"] == INCONSISTENT
+    assert any("within_holdout.within_family" in m
+               for m in res["mismatches"])

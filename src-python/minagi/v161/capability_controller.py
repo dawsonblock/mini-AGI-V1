@@ -327,3 +327,46 @@ def select_intervention(
             f"{len(refused)} refusal(s)"),
         refused=tuple(refused))
     return dec.sealed()
+
+
+def select_intervention_adaptive(
+        hypotheses: Sequence[Hypothesis],
+        verified_outcomes,
+        *,
+        target: str = "",
+        conditions: str = "",
+        selector=None) -> dict:
+    """v4.2.0 adaptive policy: same hypothesis-filtered candidate set as
+    ``select_intervention``, but scored on MEASURED outcomes rather than
+    the static cost table.
+
+    ``verified_outcomes`` must already be receipt-gated (see
+    ``adaptive_intervention.verify_outcomes`` — records that could not
+    be independently verified are excluded). The selector compares
+    shrunken empirical benefit, a bounded exploration bonus, measured
+    regression risk and measured cost — and must justify itself against
+    FixedPolicy/RandomPolicy baselines before any adaptive-benefit
+    claim (G9).
+
+    Returns the selector's decision document; ``candidate_controlled``
+    remains True — this proposes, it never qualifies.
+    """
+    from minagi.v161.adaptive_intervention import EmpiricalSelector
+
+    selector = selector or EmpiricalSelector()
+    candidates: list[str] = []
+    for hyp in hypotheses[:2]:
+        for iv in _HYPOTHESIS_TO_INTERVENTIONS.get(hyp.name, ()):
+            if iv not in candidates:
+                candidates.append(iv)
+    if "no_intervention" not in candidates:
+        candidates.append("no_intervention")
+
+    verified = [o for o in verified_outcomes
+                if not target or o.target_capability in (target, "")]
+    dec = selector.select(candidates, verified)
+    dec["observed_weakness"] = (hypotheses[0].name
+                               if hypotheses else "unknown")
+    dec["target_capability"] = target
+    dec["conditions"] = conditions
+    return dec

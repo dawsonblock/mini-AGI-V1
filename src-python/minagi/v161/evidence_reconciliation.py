@@ -107,6 +107,17 @@ def expected_prediction_files(config: dict) -> dict[str, tuple[str, int | None]]
                 "compositional", n)
             exp["PREDICTIONS-ADAPTED-COMPOSITIONAL.jsonl"] = (
                 "compositional", n)
+    # v4.1.0 surfaces — present only when the corpus declares them
+    # (legacy configs never carry these keys, so expected sets for
+    # committed runs stay byte-identical).
+    for key, tag, split in (
+            ("within_holdout_rows", "WITHIN_HOLDOUT", "within_holdout"),
+            ("retention_rows", "RETENTION", "retention")):
+        if key in config:
+            n = config.get(key)
+            if n:
+                exp[f"PREDICTIONS-FROZEN-{tag}.jsonl"] = (split, n)
+                exp[f"PREDICTIONS-ADAPTED-{tag}.jsonl"] = (split, n)
     return exp
 
 
@@ -289,11 +300,28 @@ def verify_run(run_dir: Path, *,
         rep_frozen.get("compositional"), "frozen.compositional")
     cmp("PREDICTIONS-ADAPTED-COMPOSITIONAL.jsonl",
         rep_adapted.get("compositional"), "adapted.compositional")
+    rep_who = reported.get("within_holdout") or {}
+    cmp("PREDICTIONS-FROZEN-WITHIN_HOLDOUT.jsonl",
+        rep_frozen.get("within_holdout"), "frozen.within_holdout")
+    cmp("PREDICTIONS-ADAPTED-WITHIN_HOLDOUT.jsonl",
+        rep_adapted.get("within_holdout"), "adapted.within_holdout")
+    rep_ret = reported.get("retention") or {}
+    cmp("PREDICTIONS-FROZEN-RETENTION.jsonl",
+        rep_frozen.get("retention"), "frozen.retention")
+    cmp("PREDICTIONS-ADAPTED-RETENTION.jsonl",
+        rep_adapted.get("retention"), "adapted.retention")
 
-    # within-/untrained-family decomposition of the validation split
+    # within-/untrained-family decomposition of within-family splits
     trained = set(config.get("families") or [])
-    for fname, key in (("PREDICTIONS-FROZEN-VALIDATION.jsonl", "frozen"),
-                       ("PREDICTIONS-ADAPTED-VALIDATION.jsonl", "adapted")):
+    for fname, key, rep_block, label0 in (
+            ("PREDICTIONS-FROZEN-VALIDATION.jsonl", "frozen",
+             rep_val, "validation"),
+            ("PREDICTIONS-ADAPTED-VALIDATION.jsonl", "adapted",
+             rep_val, "validation"),
+            ("PREDICTIONS-FROZEN-WITHIN_HOLDOUT.jsonl", "frozen",
+             rep_who, "within_holdout"),
+            ("PREDICTIONS-ADAPTED-WITHIN_HOLDOUT.jsonl", "adapted",
+             rep_who, "within_holdout")):
         try:
             rows = _load_jsonl(run_dir / fname) \
                 if (run_dir / fname).is_file() else []
@@ -306,14 +334,14 @@ def verify_run(run_dir: Path, *,
               if r.get("family") in trained]
         uf = [scores[str(r["id"])] for r in rows
               if r.get("family") not in trained]
-        rep_wf = ((rep_val.get("within_family") or {}).get(key))
-        rep_uf = ((rep_val.get("untrained_family") or {}).get(key))
+        rep_wf = ((rep_block.get("within_family") or {}).get(key))
+        rep_uf = ((rep_block.get("untrained_family") or {}).get(key))
         for label, got, want in (("within_family", _mean(wf), rep_wf),
                                  ("untrained_family", _mean(uf), rep_uf)):
             if want is None:
                 continue
             if got is None or abs(got - float(want)) > TOL:
-                mismatch(f"validation.{label}.{key}: reported {want} "
+                mismatch(f"{label0}.{label}.{key}: reported {want} "
                          f"vs strict rescore {got}")
 
     # capability-destruction id lists on the hidden split
@@ -335,6 +363,43 @@ def verify_run(run_dir: Path, *,
         if n_fc is not None and int(n_fc) != int(sum(f_hid.values())):
             mismatch(f"n_frozen_correct_hidden: reported {n_fc} vs "
                      f"rescore {int(sum(f_hid.values()))}")
+
+    # retention destruction/acquisition accounting (v4.1.0 — Phase 5
+    # quantities: the rate of frozen-correct answers lost, and the rate
+    # of frozen-wrong answers gained, are checked separately so churn
+    # can never hide behind a flat net score).
+    f_ret = split_scores.get("PREDICTIONS-FROZEN-RETENTION.jsonl")
+    a_ret = split_scores.get("PREDICTIONS-ADAPTED-RETENTION.jsonl")
+    if f_ret is not None and a_ret is not None and rep_ret:
+        r_destroyed = sorted(rid for rid in f_ret
+                             if f_ret[rid] == 1.0
+                             and a_ret.get(rid) == 0.0)
+        r_gained = sorted(rid for rid in f_ret
+                          if f_ret[rid] == 0.0
+                          and a_ret.get(rid) == 1.0)
+        if rep_ret.get("destroyed_ids") is not None and \
+                sorted(rep_ret["destroyed_ids"]) != r_destroyed:
+            mismatch("retention.destroyed_ids differ")
+        if rep_ret.get("gained_ids") is not None and \
+                sorted(rep_ret["gained_ids"]) != r_gained:
+            mismatch("retention.gained_ids differ")
+        n_fc = rep_ret.get("n_frozen_correct")
+        if n_fc is not None and int(n_fc) != int(sum(f_ret.values())):
+            mismatch(f"retention.n_frozen_correct: reported {n_fc} vs "
+                     f"rescore {int(sum(f_ret.values()))}")
+        n_wrong = len(f_ret) - int(sum(f_ret.values()))
+        for label, want, got in (
+                ("destruction_rate", rep_ret.get("destruction_rate"),
+                 (len(r_destroyed) / int(sum(f_ret.values())))
+                 if sum(f_ret.values()) else None),
+                ("acquisition_rate", rep_ret.get("acquisition_rate"),
+                 (len(r_gained) / n_wrong) if n_wrong else None)):
+            if want is None and got is None:
+                continue
+            if want is None or got is None or \
+                    abs(float(want) - float(got)) > TOL:
+                mismatch(f"retention.{label}: reported {want} vs "
+                         f"rescore {got}")
 
     # --- identity bindings ---------------------------------------------
     ident: list[str] = []
@@ -410,7 +475,7 @@ def verify_run(run_dir: Path, *,
 
     out["reported"] = {k: reported.get(k) for k in
                        ("adapted", "frozen", "fit_gate", "validation",
-                        "compositional")}
+                        "compositional", "within_holdout", "retention")}
 
     if run_status != "COMPLETE":
         out["status"] = FAILED_RUN if run_status == "FAILED" else INVALID

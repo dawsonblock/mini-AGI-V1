@@ -192,3 +192,63 @@ class DatasetPartitionSetV3(DatasetPartitionSetV2):
         p["compositional_digest"] = (self.compositional.digest
                                     if self.compositional else None)
         return p
+
+
+@dataclass(frozen=True)
+class DatasetPartitionSetV4(DatasetPartitionSetV3):
+    """v4.1 partition set — adds the WITHIN-FAMILY CONFIRMATION holdout.
+
+    ``within_holdout`` carries TRAINED families on unseen inputs (like
+    validation) but is reserved for independent confirmation: the
+    development process may tune on ``validation`` yet must never use
+    ``within_holdout`` for model or intervention selection. Its
+    families are required to be a subset of the train families — a
+    'within-family' holdout over untrained families measures transfer,
+    not generalization (the campaign3b defect).
+
+    Constraints: sample-disjoint from every partition; family-disjoint
+    from hidden/compositional/final_holdout; family subset of train.
+
+    NEW schema — V1/V2/V3 partition digests used by executed campaigns
+    stay byte-stable.
+    """
+    within_holdout: DatasetMembershipManifest | None = None
+    schema: str = "mini-agi-v4.1-dataset-partition-set-v1"
+
+    def assert_disjoint(self) -> None:
+        super().assert_disjoint()
+        if self.within_holdout is None:
+            return
+        for name, part in (("train", self.train),
+                           ("validation", self.validation),
+                           ("hidden", self.hidden),
+                           ("retention", self.retention),
+                           ("security", self.security),
+                           ("compositional", self.compositional),
+                           ("final_holdout", self.final_holdout)):
+            if part is None:
+                continue
+            if part.sample_ids & self.within_holdout.sample_ids:
+                raise PermissionError(
+                    f"within_holdout sample leakage into {name}")
+        for name, part in (("hidden", self.hidden),
+                           ("compositional", self.compositional),
+                           ("final_holdout", self.final_holdout)):
+            if part is None:
+                continue
+            if part.family_ids & self.within_holdout.family_ids:
+                raise PermissionError(
+                    f"within_holdout family leakage into {name}")
+        not_within = self.within_holdout.family_ids - self.train.family_ids
+        if not_within:
+            raise PermissionError(
+                f"within_holdout carries untrained families "
+                f"{sorted(not_within)[:5]} — that is transfer, not a "
+                "within-family confirmation")
+
+    def proof(self) -> dict:
+        p = super().proof()
+        p["schema"] = "mini-agi-v4.1-disjointness-proof-v1"
+        p["within_holdout_digest"] = (self.within_holdout.digest
+                                      if self.within_holdout else None)
+        return p

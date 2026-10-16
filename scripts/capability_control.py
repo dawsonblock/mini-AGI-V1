@@ -35,6 +35,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src-python"))
 
+from dataclasses import asdict  # noqa: E402
+
 from minagi.v161.capability_controller import (  # noqa: E402
     FailureEvidence, InterventionRecord, diagnose,
     intervention_history_append, intervention_history_load,
@@ -53,6 +55,18 @@ def main() -> int:
     d.add_argument("--conditions", default="")
     d.add_argument("--changed-condition", default=None)
     d.add_argument("--output", default=None)
+    d.add_argument("--policy", choices=["hypothesis", "adaptive"],
+                   default="hypothesis",
+                   help="adaptive = v4.2.0 measured-outcome selection "
+                        "over --outcomes (receipt-gated); hypothesis = "
+                        "the v4.0 prior policy")
+    d.add_argument("--outcomes", default=None,
+                   help="jsonl of OutcomeRecord rows (adaptive policy)")
+    d.add_argument("--receipt-root", default=None,
+                   help="directory whose per-run subdirs resolve each "
+                        "record's run_id for receipt verification")
+    d.add_argument("--trust-root", default=None,
+                   help="TRUST_ROOT.json for signed receipt documents")
 
     r = sub.add_parser("record")
     r.add_argument("--history", default="history.jsonl")
@@ -72,12 +86,69 @@ def main() -> int:
     r.add_argument("--target", default="")
     r.add_argument("--conditions", default="")
 
+    o = sub.add_parser("record-outcome",
+                       help="v4.2.0 outcome model — multi-surface "
+                            "deltas + measured resources; receipt "
+                            "required")
+    o.add_argument("--outcomes", default="outcomes.jsonl")
+    o.add_argument("--intervention", required=True)
+    o.add_argument("--target", default="string_transformation")
+    o.add_argument("--within-delta", type=float, required=True)
+    o.add_argument("--cross-delta", type=float, default=0.0)
+    o.add_argument("--retention-regression", type=float, default=0.0)
+    o.add_argument("--qualified", action="store_true",
+                   help="the independent qualifier passed this outcome")
+    o.add_argument("--train-seconds", type=float, default=0.0)
+    o.add_argument("--gpu-seconds", type=float, default=0.0)
+    o.add_argument("--eval-seconds", type=float, default=0.0)
+    o.add_argument("--run-id", default="")
+    o.add_argument("--seed", type=int, default=None)
+    o.add_argument("--receipt", required=True,
+                   help="committed run dir or signed receipt — the "
+                        "record's digest binds to it")
+    o.add_argument("--trust-root", default=None)
+
     args = ap.parse_args()
 
     if args.cmd == "decide":
         ev = FailureEvidence(**json.loads(
             Path(args.evidence).read_text()))
         hyps = diagnose(ev)
+        if args.policy == "adaptive":
+            from minagi.v161.adaptive_intervention import (
+                load_outcomes, verify_outcomes)
+            from minagi.v161.capability_controller import (
+                select_intervention_adaptive)
+            from minagi.v161.capability_outcomes import (
+                verify_outcome_receipt)
+
+            verifier = None
+            if args.trust_root:
+                from minagi.v161.authority import AuthorityRegistry
+                verifier = AuthorityRegistry.load(
+                    args.trust_root).verifier()
+
+            def receipt_ok(rec) -> bool:
+                if not rec.run_id or not args.receipt_root:
+                    return False
+                res = verify_outcome_receipt(
+                    Path(args.receipt_root) / rec.run_id, verifier)
+                return bool(res.get("verified")) and \
+                    res.get("receipt_digest") == rec.evidence_receipt_digest
+
+            outcomes = load_outcomes(args.outcomes) if args.outcomes else []
+            split = verify_outcomes(outcomes, receipt_ok)
+            dec = select_intervention_adaptive(
+                hyps, split["verified"], target=args.target,
+                conditions=args.conditions)
+            dec["unverified_records_ignored"] = len(split["unverified"])
+            text = json.dumps({"hypotheses": [h.__dict__ for h in hyps],
+                               "decision": dec}, indent=2,
+                              sort_keys=True)
+            if args.output:
+                Path(args.output).write_text(text + "\n")
+            print(text)
+            return 0
         hist = intervention_history_load(Path(args.history))
         dec = select_intervention(
             hyps, hist, target=args.target, conditions=args.conditions,
@@ -88,6 +159,44 @@ def main() -> int:
         if args.output:
             Path(args.output).write_text(text + "\n")
         print(text)
+        return 0
+
+    if args.cmd == "record-outcome":
+        from minagi.v161.adaptive_intervention import (
+            OutcomeRecord, append_outcome)
+        from minagi.v161.capability_outcomes import (
+            verify_outcome_receipt)
+
+        verifier = None
+        if args.trust_root:
+            from minagi.v161.authority import AuthorityRegistry
+            verifier = AuthorityRegistry.load(
+                args.trust_root).verifier()
+        res = verify_outcome_receipt(args.receipt, verifier)
+        if not res.get("verified"):
+            print(f"error: receipt failed verification — "
+                  f"{res.get('reason')} (a v4.2 outcome record must "
+                  f"bind verified evidence)", file=sys.stderr)
+            return 2
+        import time as _t
+        rec = OutcomeRecord(
+            intervention=args.intervention,
+            target_capability=args.target,
+            evaluation={
+                "within_family_delta": args.within_delta,
+                "cross_family_delta": args.cross_delta,
+                "retention_regression": args.retention_regression,
+                "qualification_passed": bool(args.qualified)},
+            resources={"training_seconds": args.train_seconds,
+                       "gpu_seconds": args.gpu_seconds,
+                       "evaluation_seconds": args.eval_seconds},
+            evidence_receipt_digest=res["receipt_digest"],
+            run_id=args.run_id or str(res.get("run_id") or ""),
+            seed=args.seed,
+            recorded_utc=_t.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                     _t.gmtime()))
+        append_outcome(args.outcomes, rec)
+        print(json.dumps(asdict(rec), indent=1, sort_keys=True))
         return 0
 
     # ---- record -------------------------------------------------------

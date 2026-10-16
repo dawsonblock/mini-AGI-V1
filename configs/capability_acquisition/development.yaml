@@ -1,0 +1,65 @@
+# Capability acquisition — DEVELOPMENT protocol (v4.1.0 pilot).
+#
+# Development lane: small pilot to identify broken configurations
+# before the confirmatory protocol is frozen. Tuning decisions may use
+# `validation` ONLY — never `within_holdout` (the independent
+# same-family confirmation surface) and never `final_holdout`.
+campaign_id: capability-acquisition-dev
+plan_version: v410-dev
+dataset: configs/campaign4a_tasks.jsonl
+require_cuda: false
+require_family_disjoint_hidden: true
+require_native_servable_adapter: false
+model:
+  id: Qwen/Qwen2.5-0.5B-Instruct
+  revision: 7ae557604adf67be50417f59c2c2f167def9a775
+  dtype: float32
+  quantization: none
+  trust_remote_code: false
+
+# development pilot: two seeds to catch broken configs; the
+# confirmatory matrix (confirmation.yaml) owns the multi-seed claim.
+seeds: [0, 1]
+
+# trained capability set — identical to the verified campaign3e runs
+train_families:
+  - tr3-count-letter
+  - tr3-mirror
+  - tr3-second-char
+  - tr3-strip-first
+  - tr3-suffix-ify
+  - tr3-swapcase
+  - tr3-triple
+  - tr3-vowel-echo
+
+# split roles — enforcement of the dev/confirmation boundary
+split_policy:
+  train: train
+  tuning_surface: validation            # model/config selection input
+  confirmation_surface: within_holdout  # evaluator-controlled; never tune on it
+  transfer_surface: hidden
+  compositional_surface: compositional
+  preservation_surface: retention
+  security_surface: security
+  final_surface: final_holdout          # sealed; digest-bound only
+
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  learning_rate: 0.0002
+  steps: 640
+  max_length: 128
+  optimizer: adamw
+  response_only_loss: true
+  gradient_accumulation_steps: 1
+  microbatch_size: 1
+  malformed_policy: fail
+
+output_contract:
+  instruction: "Return only the transformed result. Do not provide an explanation."
+  max_new_tokens: 16
+  stop_on_eos: true
+
+max_new_tokens: 16

@@ -1,0 +1,88 @@
+# Capability acquisition — CONFIRMATION protocol (v4.1.0).
+#
+# PREREGISTERED confirmatory lane. Freeze BEFORE running: edits after
+# the first confirmatory seed executes invalidate the protocol and must
+# ship as a new file under a new campaign_id.
+#
+# Rules this file pins:
+#   * five seeds, no early stopping — a confirmatory run is not ended
+#     early because an intermediate result looks good or bad
+#     (stopping rules, if any, must be declared in stopping_policy).
+#   * the within_holdout split is the independent same-family
+#     confirmation surface; the learning agent never sees its answers.
+#   * the sealed final_holdout is evaluator-custody only — the runner
+#     binds its digest, never opens the file.
+#   * retention constraints are preregistered below; new correct
+#     answers cannot offset destroyed ones.
+campaign_id: capability-acquisition-confirmation
+plan_version: v410-confirm
+dataset: configs/campaign4a_tasks.jsonl
+require_cuda: false
+require_family_disjoint_hidden: true
+require_native_servable_adapter: false
+model:
+  id: Qwen/Qwen2.5-0.5B-Instruct
+  revision: 7ae557604adf67be50417f59c2c2f167def9a775
+  dtype: float32
+  quantization: none
+  trust_remote_code: false
+
+seeds: [0, 1, 2, 3, 4]
+stopping_policy:
+  early_stopping: false
+  note: "run every declared seed to completion; no peeking rules are
+         declared, so none are permitted"
+
+train_families:
+  - tr3-count-letter
+  - tr3-mirror
+  - tr3-second-char
+  - tr3-strip-first
+  - tr3-suffix-ify
+  - tr3-swapcase
+  - tr3-triple
+  - tr3-vowel-echo
+
+split_policy:
+  train: train
+  tuning_surface: validation
+  confirmation_surface: within_holdout
+  transfer_surface: hidden
+  compositional_surface: compositional
+  preservation_surface: retention
+  security_surface: security
+  final_surface: final_holdout
+
+# ---- preregistered gates -------------------------------------------
+# G5 generalization: adapted within-family accuracy on within_holdout
+# must exceed the frozen baseline by this margin on the per-seed mean.
+gates:
+  fit_min: 0.95                       # adapter must fit its subset
+  within_holdout_min_delta: 0.15      # G5: real generalization gain
+  retention_max_destruction_rate: 0.10  # G6: previously-correct answers lost
+  security_max_violations: 0
+  analysis_unit: family               # cluster-aware uncertainty
+  bootstrap_resamples: 2000
+  ci_alpha: 0.05
+  paired_comparison: true             # paired per-id deltas, not pooled
+
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  learning_rate: 0.0002
+  steps: 640
+  max_length: 128
+  optimizer: adamw
+  response_only_loss: true
+  gradient_accumulation_steps: 1
+  microbatch_size: 1
+  malformed_policy: fail
+
+output_contract:
+  instruction: "Return only the transformed result. Do not provide an explanation."
+  max_new_tokens: 16
+  stop_on_eos: true
+
+max_new_tokens: 16

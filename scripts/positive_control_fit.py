@@ -208,6 +208,14 @@ def main() -> int:
     # add no predictions and no metric fields.
     validation = [r for r in rows if r["split"] == "validation"]
     compositional = [r for r in rows if r["split"] == "compositional"]
+    # v4.1.0: corpora may additionally carry an independent within-family
+    # CONFIRMATION holdout (campaign4a "within_holdout" — trained
+    # functions on inputs disjoint from train AND validation, never a
+    # dev-tuning surface) and a retention probe set scored under the
+    # same frozen-vs-adapted destruction/acquisition accounting the
+    # hidden split already gets.
+    within_holdout = [r for r in rows if r["split"] == "within_holdout"]
+    retention = [r for r in rows if r["split"] == "retention"]
 
     # --- run identity + destination reservation (V4-04) ---------------
     # Everything needed to name this run is cheap: the family set, the
@@ -362,6 +370,8 @@ def main() -> int:
         "subset_rows": len(subset), "hidden_rows": len(hidden),
         "validation_rows": len(validation),
         "compositional_rows": len(compositional),
+        "within_holdout_rows": len(within_holdout),
+        "retention_rows": len(retention),
         "contrast": run_identity["contrast"],
         "run_identity_digest": identity_digest,
         "prompt_contract_digest": contract.digest,
@@ -413,6 +423,7 @@ def main() -> int:
                 str(r["prompt"]).encode()).hexdigest(),
             "expected": str(r["expected"]),
             "output": generate(model, str(r["prompt"])),
+            **({"variant": r["variant"]} if r.get("variant") else {}),
         } for r in group}
 
     def score(preds, group):
@@ -436,6 +447,8 @@ def main() -> int:
     frozen_hidden = per_row(frozen, hidden)
     frozen_val = per_row(frozen, validation)
     frozen_comp = per_row(frozen, compositional)
+    frozen_who = per_row(frozen, within_holdout)
+    frozen_ret = per_row(frozen, retention)
 
     if args.shuffle_labels:
         from minagi.v161.arms import shuffled_label_examples
@@ -453,8 +466,9 @@ def main() -> int:
     # default pool is therefore frozen-correct TRAIN-split rows whose
     # family is not among the trained families, plus frozen-correct
     # non-trained rows from the validation split — never hidden,
-    # retention, security, or holdout rows (those are measurement
-    # surfaces; training on them would contaminate the measurement).
+    # within_holdout, retention, security, or holdout rows (those are
+    # measurement surfaces; training on them would contaminate the
+    # measurement).
     #
     # A custom --rehearsal-corpus undergoes the IDENTICAL frozen-correct
     # membership check: every candidate pair is regenerated under the
@@ -557,6 +571,8 @@ def main() -> int:
     adapted_hidden = per_row(model, hidden)
     adapted_val = per_row(model, validation)
     adapted_comp = per_row(model, compositional)
+    adapted_who = per_row(model, within_holdout)
+    adapted_ret = per_row(model, retention)
     in_memory_sample = {rid: adapted_hidden[rid]["output"]
                         for rid in sorted(adapted_hidden)[:3]}
 
@@ -581,6 +597,10 @@ def main() -> int:
     a_val = score(adapted_val, validation)
     f_comp = score(frozen_comp, compositional)
     a_comp = score(adapted_comp, compositional)
+    f_who = score(frozen_who, within_holdout)
+    a_who = score(adapted_who, within_holdout)
+    f_ret = score(frozen_ret, retention)
+    a_ret = score(adapted_ret, retention)
 
     def _acc(scores, group, fams=None):
         sel = [scores[r["id"]] for r in group
@@ -591,6 +611,13 @@ def main() -> int:
                        if f_hid[rid] == 1 and a_hid.get(rid) == 0)
     gained = sorted(rid for rid in f_hid
                     if f_hid[rid] == 0 and a_hid.get(rid) == 1)
+    # Phase-5 retention accounting: destruction and acquisition are
+    # reported as separate rates — a newly correct answer must never
+    # hide the loss of a previously held capability.
+    ret_destroyed = sorted(rid for rid in f_ret
+                           if f_ret[rid] == 1 and a_ret.get(rid) == 0)
+    ret_gained = sorted(rid for rid in f_ret
+                        if f_ret[rid] == 0 and a_ret.get(rid) == 1)
 
     for name, preds in (("FROZEN", frozen_hidden),
                         ("ADAPTED", adapted_hidden)):
@@ -602,7 +629,9 @@ def main() -> int:
     # when the corpus declares them, so legacy-corpora run inventories
     # are byte-identical to before.
     for split_name, pair in (("VALIDATION", (frozen_val, adapted_val)),
-                             ("COMPOSITIONAL", (frozen_comp, adapted_comp))):
+                             ("COMPOSITIONAL", (frozen_comp, adapted_comp)),
+                             ("WITHIN_HOLDOUT", (frozen_who, adapted_who)),
+                             ("RETENTION", (frozen_ret, adapted_ret))):
         if not pair[0] and not pair[1]:
             continue
         for name, preds in (("FROZEN", pair[0]), ("ADAPTED", pair[1])):
@@ -623,13 +652,21 @@ def main() -> int:
                    **({"validation": _acc(f_val, validation)}
                       if validation else {}),
                    **({"compositional": _acc(f_comp, compositional)}
-                      if compositional else {})},
+                      if compositional else {}),
+                   **({"within_holdout": _acc(f_who, within_holdout)}
+                      if within_holdout else {}),
+                   **({"retention": _acc(f_ret, retention)}
+                      if retention else {})},
         "adapted": {"subset": fit_acc,
                     "hidden": sum(a_hid.values()) / len(hidden),
                     **({"validation": _acc(a_val, validation)}
                        if validation else {}),
                     **({"compositional": _acc(a_comp, compositional)}
-                       if compositional else {})},
+                       if compositional else {}),
+                    **({"within_holdout": _acc(a_who, within_holdout)}
+                       if within_holdout else {}),
+                    **({"retention": _acc(a_ret, retention)}
+                       if retention else {})},
         "subset_correct": a_sub, "hidden_correct": a_hid,
         "frozen_hidden_correct": f_hid,
         **({"validation": {
@@ -661,10 +698,54 @@ def main() -> int:
                 "adapted": _acc(a_comp, compositional),
                 "correct": a_comp, "frozen_correct": f_comp}}
            if compositional else {}),
+        **({"within_holdout": {
+                "rows": len(within_holdout),
+                "frozen": _acc(f_who, within_holdout),
+                "adapted": _acc(a_who, within_holdout),
+                "within_family": {
+                    "frozen": _acc(f_who, within_holdout,
+                                   trained_families),
+                    "adapted": _acc(a_who, within_holdout,
+                                    trained_families)},
+                "untrained_family": {
+                    "frozen": _acc(
+                        f_who, within_holdout,
+                        {r["family"] for r in within_holdout}
+                        - trained_families),
+                    "adapted": _acc(
+                        a_who, within_holdout,
+                        {r["family"] for r in within_holdout}
+                        - trained_families)},
+                "correct": a_who, "frozen_correct": f_who}}
+           if within_holdout else {}),
+        **({"retention": {
+                "rows": len(retention),
+                "frozen": _acc(f_ret, retention),
+                "adapted": _acc(a_ret, retention),
+                "n_frozen_correct": sum(f_ret.values()),
+                "destroyed_ids": ret_destroyed,
+                "n_destroyed": len(ret_destroyed),
+                "gained_ids": ret_gained,
+                "n_gained": len(ret_gained),
+                "destruction_rate":
+                    (len(ret_destroyed) / sum(f_ret.values()))
+                    if sum(f_ret.values()) else None,
+                "acquisition_rate":
+                    (len(ret_gained)
+                     / (len(retention) - sum(f_ret.values())))
+                    if len(retention) > sum(f_ret.values()) else None,
+                "correct": a_ret, "frozen_correct": f_ret}}
+           if retention else {}),
         "capability_destruction": {
             "n_frozen_correct_hidden": sum(f_hid.values()),
             "destroyed_ids": destroyed, "n_destroyed": len(destroyed),
-            "gained_ids": gained, "n_gained": len(gained)},
+            "gained_ids": gained, "n_gained": len(gained),
+            "destruction_rate":
+                (len(destroyed) / sum(f_hid.values()))
+                if sum(f_hid.values()) else None,
+            "acquisition_rate":
+                (len(gained) / (len(hidden) - sum(f_hid.values())))
+                if len(hidden) > sum(f_hid.values()) else None},
         "contrast": run_config["contrast"],
         "exposure_actual": {
             "sample_presentations": receipt.get("sample_presentations"),
@@ -735,6 +816,19 @@ def main() -> int:
         print(f"compositional: frozen "
               f"{metrics['compositional']['frozen']:.3f} -> adapted "
               f"{metrics['compositional']['adapted']:.3f}")
+    if within_holdout:
+        wh = metrics["within_holdout"]["within_family"]
+        print(f"within-holdout confirmation: frozen "
+              f"{wh['frozen']:.3f} -> adapted {wh['adapted']:.3f} "
+              f"(n={metrics['within_holdout']['rows']})")
+    if retention:
+        rt = metrics["retention"]
+        dr = rt["destruction_rate"]
+        ar = rt["acquisition_rate"]
+        print(f"retention  : frozen {rt['frozen']:.3f} -> adapted "
+              f"{rt['adapted']:.3f} | destruction "
+              f"{dr if dr is not None else 'n/a'} | acquisition "
+              f"{ar if ar is not None else 'n/a'}")
     print(f"destruction: {len(destroyed)}/{sum(f_hid.values())} "
           f"frozen-correct broken; {len(gained)} gained")
     return 0 if metrics["fit_gate"]["passed"] else 2
