@@ -99,15 +99,26 @@ def cluster_bootstrap_delta(
             "resamples": resamples, "clusters": len(fams)}
 
 
-def run_summary(run: Path, fams: dict[str, str]) -> dict | None:
+def run_summary(run: Path, fams: dict[str, str],
+                security_dir: Path | None = None) -> dict | None:
     mpath = run / "METRICS.json"
     if not mpath.is_file():
         return None
     m = json.loads(mpath.read_text())
+    # The governed security lane writes a sidecar report (it is not part
+    # of the run's commit inventory — scoring happens after commit and
+    # must not mutate committed evidence). Loaded from --security-dir.
+    sec = m.get("security") or {}
+    if security_dir is not None:
+        sp = security_dir / f"{run.name}.security.json"
+        if sp.is_file():
+            lane = json.loads(sp.read_text())
+            sec = {"regressions": lane.get("regressions"),
+                   "suite_version": lane.get("suite_version"),
+                   "n_security_rows": lane.get("n_security_rows")}
     who = m.get("within_holdout") or {}
     ret = m.get("retention") or {}
     val = m.get("validation") or {}
-    sec = m.get("security") or {}
     fr_who = _correct_map(run, "PREDICTIONS-FROZEN-WITHIN_HOLDOUT.jsonl")
     ad_who = _correct_map(run, "PREDICTIONS-ADAPTED-WITHIN_HOLDOUT.jsonl")
     return {
@@ -146,6 +157,10 @@ def main() -> int:
                             "confirmation.yaml")
     ap.add_argument("--seeds", default="0,1,2,3,4")
     ap.add_argument("--arms", default="fixed,rehearsal,kl,both,shuffled")
+    ap.add_argument("--security-dir", default=None,
+                    help="dir of <run_id>.security.json sidecars from "
+                         "run_security_lane.py; absent => security gate "
+                         "stays UNDEFINED (fail-closed)")
     ap.add_argument("--output", default=None)
     args = ap.parse_args()
 
@@ -162,13 +177,17 @@ def main() -> int:
     arms = [a.strip() for a in args.arms.split(",") if a.strip()]
     rng = random.Random(20241010)
 
+    sec_dir = (Path(args.security_dir) if args.security_dir else None)
+    if sec_dir is not None and not sec_dir.is_absolute():
+        sec_dir = ROOT / sec_dir
+
     matrix: dict[str, dict] = {}
     missing: list[str] = []
     for arm in arms:
         cells = []
         for seed in seeds:
             rid = f"{args.matrix_id}-{arm}-s{seed}"
-            s = run_summary(run_root / rid, fams)
+            s = run_summary(run_root / rid, fams, sec_dir)
             if s is None:
                 missing.append(rid)
             else:
@@ -204,13 +223,17 @@ def main() -> int:
         # (safety_regression.declarative_score over adapted-model
         # generations on the security split), not by the fit runner —
         # a missing block must fail closed, never silently pass.
-        sec_blocks = [c["security"] for c in cells
-                      if isinstance(c["security"], dict)
-                      and c["security"]]
-        sec_viol = (sum(int(sv.get("regressions",
-                                 sv.get("violations", 0)) or 0)
-                        for sv in sec_blocks)
-                    if len(sec_blocks) == len(cells) else None)
+        sec_vals = []
+        sec_complete = True
+        for c in cells:
+            sv = c["security"]
+            v = (sv.get("regressions", sv.get("violations"))
+                 if isinstance(sv, dict) else None)
+            if v is None:
+                sec_complete = False
+            else:
+                sec_vals.append(int(v))
+        sec_viol = sum(sec_vals) if sec_complete and cells else None
         mean_delta = (sum(who_deltas) / len(who_deltas)
                       if who_deltas else 0.0)
         verdict = {

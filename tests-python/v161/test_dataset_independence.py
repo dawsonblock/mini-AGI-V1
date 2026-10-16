@@ -78,6 +78,26 @@ def test_v3_digest_stability_v4_field_absent():
     assert ps.within_holdout is None
 
 
+def test_rehearsal_family_overlap_with_measured_surface_rejected():
+    """Rehearsal is train-side: a rehearsal row in a measured family
+    would contaminate that measurement, so it must fail closed."""
+    with pytest.raises(PermissionError, match="rehearsal family leakage"):
+        _base_set(rehearsal=_part("rehearsal", [("rh1", "famX")]))  # hidden
+    with pytest.raises(PermissionError, match="rehearsal family leakage"):
+        _base_set(rehearsal=_part("rehearsal", [("rh2", "famA")]))  # train
+
+
+def test_rehearsal_sample_overlap_rejected():
+    with pytest.raises(PermissionError, match="rehearsal sample leakage"):
+        _base_set(rehearsal=_part("rehearsal", [("t1", "famR")]))
+
+
+def test_rehearsal_distinct_families_accepted():
+    ps = _base_set(rehearsal=_part(
+        "rehearsal", [("rh1", "famR"), ("rh2", "famR")]))
+    assert ps.proof()["rehearsal_digest"]
+
+
 # ---------- generated corpus (campaign4a) ----------------------------
 
 @pytest.fixture(scope="module")
@@ -102,7 +122,34 @@ def test_campaign4a_partition_sizes(corpus):
     assert c["compositional"] == 8 * 12
     assert c["retention"] == 108
     assert c["security"] >= 30
+    assert c["rehearsal"] == 4 * 16 + 16
     assert len(holdout) == 5 * 20
+
+
+def test_campaign4a_rehearsal_disjoint_from_measured(corpus):
+    """Rehearsal rows must carry capabilities that are neither trained
+    nor measured anywhere — otherwise the preservation arms would be
+    rehearsing a surface we score."""
+    rows, _ = corpus
+    measured = [r for r in rows
+                if r["split"] in ("train", "validation",
+                                  "within_holdout", "hidden",
+                                  "compositional", "retention",
+                                  "security")]
+    reh = [r for r in rows if r["split"] == "rehearsal"]
+    assert reh, "corpus must carry a rehearsal pool for arms C/E"
+    measured_fams = {r["family"] for r in measured}
+    assert {r["family"] for r in reh}.isdisjoint(measured_fams)
+    # the runner's default pool filter admits exactly the train-side
+    # whitelist — rehearsal must be in it, and nothing measured may be
+    src = (ROOT / "scripts" / "positive_control_fit.py").read_text()
+    import re as _re
+    m = _re.search(r'r\["split"\] in \(([^)]*)\)', src)
+    pool = set(_re.findall(r'"(\w+)"', m.group(1)))
+    assert "rehearsal" in pool
+    assert pool.isdisjoint({"hidden", "within_holdout", "retention",
+                            "security", "compositional",
+                            "final_holdout"})
 
 
 def test_campaign4a_train_matches_campaign3e(corpus):
