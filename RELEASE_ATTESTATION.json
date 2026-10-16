@@ -88,7 +88,7 @@
   "qualification": "macOS suite green; Linux boundary run pending",
   "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
  },
- "manifest_sha256": "12c337c05f526ab285cb1b45bbde2f9e7f9f08369707540a4e7ee6e976670894",
+ "manifest_sha256": "5e22f9823a4e686f813456f777c046e4d0f5197ad25842aee0f27a8a56e7d579",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "1067 passed, 18 skipped, 0 failed (macOS); container: 62/62 v16.4.10 + 50/50 executor-isolation + 2/2 G10",
@@ -521,9 +521,15 @@
    "manifest_sha256": "12c337c05f526ab285cb1b45bbde2f9e7f9f08369707540a4e7ee6e976670894",
    "reason": "v4.0.1 external-review hardening: router state persistence, signed adapter manifests + artifact verification, unhinted routing as result-of-record, campaign3e within-family corpus + fit-runner split eval; version identity unified at 4.0.1; 1351 passed/21 skipped; executed MPS runs v401-3e-8fam-s0 (fit FAIL) and v401-3e-8fam-e8-s0 (fit PASS, within-family 0.208->0.542, single seed, unqualified)",
    "utc": "2026-10-16T02:24:11.093139+00:00"
+  },
+  {
+   "commit": "HEAD",
+   "manifest_sha256": "5e22f9823a4e686f813456f777c046e4d0f5197ad25842aee0f27a8a56e7d579",
+   "reason": "v4.0.2 integrity closure: atomic ownership-bound run lifecycle, full-split independent requalification (95 runs; campaign3e VERIFIED, legacy INCONSISTENT), authenticated registry + activation recheck + untrusted family hints, matrix identity completeness, verified outcome receipts; manifest hidden rows corrected 96->192; defects V4-26..V4-31 closed; 696 passed/4 skipped in tests-python/v161",
+   "utc": "2026-10-16T07:01:37.069993+00:00"
   }
  ],
- "reissued_utc": "2026-10-16T02:24:11.093139+00:00",
+ "reissued_utc": "2026-10-16T07:01:37.069993+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
