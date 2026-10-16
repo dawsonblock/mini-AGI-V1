@@ -404,6 +404,20 @@ flagged symbol exists in this tree's source. The durable remedy is
 unchanged: root the IDE workspace at this checkout (or remove the
 sibling root), or give the IDE this repo's `.venv` interpreter.
 
+**Recurred (v4.0.2 round).** The IDE linter re-flagged E0611/E1123 on
+the v4.0.2 symbols — `exact_match_strict` in
+`evidence_reconciliation.py` and `capability_matrix.py`,
+`train_family_adapters` + `lexical_terms` in `capability_matrix.py`,
+the `VerifiedAdapterRouter` constructor kwargs `artifact_resolver` /
+`artifact_digester` / `manifest_verifier`, and the new `route()`
+kwarg `family_authenticated`. Re-verified from this worktree: pylint
+rates `evidence_reconciliation.py`, `capability_matrix.py` and
+`test_v40_routing.py` 10.00/10; runtime resolution confirms every name
+binds to this tree's `src-python` (`minagi` at
+`mini-AGI-campaign3b-work/src-python/minagi`). The sibling checkout
+predates all of these symbols. Same conclusion: false positives from
+cross-checkout resolution; no code action warranted.
+
 ## Summary
 
 | id | class | status |
