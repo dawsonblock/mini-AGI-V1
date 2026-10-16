@@ -1,6 +1,6 @@
 {
   "schema": "mini-agi-v4.0-defect-register-v1",
-  "release": "mini-AGI-V1-Verified-Capability-Acquisition-v4.0.0",
+  "release": "mini-AGI-V1-Verified-Capability-Acquisition-v4.0.1",
   "audit_basis": "full source audit of research/campaign3b-diagnostics tree (v16.4.10+3B.3); every entry cites file:line evidence in this checkout, not README claims",
   "severity_scale": {
     "P0": "produces wrong scientific verdicts or destroys evidence",
@@ -240,7 +240,7 @@
       "status": "CLOSED",
       "component": "verified adapter registry persistence",
       "location": "src-python/minagi/v161/verified_routing.py (to_json/from_json)",
-      "evidence": "external review: a revoked adapter became selectable after router save/reload — to_json serialized only the adapter list; _revoked, _suspended and _health were silently dropped, and test_registry_roundtrip asserted only adapter survival",
+      "evidence": "external review: a revoked adapter became selectable after router save/reload \u2014 to_json serialized only the adapter list; _revoked, _suspended and _health were silently dropped, and test_registry_roundtrip asserted only adapter survival",
       "root_cause": "safety state was never part of the registry schema",
       "repair": "registry schema v2 persists adapters + revoked + suspended + health across save/reload; a v1 file cannot prove its pre-save safety state so it loads marked state_complete=False with a recorded registry_warning, and is refused outright under strict_state=True",
       "regression_test": "tests-python/v161/test_v40_routing.py::test_revocation_survives_registry_roundtrip, test_suspension_and_health_survive_roundtrip, test_v1_registry_load_marks_incomplete_state, test_v1_registry_strict_state_refuses"
@@ -251,9 +251,9 @@
       "status": "CLOSED",
       "component": "adapter manifest authorization + artifact binding",
       "location": "src-python/minagi/v161/verified_routing.py, scripts/sign_adapter_manifest.py, scripts/capability_matrix.py",
-      "evidence": "external review: the router accepted qualification manifests without independently verifying signed authorization or adapter contents — manifests were bare digests trusted as constructed (capability_matrix minted provisional evidence digests in-process), and nothing checked the on-disk artifact against adapter_digest",
+      "evidence": "external review: the router accepted qualification manifests without independently verifying signed authorization or adapter contents \u2014 manifests were bare digests trusted as constructed (capability_matrix minted provisional evidence digests in-process), and nothing checked the on-disk artifact against adapter_digest",
       "root_cause": "no signature field or verification policy existed on the manifest; no artifact re-hash was ever performed",
-      "repair": "manifest schema v2 adds an Ed25519 envelope over the unsigned body (sign/verify, partial-envelope refused); the router accepts manifest_verifier (every manifest must verify), authority (AuthorityRegistry — signer must be authorized for required_role=qualification at check time) and artifact_resolver + artifact_digester (measured artifact digest must equal adapter_digest at register/reinstate/init AND at every from_json reload); ineligible manifests never enter the registry and appear in every decision's refused list; each routing event records which controls were enforced so provisional (unsigned) evidence cannot read as authorized; scripts/sign_adapter_manifest.py is the authority-side signer (refuses re-sign)",
+      "repair": "manifest schema v2 adds an Ed25519 envelope over the unsigned body (sign/verify, partial-envelope refused); the router accepts manifest_verifier (every manifest must verify), authority (AuthorityRegistry \u2014 signer must be authorized for required_role=qualification at check time) and artifact_resolver + artifact_digester (measured artifact digest must equal adapter_digest at register/reinstate/init AND at every from_json reload); ineligible manifests never enter the registry and appear in every decision's refused list; each routing event records which controls were enforced so provisional (unsigned) evidence cannot read as authorized; scripts/sign_adapter_manifest.py is the authority-side signer (refuses re-sign)",
       "regression_test": "tests-python/v161/test_v40_routing.py (unsigned/wrong-key/wrong-role/artifact-mismatch/missing-artifact/reinstate-recheck tests) + end-to-end sign->admit->persist->revoke flow verified"
     },
     {
@@ -262,9 +262,9 @@
       "status": "CLOSED",
       "component": "routed adapter evaluation",
       "location": "scripts/capability_matrix.py (routed_family_eval)",
-      "evidence": "external review: routed evaluation used the correct family label supplied by the benchmark — every row was routed with family=r['family'], and an explicit hint in route() bypasses lexical family matching and the OOD gate entirely (score pinned at 0.85+0.15*priority), so the router's real capability (recognizing the family from the request) was never measured; family_terms=(f,) also made the inferred path degenerate",
+      "evidence": "external review: routed evaluation used the correct family label supplied by the benchmark \u2014 every row was routed with family=r['family'], and an explicit hint in route() bypasses lexical family matching and the OOD gate entirely (score pinned at 0.85+0.15*priority), so the router's real capability (recognizing the family from the request) was never measured; family_terms=(f,) also made the inferred path degenerate",
       "root_cause": "evaluation passed gold labels as dispatch metadata and gave adapters only their family id as routing vocabulary",
-      "repair": "routed_family_eval now runs BOTH routing modes per row: inferred (no hint — lexical family_terms overlap + OOD threshold; production-realistic; designated result_of_record) and hinted (gold label as dispatch metadata — diagnostic); per-mode accuracy, activation, correct_selection and false_activations are reported separately; family_terms are derived from each family's task instruction text; artifact_resolver+artifact_digester verify adapter contents at registration",
+      "repair": "routed_family_eval now runs BOTH routing modes per row: inferred (no hint \u2014 lexical family_terms overlap + OOD threshold; production-realistic; designated result_of_record) and hinted (gold label as dispatch metadata \u2014 diagnostic); per-mode accuracy, activation, correct_selection and false_activations are reported separately; family_terms are derived from each family's task instruction text; artifact_resolver+artifact_digester verify adapter contents at registration",
       "regression_test": "tests-python/v161/test_v40_routing.py (inferred-path tests) + matrix output schema carries both modes"
     },
     {
@@ -273,10 +273,21 @@
       "status": "CLOSED",
       "component": "campaign3b corpus validation split",
       "location": "configs/campaign3b_tasks.jsonl (via scripts/gen_campaign3d.py), scripts/gen_campaign3e.py, configs/campaign3e.yaml",
-      "evidence": "external review: the split named 'validation' contains families (val3-rot2, val3-first-third, val3-append-tag) disjoint from every trained tr3-* family — no partition in that corpus measures unseen inputs of TRAINED families; the register's 'validation (split B within-family)' wording was inaccurate",
+      "evidence": "external review: the split named 'validation' contains families (val3-rot2, val3-first-third, val3-append-tag) disjoint from every trained tr3-* family \u2014 no partition in that corpus measures unseen inputs of TRAINED families; the register's 'validation (split B within-family)' wording was inaccurate",
       "root_cause": "the generator designed validation as a held-out-family set, conflating cross-family transfer with within-family generalization",
       "repair": "scripts/gen_campaign3e.py generates configs/campaign3e_tasks.jsonl + configs/holdout/campaign3e_holdout.jsonl where validation is the trained tr3-* functions on word-disjoint unseen inputs (checked: validation families == train families AND 0 input words shared with train); shipped campaign3b corpus is byte-identical (executed-campaign digests stay valid); new config configs/campaign3e.yaml binds the new sealed holdout digest; cross-family transfer remains measured by hidden + sealed holdout",
       "regression_test": "tests-python/v161/test_v40_campaign3e_corpus.py (within-family invariants, generator--check, committed-file fidelity, shipped-corpus defect pinned as real and confined)"
+    },
+    {
+      "id": "V4-25",
+      "severity": "P1",
+      "status": "CLOSED",
+      "component": "positive-control fit runner split coverage",
+      "location": "scripts/positive_control_fit.py",
+      "evidence": "the runner collected and scored only train-subset and hidden rows; corpora carrying a validation or compositional split (campaign3e, DatasetPartitionSetV3) had those surfaces generated on disk but never evaluated by this lane \u2014 the V4-24 within-family corpus was unreachable as a measurement",
+      "root_cause": "eval blocks were hardcoded to (subset, hidden) when the corpus schema gained additional splits later",
+      "repair": "runner now collects split == validation and split == compositional, generates frozen + adapted predictions for both before the frozen reference is freed, scores under the same strict oracle, writes PREDICTIONS-{FROZEN,ADAPTED}-{VALIDATION,COMPOSITIONAL}.jsonl, and reports per-split accuracy plus a within-family / untrained-family decomposition of validation rows; empty splits add no artifacts so legacy-corpora run inventories are unchanged",
+      "regression_test": "tests-python/v161/test_fit_runner_integrity.py (test_within_family_and_compositional_splits_are_evaluated, test_frozen_evaluation_precedes_reference_freeing)"
     }
   ],
   "residual_known_limitations": [

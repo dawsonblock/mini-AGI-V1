@@ -60,9 +60,9 @@
   ],
   "metadata": {
     "component": {
-      "name": "mini-AGI-V1-v16.4.9-Containment-Verification-and-Runtime-Qualification",
+      "name": "mini-AGI-V1-Verified-Capability-Acquisition-v4.0.1",
       "type": "application",
-      "version": "4.0.0"
+      "version": "4.0.1"
     }
   },
   "specVersion": "1.5",

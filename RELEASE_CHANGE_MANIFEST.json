@@ -5,7 +5,7 @@
   "threat_model": "docs/security/WORKER_THREAT_MODEL.md"
  },
  "base_version": "16.4.10",
- "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.10 + Campaign 3B/3B.3 repairs (all prior entries remain in effect; this manifest ADDS the v4.0.0 verified-capability-acquisition repairs and removes no control)",
+ "carried_from": "RELEASE_CHANGE_MANIFEST.json of v16.4.10 + Campaign 3B/3B.3/v4.0.0 repairs (all prior entries remain in effect; this manifest ADDS the v4.0.1 external-review hardening and removes no control)",
  "evidence": {
   "governed_safety": "ENFORCED on the executed run: 0 undefined mandatory categories; 2 violations per adapted arm (frozen model obeys an embedded override and discloses the protected canary \u2014 a baseline property, not an adaptation regression). Suite digest sha256:70bc2a29...",
   "native_ctest": "28/28 PASS \u2014 macOS CPU build (QW3_ENABLE_CUDA=OFF), 0 failed, 0 skipped",
@@ -345,9 +345,53 @@
   {
    "change": "v4.0: KL/protocol/family-adapter tests on tiny model",
    "path": "tests-python/v161/test_v40_trainer_protocol.py"
+  },
+  {
+   "path": "src-python/minagi/v161/verified_routing.py",
+   "change": "registry v2 + signed manifests + artifact verification (V4-21/V4-22)"
+  },
+  {
+   "path": "scripts/capability_matrix.py",
+   "change": "dual-mode routing evaluation, artifact wiring (V4-23)"
+  },
+  {
+   "path": "scripts/sign_adapter_manifest.py",
+   "change": "new: qualification-authority manifest signer (V4-22)"
+  },
+  {
+   "path": "scripts/gen_campaign3e.py",
+   "change": "new: within-family validation corpus generator (V4-24)"
+  },
+  {
+   "path": "configs/campaign3e_tasks.jsonl",
+   "change": "new: generated corpus, within-family validation (V4-24)"
+  },
+  {
+   "path": "configs/campaign3e.yaml",
+   "change": "new: campaign3e config binding sealed holdout (V4-24)"
+  },
+  {
+   "path": "configs/holdout/campaign3e_holdout.jsonl",
+   "change": "new: sealed 3e holdout (V4-24)"
+  },
+  {
+   "path": "scripts/positive_control_fit.py",
+   "change": "validation + compositional split evaluation (V4-25)"
+  },
+  {
+   "path": "tests-python/v161/test_v40_routing.py",
+   "change": "router persistence/signature/artifact regression tests"
+  },
+  {
+   "path": "tests-python/v161/test_v40_campaign3e_corpus.py",
+   "change": "new: corpus within-family invariants"
+  },
+  {
+   "path": "tests-python/v161/test_fit_runner_integrity.py",
+   "change": "new: split-coverage + frozen-ordering source checks"
   }
  ],
- "release": "mini-AGI-V1-Campaign3B3-Scientific-Calibration",
+ "release": "mini-AGI-V1-Verified-Capability-Acquisition-v4.0.1",
  "remaining_defects": {
   "campaign3a_provenance": "rests on the manifests the 3A archive ships with; no independent attestation available",
   "gpu": "GPU/CUDA tests NOT RUN on this host (no CUDA device)",
@@ -384,5 +428,12 @@
  },
  "source_archive": "mini-AGI-V1-Campaign3B-Full-Scientific-Hardening.zip",
  "summary": "Campaign 3B scientific repair: shared versioned prompt/tokenization contract proving training/inference token parity; frozen answer-only output contract with strict exact match primary and format/termination diagnostics recorded separately; oracle-verified training replay (L5b) as an operational non-neural baseline with L5a preserved as the honest negative; family-aware statistics with undefined metrics reported as NOT_ESTIMABLE rather than zero; a governed eight-category safety and retention suite with fail-closed promotion gating; and an evaluator-sealed confirmation executor that generates and scores real predictions under frozen rules. The executed positive control is REFUSED (6 of 7 readiness gates pass): the pipeline is mechanically correct and LoRA learns within-family, but it does not fit to the 95% bar and degrades the held-out families. No improvement claim is made. Campaign 3B.3 adds: exact-match-v2 strict oracle rescoring all retained predictions (v1 retained for provenance); an uncertainty-aware intervention selector whose decision taxonomy (RECOMMENDED/ELIGIBLE/INCONCLUSIVE/CONFOUNDED/INSUFFICIENT-EVIDENCE/FAILED-IMPLEMENTATION/REFUTED/HIGH-RISK) is reachable from evidence logic rather than decorative; optimization-time rehearsal and frozen-reference KL preservation in the trainer with receipt-bound corpus digests; a matched 4-condition x 3-seed P4 sweep; and a fail-closed production confirmation attempt (NOT_QUALIFIED on same-UID custody). The scientific verdict remains negative: no adaptation condition beats frozen inference under the strict oracle.",
- "version": "16.4.10+campaign3b3"
+ "version": "4.0.1",
+ "repairs_v401": {
+  "V4-21": "router registry schema v2 persists revoked/suspended/health across to_json/from_json; legacy v1 loads marked state_complete=False (or refused under strict_state)",
+  "V4-22": "QualifiedAdapterManifest v2 Ed25519 envelope; router manifest_verifier + AuthorityRegistry role check (qualification) + artifact_resolver/artifact_digester bind physical adapter bytes; scripts/sign_adapter_manifest.py",
+  "V4-23": "capability_matrix routes unhinted (inferred) as the result-of-record and hinted as diagnostic, with correct_selection/false_activations per mode; family_terms derived from family task text",
+  "V4-24": "scripts/gen_campaign3e.py emits a corpus whose validation split is the 8 trained tr3-* functions on word-disjoint unseen inputs (within-family); sealed campaign3e holdout + configs/campaign3e.yaml; shipped 3b corpus untouched",
+  "V4-25": "positive_control_fit evaluates validation + compositional splits for both frozen and adapted models and reports the within-family decomposition; per-split prediction artifacts persisted"
+ }
 }

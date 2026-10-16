@@ -194,6 +194,13 @@ def main() -> int:
         args.steps = args.exposure * len(train_rows)
 
     hidden = [r for r in rows if r["split"] == "hidden"]
+    # v4.0.1: corpora may carry a within-family validation split
+    # (unseen inputs of TRAINED families — campaign3e) and a
+    # compositional split; both are evaluated when present so the new
+    # measurement surfaces are exercised by this lane too. Empty splits
+    # add no predictions and no metric fields.
+    validation = [r for r in rows if r["split"] == "validation"]
+    compositional = [r for r in rows if r["split"] == "compositional"]
 
     # --- run identity + destination reservation (V4-04) ---------------
     # Everything needed to name this run is cheap: the family set, the
@@ -332,6 +339,8 @@ def main() -> int:
         "model_revision": cfg["model"]["revision"],
         "corpus": args.corpus, "config": args.config,
         "subset_rows": len(subset), "hidden_rows": len(hidden),
+        "validation_rows": len(validation),
+        "compositional_rows": len(compositional),
         "contrast": run_identity["contrast"],
         "run_identity_digest": identity_digest,
         "prompt_contract_digest": contract.digest,
@@ -404,6 +413,8 @@ def main() -> int:
     frozen = load_causal_lm(spec, purpose="research")
     frozen_subset = per_row(frozen, subset)
     frozen_hidden = per_row(frozen, hidden)
+    frozen_val = per_row(frozen, validation)
+    frozen_comp = per_row(frozen, compositional)
 
     if args.shuffle_labels:
         from minagi.v161.arms import shuffled_label_examples
@@ -523,6 +534,8 @@ def main() -> int:
     model.eval()
     adapted_subset = per_row(model, subset)
     adapted_hidden = per_row(model, hidden)
+    adapted_val = per_row(model, validation)
+    adapted_comp = per_row(model, compositional)
     in_memory_sample = {rid: adapted_hidden[rid]["output"]
                         for rid in sorted(adapted_hidden)[:3]}
 
@@ -543,6 +556,15 @@ def main() -> int:
     a_sub = score(adapted_subset, subset)
     f_hid = score(frozen_hidden, hidden)
     a_hid = score(adapted_hidden, hidden)
+    f_val = score(frozen_val, validation)
+    a_val = score(adapted_val, validation)
+    f_comp = score(frozen_comp, compositional)
+    a_comp = score(adapted_comp, compositional)
+
+    def _acc(scores, group, fams=None):
+        sel = [scores[r["id"]] for r in group
+               if fams is None or r["family"] in fams]
+        return sum(sel) / len(sel) if sel else None
     fit_acc = sum(a_sub.values()) / len(subset)
     destroyed = sorted(rid for rid in f_hid
                        if f_hid[rid] == 1 and a_hid.get(rid) == 0)
@@ -555,6 +577,18 @@ def main() -> int:
             "".join(json.dumps({"split": "hidden", "id": rid, **v},
                                sort_keys=True) + "\n"
                     for rid, v in sorted(preds.items())))
+    # Per-split prediction files for the v4.0.1 surfaces — written only
+    # when the corpus declares them, so legacy-corpora run inventories
+    # are byte-identical to before.
+    for split_name, pair in (("VALIDATION", (frozen_val, adapted_val)),
+                             ("COMPOSITIONAL", (frozen_comp, adapted_comp))):
+        if not pair[0] and not pair[1]:
+            continue
+        for name, preds in (("FROZEN", pair[0]), ("ADAPTED", pair[1])):
+            (staging / f"PREDICTIONS-{name}-{split_name}.jsonl").write_text(
+                "".join(json.dumps({"split": split_name.lower(), "id": rid,
+                                    **v}, sort_keys=True) + "\n"
+                        for rid, v in sorted(preds.items())))
     (staging / "PREDICTIONS-SUBSET.jsonl").write_text(
         "".join(json.dumps({"split": "train-subset", "id": rid, **v},
                            sort_keys=True) + "\n"
@@ -564,11 +598,48 @@ def main() -> int:
         "fit_gate": {"threshold": 0.95, "adapted_subset_accuracy": fit_acc,
                      "passed": fit_acc >= 0.95},
         "frozen": {"subset": sum(f_sub.values()) / len(subset),
-                   "hidden": sum(f_hid.values()) / len(hidden)},
+                   "hidden": sum(f_hid.values()) / len(hidden),
+                   **({"validation": _acc(f_val, validation)}
+                      if validation else {}),
+                   **({"compositional": _acc(f_comp, compositional)}
+                      if compositional else {})},
         "adapted": {"subset": fit_acc,
-                    "hidden": sum(a_hid.values()) / len(hidden)},
+                    "hidden": sum(a_hid.values()) / len(hidden),
+                    **({"validation": _acc(a_val, validation)}
+                       if validation else {}),
+                    **({"compositional": _acc(a_comp, compositional)}
+                       if compositional else {})},
         "subset_correct": a_sub, "hidden_correct": a_hid,
         "frozen_hidden_correct": f_hid,
+        **({"validation": {
+                "rows": len(validation),
+                "within_family_rows": sum(
+                    1 for r in validation
+                    if r["family"] in trained_families),
+                "frozen": _acc(f_val, validation),
+                "adapted": _acc(a_val, validation),
+                "within_family": {
+                    "frozen": _acc(
+                        f_val, validation, trained_families),
+                    "adapted": _acc(
+                        a_val, validation, trained_families)},
+                "untrained_family": {
+                    "frozen": _acc(
+                        f_val, validation,
+                        {r["family"] for r in validation}
+                        - trained_families),
+                    "adapted": _acc(
+                        a_val, validation,
+                        {r["family"] for r in validation}
+                        - trained_families)},
+                "correct": a_val, "frozen_correct": f_val}}
+           if validation else {}),
+        **({"compositional": {
+                "rows": len(compositional),
+                "frozen": _acc(f_comp, compositional),
+                "adapted": _acc(a_comp, compositional),
+                "correct": a_comp, "frozen_correct": f_comp}}
+           if compositional else {}),
         "capability_destruction": {
             "n_frozen_correct_hidden": sum(f_hid.values()),
             "destroyed_ids": destroyed, "n_destroyed": len(destroyed),
@@ -634,6 +705,15 @@ def main() -> int:
           f"({'PASS' if fit_acc >= 0.95 else 'FAIL'} at 0.95)")
     print(f"hidden   : frozen {metrics['frozen']['hidden']:.3f} -> "
           f"adapted {metrics['adapted']['hidden']:.3f}")
+    if validation:
+        wf = metrics["validation"]["within_family"]
+        print(f"within-family validation: frozen "
+              f"{wf['frozen']:.3f} -> adapted {wf['adapted']:.3f} "
+              f"(n={metrics['validation']['within_family_rows']})")
+    if compositional:
+        print(f"compositional: frozen "
+              f"{metrics['compositional']['frozen']:.3f} -> adapted "
+              f"{metrics['compositional']['adapted']:.3f}")
     print(f"destruction: {len(destroyed)}/{sum(f_hid.values())} "
           f"frozen-correct broken; {len(gained)} gained")
     return 0 if metrics["fit_gate"]["passed"] else 2

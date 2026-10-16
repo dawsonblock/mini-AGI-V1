@@ -173,3 +173,48 @@ def test_negative_control_is_deranged_over_the_trained_allocation():
     assert "shuffled_label_examples(train_rows, args.seed)" in src, (
         "the negative control must be deranged over train_rows, not the "
         "unique subset, or it sees fewer examples than its matched run")
+
+
+# ----------------------------------------------------------------- v4.0.1
+
+def test_within_family_and_compositional_splits_are_evaluated():
+    """The campaign3e measurement surfaces must flow through the fit
+    runner: a corpus that carries a validation or compositional split
+    gets frozen/adapted predictions, strict scores, persisted per-split
+    prediction files, and metric fields — otherwise the new corpus's
+    within-family partition exists on disk but is never measured."""
+    src = _source()
+    # rows are collected from the corpus
+    assert 'r["split"] == "validation"' in src
+    assert 'r["split"] == "compositional"' in src
+    # both models are evaluated over both splits (frozen BEFORE the
+    # reference is freed — per_row(frozen, ...) must precede del frozen)
+    for call in ("per_row(frozen, validation)",
+                 "per_row(frozen, compositional)",
+                 "per_row(model, validation)",
+                 "per_row(model, compositional)"):
+        assert call in src, f"missing evaluation call: {call}"
+    # per-split prediction artifacts (f-string names: the writer builds
+    # PREDICTIONS-{FROZEN,ADAPTED}-{VALIDATION,COMPOSITIONAL}.jsonl)
+    assert 'f"PREDICTIONS-{name}-{split_name}.jsonl"' in src
+    assert '("VALIDATION"' in src and '"COMPOSITIONAL"' in src
+    for split_field in ('"frozen": _acc(f_val', '"adapted": _acc(a_val',
+                        '"frozen": _acc(f_comp', '"adapted": _acc(a_comp'):
+        assert split_field in src, f"metric missing: {split_field}"
+    # the within-family decomposition is reported, not just pooled
+    for field in ('"within_family"', '"untrained_family"',
+                  '"within_family_rows"'):
+        assert field in src, f"metrics omit {field}"
+
+
+def test_frozen_evaluation_precedes_reference_freeing():
+    """per_row(frozen, ...) calls must all sit before `del frozen` —
+    a frozen-eval placed after it would raise at runtime instead of
+    being caught by these source checks."""
+    src = _source()
+    free_at = src.index("del frozen")
+    for call in ("per_row(frozen, subset)", "per_row(frozen, hidden)",
+                 "per_row(frozen, validation)",
+                 "per_row(frozen, compositional)"):
+        assert src.index(call) < free_at, (
+            f"{call} appears after the frozen reference is freed")

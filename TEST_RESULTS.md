@@ -1,3 +1,30 @@
+# Test results — v4.0.1 external-review hardening
+
+Executed on this host (macOS, Python 3.12.0, torch 2.10.0) after the
+V4-21..V4-25 repairs.
+
+Command: `.venv/bin/python -m pytest tests-python -q`
+
+| group | passed | failed | skipped |
+|---|---|---|---|
+| `tests-python/v161` | 655 | 0 | 4 |
+| `tests-python/runtime` | 432 | 0 | 17 |
+| `tests-python/security` | 77 | 0 | 0 |
+| `tests-python/research` | 41 | 0 | 0 |
+| `tests-python/v14` | 50 | 0 | 0 |
+| `tests-python/governance` | 25 | 0 | 0 |
+| `tests-python/apple` | 5 | 0 | 0 |
+| `tests-python/integration` | 3 | 0 | 0 |
+| `tests-python` (root modules) | 63 | 0 | 0 |
+| **total** | **1351** | **0** | **21** |
+
+v4.0.1 adds **16 tests** in `tests-python/v161` (639 → 655 passed):
+router persistence/signature/artifact regressions (`test_v40_routing.py`),
+campaign3e corpus invariants (`test_v40_campaign3e_corpus.py`), and
+fit-runner split-coverage checks (`test_fit_runner_integrity.py`).
+
+---
+
 # Test results — v4.0.0 Verified Capability Acquisition
 
 Every count below is from an executed run on this host

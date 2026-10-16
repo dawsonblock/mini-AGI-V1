@@ -549,7 +549,7 @@
    "release": "mini-AGI-V1-v16.4.8-Linux-Isolation-and-Security-Closure"
   }
  ],
- "release": "mini-AGI-V1-Verified-Capability-Acquisition-v4.0.0",
+ "release": "mini-AGI-V1-Verified-Capability-Acquisition-v4.0.1",
  "runtime_closure_v1644": {
   "change_manifest": "RELEASE_CHANGE_MANIFEST.json",
   "defects_closed": [
@@ -608,7 +608,7 @@
   "tests": "tests-python/runtime/test_v1646_worker_isolation.py (36) + worker suites"
  },
  "v4_capability_acquisition": {
-  "release_version": "4.0.0",
+  "release_version": "4.0.1",
   "codebase_lineage": "minagi 16.4.10 (unchanged __version__)",
   "defect_register": "DEFECT_REGISTER_V4.json (19 defects, all CLOSED/CLOSED-E)",
   "evidence_manifest": "EVIDENCE_MANIFEST_V4.json",

@@ -1,7 +1,10 @@
-# Unreleased — v4.0.1 external-review hardening
+# v4.0.1 — external-review hardening
 
 Repairs for the four defects an external architecture review confirmed
-against the v4.0.0 tree (details in `DEFECT_REGISTER_V4.json`).
+against the v4.0.0 tree, plus the fit-runner split coverage needed to
+execute them (details in `DEFECT_REGISTER_V4.json`). Version identity
+(VERSION, pyproject, `minagi.__version__`, SBOM, RELEASE_VALIDATION)
+is bumped to 4.0.1 across all pinned surfaces.
 
 - **V4-21 revoked adapters resurrected on save/reload.**
   `VerifiedAdapterRouter.to_json` serialized only the adapter list —
@@ -37,6 +40,15 @@ against the v4.0.0 tree (details in `DEFECT_REGISTER_V4.json`).
   `--check` and pinned by tests); the shipped campaign3b corpus is
   byte-identical for executed-campaign provenance. New config
   `configs/campaign3e.yaml` binds the new sealed holdout.
+- **V4-25 the fit runner never evaluated the new splits.**
+  `positive_control_fit.py` scored only subset + hidden, so the
+  V4-24 validation/compositional surfaces were generated but never
+  measured by this lane. The runner now evaluates both splits for the
+  frozen and adapted model, writes per-split prediction files
+  (`PREDICTIONS-{FROZEN,ADAPTED}-{VALIDATION,COMPOSITIONAL}.jsonl`),
+  and reports a within-family / untrained-family decomposition of the
+  validation rows. Empty splits add no artifacts, so run inventories
+  on legacy corpora are unchanged.
 
 # v4.0.0 — Verified Capability Acquisition (Campaign 3B repair)
 
