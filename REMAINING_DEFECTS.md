@@ -410,10 +410,15 @@ the v4.0.2 symbols — `exact_match_strict` in
 `train_family_adapters` + `lexical_terms` in `capability_matrix.py`,
 the `VerifiedAdapterRouter` constructor kwargs `artifact_resolver` /
 `artifact_digester` / `manifest_verifier`, and the new `route()`
-kwarg `family_authenticated`. Re-verified from this worktree: pylint
-rates `evidence_reconciliation.py`, `capability_matrix.py` and
-`test_v40_routing.py` 10.00/10; runtime resolution confirms every name
-binds to this tree's `src-python` (`minagi` at
+kwarg `family_authenticated` — plus a second batch on
+`positive_control_fit.py`'s 3B.3 trainer calls (`rehearsal_fraction`,
+`kl_weight`, `kl_every` on `LoraTrainSpec`; `rehearsal_examples`,
+`kl_prompts`, `kl_examples` on `train_family_adapters`; the sibling's
+`peft_trainer.py` has zero `rehearsal` occurrences). Re-verified from
+this worktree: pylint rates `evidence_reconciliation.py`,
+`capability_matrix.py`, `test_v40_routing.py` and
+`positive_control_fit.py` 10.00/10; runtime resolution confirms every
+name binds to this tree's `src-python` (`minagi` at
 `mini-AGI-campaign3b-work/src-python/minagi`). The sibling checkout
 predates all of these symbols. Same conclusion: false positives from
 cross-checkout resolution; no code action warranted.
