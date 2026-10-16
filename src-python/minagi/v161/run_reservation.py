@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -60,9 +61,33 @@ RUN_COMMIT = "RUN_COMMIT.json"
 
 SCHEMA_CLAIM = "mini-agi-v4.0-run-claim-v1"
 
+# Filename-safe identifier grammar (v4.0.3): a run id is a single
+# filesystem component — no separators, no absolute paths, no control
+# characters, never "." or "..", bounded length. The leading character
+# must be alphanumeric so hidden names like ".x" and traversal ".." are
+# rejected by construction.
+IDENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+def validate_identifier(value: str, what: str = "run_id") -> str:
+    """Return ``value`` iff it is a safe single path component."""
+    if not isinstance(value, str) or not IDENT_RE.match(value):
+        raise UnsafeIdentifier(
+            f"unsafe {what} {value!r}: must match "
+            f"{IDENT_RE.pattern} — a single filename-safe component")
+    if value in (".", ".."):          # grammar excludes these anyway
+        raise UnsafeIdentifier(f"unsafe {what} {value!r}")
+    return value
+
 
 class ReservationError(Exception):
     """Base class for reservation failures."""
+
+
+class UnsafeIdentifier(ReservationError):
+    """run_id/attempt_id failed the filename-safe grammar — path
+    traversal, separators, control characters, dots-only names or
+    overlong identifiers are refused before any filesystem access."""
 
 
 class DestinationCommitted(ReservationError):
@@ -104,6 +129,8 @@ class RunReservation:
 
     def __init__(self, run_root: Path, run_id: str, attempt_id: str,
                  staging: Path, claim_dir: Path, owns_claim: bool):
+        validate_identifier(run_id, "run_id")
+        validate_identifier(attempt_id, "attempt_id")
         self.run_root = Path(run_root)
         self.run_id = run_id
         self.attempt_id = attempt_id
@@ -112,6 +139,17 @@ class RunReservation:
         self.final_dir = self.run_root / run_id
         self.owns_claim = owns_claim
         self._closed = False
+        # Containment: every managed path must resolve UNDER the
+        # resolved run root — a symlinked claims/staging directory or
+        # an escaping component is refused, not followed.
+        root = self.run_root.resolve()
+        for name, parent in (
+                ("staging", self.staging.parent),      # .staging
+                ("final", self.final_dir.parent),      # run_root
+                ("claim", self.claim_dir.parent)):     # .claims
+            if not parent.resolve().is_relative_to(root):
+                raise UnsafeIdentifier(
+                    f"{name} path {parent} escapes run root {root}")
 
     # -- internals ----------------------------------------------------
 
@@ -160,7 +198,7 @@ class RunReservation:
             raise ReservationError(
                 f"cannot publish {self.run_id}: this attempt does not "
                 "hold the claim")
-        if self.final_dir.exists():
+        if self.final_dir.exists() or self.final_dir.is_symlink():
             raise ReservationError(
                 f"cannot publish {self.run_id}: destination already "
                 f"exists — committed runs are never replaced "
@@ -169,7 +207,27 @@ class RunReservation:
             raise ReservationError(
                 "cannot publish without RUN_COMMIT.json — a run must "
                 "commit its evidence inventory before publication")
-        os.rename(self.staging, self.final_dir)
+        # No-replace publication: os.mkdir on the canonical name is the
+        # atomic nonce — EEXIST is a refusal, never a replacement, even
+        # under concurrent filesystem operations (a rename onto an
+        # existing EMPTY directory would silently replace it; mkdir
+        # cannot). The attempt then populates by moving each staging
+        # entry in, RUN_COMMIT.json LAST: a crash mid-populate leaves a
+        # committed-looking name with no valid commit record, which the
+        # reconciler rejects — partial evidence can never masquerade
+        # as a committed run.
+        try:
+            os.mkdir(self.final_dir)
+        except FileExistsError:
+            raise ReservationError(
+                f"cannot publish {self.run_id}: destination appeared "
+                f"concurrently — committed runs are never replaced "
+                f"({self.final_dir})") from None
+        entries = sorted(self.staging.iterdir(),
+                         key=lambda p: p.name == RUN_COMMIT)
+        for entry in entries:
+            os.rename(entry, self.final_dir / entry.name)
+        self.staging.rmdir()
         self._closed = True
         # keep the claim dir as the durable record of who claimed it
         return self.final_dir
@@ -209,14 +267,27 @@ def reserve(run_root: str | Path, run_id: str,
     publish."""
     run_root = Path(run_root)
     attempt_id = attempt_id or new_attempt_id()
+    # Identifier grammar before ANY filesystem access — the ids become
+    # directory names under run_root, so traversal/separator/dots-only
+    # identifiers are refused here, not discovered later.
+    validate_identifier(run_id, "run_id")
+    validate_identifier(attempt_id, "attempt_id")
     claims = run_root / CLAIMS_DIRNAME
     staging_root = run_root / STAGING_DIRNAME
     final_dir = run_root / run_id
 
     claims.mkdir(parents=True, exist_ok=True)
     staging_root.mkdir(parents=True, exist_ok=True)
+    # The reservation infrastructure must be real directories inside
+    # run_root — a planted symlink would redirect staging/claims out of
+    # the governed tree.
+    for infra in (claims, staging_root):
+        if infra.is_symlink():
+            raise UnsafeIdentifier(
+                f"{infra} is a symlink — reservation infrastructure "
+                f"must be contained in {run_root}")
 
-    if final_dir.exists():
+    if final_dir.exists() or final_dir.is_symlink():
         raise DestinationCommitted(
             f"run destination already exists, refusing to overwrite: "
             f"{final_dir} — a committed run is never modified")

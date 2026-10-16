@@ -1,6 +1,6 @@
 {
  "schema": "mini-agi-v4.0-defect-register-v1",
- "release": "mini-AGI-V1-v4.0.2-integrity",
+ "release": "mini-AGI-V1-v4.0.3-integrity",
  "audit_basis": "full source audit of research/campaign3b-diagnostics tree (v16.4.10+3B.3); every entry cites file:line evidence in this checkout, not README claims",
  "severity_scale": {
   "P0": "produces wrong scientific verdicts or destroys evidence",
@@ -354,6 +354,72 @@
    "root_cause": "the verified flag was asserted by the recorder, not established by an independent check",
    "repair": "--verified requires --receipt naming independently verifiable evidence: a committed run dir (RUN_COMMIT inventory + COMPLETE status + metrics present) or a signed receipt document verified against --trust-root; failed verification refuses to record a verified outcome; the history entry carries receipt_digest so the claim is re-auditable; InterventionRecord gained receipt_digest",
    "regression_test": "tests-python/v161/test_activation_authority.py (committed-run, unsigned/unverifiable/forged receipt paths)"
+  },
+  {
+   "id": "V4-32",
+   "severity": "P0",
+   "status": "CLOSED",
+   "component": "outcome evidence boundary",
+   "location": "src-python/minagi/v161/capability_outcomes.py, src-python/minagi/v161/qualified_outcome.py, scripts/capability_control.py",
+   "evidence": "a self-authored run containing METRICS.json and a hash-consistent RUN_COMMIT.json was accepted as verified, and --delta/--retention-drop/--cost values supplied by the caller could ride alongside it into verified controller history",
+   "root_cause": "receipt verification conflated file integrity with independent evaluation; the CLI trusted operator-supplied numbers",
+   "repair": "verification states separated (INVALID/INTEGRITY_VERIFIED/EVALUATION_VERIFIED/QUALIFIED); only independent strict rescore of every committed prediction surface plus identity bindings, or a signed evaluator/qualification document, is admissible; qualified_outcome.derive_qualified_outcome derives every numeric field from evidence and emits an immutable record; the CLI refuses caller-supplied numbers on verified paths (manual numbers only under explicit --diagnostic, verified=false); signed qualification decisions must bind run_id + evidence_digest under a 'qualification'-role key",
+   "regression_test": "tests-python/v161/test_qualified_outcomes.py (fabricated 999 delta, self-authored commit, forged/unauthorized qualification signatures, tampered predictions/model identity, CLI refusal paths); tests-python/v161/test_activation_authority.py updated to the tiered contract"
+  },
+  {
+   "id": "V4-33",
+   "severity": "P0",
+   "status": "CLOSED",
+   "component": "adapter registry anti-rollback and reinstatement",
+   "location": "src-python/minagi/v161/authenticated_registry.py, src-python/minagi/v161/verified_routing.py",
+   "evidence": "the signed registry snapshot could be rolled back to any previously-signed seq by a caller-supplied min_seq, and the revocation-only ledger could not represent a requalified generation \u2014 reinstatement had no durable signed history",
+   "root_cause": "no separately-held authoritative head bound the newest accepted state; safety history recorded revocations but not the full transition set",
+   "repair": "RegistryEventLog: signed hash-chained transition ledger (REGISTERED/QUALIFIED/REVOKED/REQUALIFIED/SUSPENDED/RESTORED) binding adapter id, qualification generation, artifact digest, model revision, previous event digest and monotonic seq; legal transitions enforced on fold and a broken chain is never folded. RegistryStateAuthority: separately-custodied signed head binding (seq, state_digest, event-head), monotonic on record; production loads under require_authority fail closed when the head is missing, stale, or disagrees \u2014 including a truncated/absent ledger. Manifests carry qualification_generation; a stale-generation manifest cannot activate or re-register",
+   "regression_test": "tests-python/v161/test_registry_state_machine.py (register->revoke->restart blocked; deleted ledger refused; stale snapshot refused; revoke->requalify->restart active; suspend->restart blocked; forged requalification blocked; monotonic head; chain tamper detection)"
+  },
+  {
+   "id": "V4-34",
+   "severity": "P0",
+   "status": "CLOSED",
+   "component": "run reservation filesystem safety",
+   "location": "src-python/minagi/v161/run_reservation.py",
+   "evidence": "run_id/attempt_id had no filename-safe grammar (separators, '..', absolute paths, control characters accepted), symlinked infrastructure was not rejected, and publication used check-then-rename which could replace an existing empty directory",
+   "root_cause": "identifiers became path components without validation; rename-on-directory semantics replaced empty targets",
+   "repair": "IDENT_RE grammar (^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$) enforced before any filesystem access, '.'/'..' refused, resolved-parent containment under run_root verified, symlinked .claims/.staging refused, destination symlink refused; publish now creates the canonical name with os.mkdir (atomic no-replace nonce) and moves staging entries in with RUN_COMMIT.json last \u2014 a crash mid-populate leaves an uncommittable name, never a replaced run",
+   "regression_test": "tests-python/v161/test_evidence_hardening.py (identifier battery, symlink refusal, planted-dir publish refusal) + tests-python/v161/test_concurrent_run_lifecycle.py"
+  },
+  {
+   "id": "V4-35",
+   "severity": "P0",
+   "status": "CLOSED",
+   "component": "evidence reconciliation completeness",
+   "location": "src-python/minagi/v161/evidence_reconciliation.py",
+   "evidence": "the metrics comparison skipped any check whose reported value was absent \u2014 a COMPLETE run missing required accuracy fields, or carrying non-finite/out-of-range values, could still verify; an unparseable RUN_COMMIT crashed the verifier",
+   "root_cause": "permissive missing-value behavior instead of an experiment metric schema",
+   "repair": "required-metric schema: when a committed prediction surface rescored, its reported counterpart is mandatory \u2014 absent, non-numeric or outside [0,1] is INCONSISTENT; capability_destruction accounting (n_frozen_correct_hidden, destroyed_ids, gained_ids plus count/list consistency) is required on hidden-surface runs; all committed JSON files are parse-guarded \u2014 a truncated commit or metrics file resolves to INVALID/INCONSISTENT, never a crash and never VERIFIED",
+   "regression_test": "tests-python/v161/test_evidence_hardening.py (missing field, missing accounting, out-of-range/non-numeric metrics, truncated commit, missing/duplicated/unexpected predictions, wrong corpus answers)"
+  },
+  {
+   "id": "V4-36",
+   "severity": "P1",
+   "status": "CLOSED",
+   "component": "campaign completeness accounting",
+   "location": "scripts/requalify_executed_campaign.py",
+   "evidence": "the requalification report enumerated only runs that happened to be on disk \u2014 an empty collection or a silently missing historical run still produced a clean report with exit 0",
+   "root_cause": "no expected-run manifest and no evidence requirement gated the report",
+   "repair": "--expected-manifest enumerates every expected historical run id with an optional expected status; missing runs and status mismatches fail; --strict-completeness also fails on run dirs absent from the manifest; --require-evidence fails when the collection is empty or a COMPLETE run rescored zero prediction files; any failure exits 2 and is printed to stderr and the report",
+   "regression_test": "tests-python/v161/test_evidence_hardening.py (empty campaign refused, missing manifest entries fail, status mismatch fails, complete manifest passes)"
+  },
+  {
+   "id": "V4-37",
+   "severity": "P2",
+   "status": "CLOSED",
+   "component": "counterfactual CLI argument validation",
+   "location": "scripts/analysis/adapter_counterfactual.py",
+   "evidence": "torch/yaml/peft and the runtime modules were imported before --adapter arguments were validated \u2014 invalid arguments could not be rejected without the optional training stack importing successfully",
+   "root_cause": "argument validation ordered after heavy optional imports",
+   "repair": "--adapter NAME=PATH validation and the required-adapter check now run before torch/peft imports",
+   "regression_test": "manual: --adapter BADSPEC and bare invocation reject with exit!=0 and no peft import"
   }
  ],
  "residual_known_limitations": [

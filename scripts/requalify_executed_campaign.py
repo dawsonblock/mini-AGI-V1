@@ -29,6 +29,7 @@ this is pure artifact verification.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -43,6 +44,19 @@ def main() -> int:
     ap.add_argument("--results", nargs="*", default=None,
                     help="run roots to scan (default: results/*/runs/*)")
     ap.add_argument("--output", default="results/REQUALIFICATION_STATUS.md")
+    ap.add_argument("--expected-manifest", default=None,
+                    help="JSON manifest of expected run ids: "
+                         '{"runs": [{"run_id": ..., "expect": '
+                         '"VERIFIED"|"FAILED_RUN"|"INCONSISTENT"|'
+                         '"INVALID"|"any"}]}')
+    ap.add_argument("--strict-completeness", action="store_true",
+                    help="fail when any expected run is absent, any "
+                         "expected-status mismatches, or a run dir is "
+                         "not in the manifest (requires "
+                         "--expected-manifest)")
+    ap.add_argument("--require-evidence", action="store_true",
+                    help="fail when no run dirs exist or a COMPLETE "
+                         "run rescored zero prediction files")
     args = ap.parse_args()
 
     if args.results:
@@ -73,6 +87,41 @@ def main() -> int:
                           corpus_rows=_corpus_for(d))
                for d in run_dirs if d.is_dir()]
 
+    # --- completeness / evidence gates (v4.0.3) -------------------------
+    # An empty collection is never a successful campaign, and every
+    # expected historical run — INCLUDING failed and inconsistent ones —
+    # must be accounted for with an evidence-supported status.
+    problems: list[str] = []
+    if (args.strict_completeness or args.require_evidence
+            or args.expected_manifest) and not reports:
+        problems.append("no run directories found — an empty "
+                        "collection is not a qualification")
+    if args.strict_completeness and not args.expected_manifest:
+        problems.append("--strict-completeness requires "
+                        "--expected-manifest")
+    if args.expected_manifest:
+        mdoc = json.loads(Path(args.expected_manifest).read_text())
+        expected = {str(e["run_id"]): str(e.get("expect", "any"))
+                    for e in mdoc.get("runs", [])}
+        seen = {r["run_id"]: r["status"] for r in reports}
+        for rid, want in sorted(expected.items()):
+            if rid not in seen:
+                problems.append(f"expected run missing: {rid}")
+            elif want != "any" and seen[rid] != want:
+                problems.append(
+                    f"{rid}: expected {want}, got {seen[rid]}")
+        if args.strict_completeness:
+            for rid in sorted(set(seen) - set(expected)):
+                problems.append(
+                    f"run present but absent from manifest: {rid}")
+    if args.require_evidence:
+        for r in reports:
+            if r["checks"].get("commit_status") == "COMPLETE" \
+                    and not r["rescore"]:
+                problems.append(
+                    f"{r['run_id']}: COMPLETE but zero prediction "
+                    "files rescored")
+
     counts: dict[str, int] = {}
     for r in reports:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
@@ -99,8 +148,11 @@ def main() -> int:
         lines.append(f"- {k}: {counts[k]}")
     n_pred = sum(len(r["rescore"]) for r in reports)
     lines += ["",
-              f"Prediction files independently rescored: {n_pred}",
-              "",
+              f"Prediction files independently rescored: {n_pred}"]
+    if problems:
+        lines += ["", "## Completeness problems", ""]
+        lines += [f"- {p}" for p in problems]
+    lines += ["",
               "Note: VERIFIED here means *evidence integrity plus strict "
               "score reproduction across every committed split plus "
               "identity binding*. It is not a qualification verdict — "
@@ -113,7 +165,9 @@ def main() -> int:
     out_path.write_text("\n".join(lines) + "\n")
     print(f"{len(reports)} runs: {counts}")
     print(f"wrote {out_path}")
-    return 0
+    for p in problems:
+        print(f"PROBLEM: {p}", file=sys.stderr)
+    return 2 if problems else 0
 
 
 if __name__ == "__main__":

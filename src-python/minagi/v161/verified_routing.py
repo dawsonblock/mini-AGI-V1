@@ -87,7 +87,10 @@ from egai.common.canonical import digest, validate_digest
 from egai.common.crypto import (Ed25519Signer, Ed25519Verifier,
                                 SignedEnvelope)
 from minagi.v161.authority import AuthorityRegistry
-from minagi.v161.authenticated_registry import (RevocationLog,
+from minagi.v161.authenticated_registry import (GENESIS_DIGEST,
+                                                RegistryEventLog,
+                                                RegistryStateAuthority,
+                                                RevocationLog,
                                                 open_state, seal_state)
 from minagi.v161.runtime_closure3 import sha256_path
 
@@ -130,6 +133,7 @@ class QualifiedAdapterManifest:
     family_terms: tuple[str, ...] = ()
     enabled: bool = True
     priority: float = 0.5
+    qualification_generation: int = 1
     signer_key_id: str = ""
     signature_b64: str = ""
     schema: str = SCHEMA_MANIFEST
@@ -226,12 +230,15 @@ class VerifiedAdapterRouter:
                  require_model_identity: bool = True,
                  recheck_at_activation: bool = True,
                  state_signer: Ed25519Signer | None = None,
-                 revocation_log=None):
+                 revocation_log=None,
+                 event_log=None,
+                 state_authority=None):
         self._adapters: dict[str, QualifiedAdapterManifest] = {}
         self._ineligible: dict[str, str] = {}
         self._revoked: set[str] = set()
         self._suspended: set[str] = set()
         self._health: dict[str, list[int]] = {}
+        self._generations: dict[str, int] = {}
         self._snapshots: list[dict[str, QualifiedAdapterManifest]] = []
         self.ood_threshold = float(ood_threshold)
         self.min_health = float(min_health)
@@ -255,8 +262,19 @@ class VerifiedAdapterRouter:
         self._revocation_log = (revocation_log if revocation_log is None
                                 or isinstance(revocation_log, RevocationLog)
                                 else RevocationLog(revocation_log))
+        self._event_log = (event_log if event_log is None
+                           or isinstance(event_log, RegistryEventLog)
+                           else RegistryEventLog(event_log))
+        self._state_authority = (
+            state_authority if state_authority is None
+            or isinstance(state_authority, RegistryStateAuthority)
+            else RegistryStateAuthority(state_authority))
+        # Constructor-time adapter loads are provenance, not fresh
+        # authorization events — suppress event emission while loading.
+        self._loading = True
         for a in adapters:
             self.register(a)
+        self._loading = False
 
     # ---- admissibility ----------------------------------------------
 
@@ -286,18 +304,59 @@ class VerifiedAdapterRouter:
 
     # ---- registry ----------------------------------------------------
 
+    def _emit(self, event_type: str, adapter_id: str, *,
+              generation: int = 0, artifact_digest: str = "",
+              model_revision: str = "", evidence_digest: str = ""):
+        """Append a signed state-transition event, when a log and
+        signer are configured and this is not a constructor load."""
+        if (self._event_log is None or self._loading
+                or self._state_signer is None):
+            return None
+        return self._event_log.append(
+            self._state_signer, event_type, adapter_id,
+            qualification_generation=generation,
+            artifact_digest=artifact_digest,
+            model_revision=model_revision,
+            evidence_digest=evidence_digest)
+
     def register(self, m: QualifiedAdapterManifest) -> None:
-        reason = self._admissibility(m)
-        if reason:
-            self._ineligible[m.adapter_id] = reason
+        aid = m.adapter_id
+        known = aid in self._adapters or aid in self._generations
+        if known and m.qualification_generation <= \
+                self._generations.get(aid, 0):
+            # Re-registration with an already-seen qualification
+            # generation is not a new authorization — a revoked or
+            # stale adapter cannot re-enter under old evidence.
+            self._ineligible[aid] = (
+                f"outdated qualification generation "
+                f"{m.qualification_generation} (current "
+                f"{self._generations.get(aid)})")
             self.events.append({
                 "schema": SCHEMA_EVENT, "ts": round(time.time(), 3),
                 "kind": "registration_refused",
-                "adapter_id": m.adapter_id, "reason": reason})
+                "adapter_id": aid,
+                "reason": self._ineligible[aid]})
             return
-        self._ineligible.pop(m.adapter_id, None)
-        self._adapters[m.adapter_id] = m
+        reason = self._admissibility(m)
+        if reason:
+            self._ineligible[aid] = reason
+            self.events.append({
+                "schema": SCHEMA_EVENT, "ts": round(time.time(), 3),
+                "kind": "registration_refused",
+                "adapter_id": aid, "reason": reason})
+            return
+        self._ineligible.pop(aid, None)
+        self._adapters[aid] = m
+        self._generations[aid] = m.qualification_generation
         self._seq += 1
+        self._emit(
+            "ADAPTER_REGISTERED" if not known
+            else ("ADAPTER_REQUALIFIED" if aid in self._revoked
+                  else "ADAPTER_QUALIFIED"),
+            aid, generation=m.qualification_generation,
+            artifact_digest=m.adapter_digest,
+            model_revision=m.model_revision,
+            evidence_digest=m.qualification_evidence_digest)
 
     def ineligible(self) -> dict[str, str]:
         return dict(self._ineligible)
@@ -310,6 +369,8 @@ class VerifiedAdapterRouter:
         tampered registry file can no longer undo it."""
         self._revoked.add(adapter_id)
         self._seq += 1
+        self._emit("ADAPTER_REVOKED", adapter_id,
+                   generation=self._generations.get(adapter_id, 0))
         if self._revocation_log is not None and \
                 self._state_signer is not None:
             self._revocation_log.append(self._state_signer, adapter_id,
@@ -318,8 +379,9 @@ class VerifiedAdapterRouter:
     def reinstate(self, m: QualifiedAdapterManifest) -> None:
         """Re-enable only with NEW qualification evidence: the caller
         supplies a fresh manifest (a new evidence digest is required —
-        reinstating under the old evidence is forbidden). The manifest
-        must also pass every configured admissibility check."""
+        reinstating under the old evidence is forbidden) carrying a
+        NEW qualification generation. The manifest must also pass
+        every configured admissibility check."""
         old = self._adapters.get(m.adapter_id)
         if old is not None and m.qualification_evidence_digest == \
                 old.qualification_evidence_digest:
@@ -328,13 +390,27 @@ class VerifiedAdapterRouter:
                 "the same evidence digest cannot re-qualify a revoked "
                 "adapter")
         self.register(m)
-        if m.adapter_id not in self._adapters:
+        if self._adapters.get(m.adapter_id) is not m:
             raise ValueError(
                 f"reinstatement refused: "
                 f"{self._ineligible.get(m.adapter_id, 'unknown reason')}")
         self._revoked.discard(m.adapter_id)
         self._suspended.discard(m.adapter_id)
         self._seq += 1
+
+    def restore(self, adapter_id: str) -> bool:
+        """Lift a health suspension. Restoring from REVOCATION is not
+        possible here — a revoked adapter requires ADAPTER_REQUALIFIED
+        with a new qualification generation (``reinstate``)."""
+        if adapter_id in self._revoked:
+            return False
+        if adapter_id in self._suspended:
+            self._suspended.discard(adapter_id)
+            self._seq += 1
+            self._emit("ADAPTER_RESTORED", adapter_id,
+                       generation=self._generations.get(adapter_id, 0))
+            return True
+        return False
 
     def snapshot(self) -> str:
         """Remember the current registry state for rollback."""
@@ -362,8 +438,11 @@ class VerifiedAdapterRouter:
         del h[:-self.health_window]
         self._seq += 1
         if len(h) >= max(4, self.health_window // 2) and \
-                sum(h) / len(h) < self.min_health:
+                sum(h) / len(h) < self.min_health and \
+                adapter_id not in self._suspended:
             self._suspended.add(adapter_id)
+            self._emit("ADAPTER_SUSPENDED", adapter_id,
+                       generation=self._generations.get(adapter_id, 0))
 
     def health(self, adapter_id: str) -> float | None:
         h = self._health.get(adapter_id)
@@ -403,6 +482,16 @@ class VerifiedAdapterRouter:
                 continue
             if aid in self._suspended:
                 refused.append(f"{aid}: suspended on health")
+                continue
+            gen = self._generations.get(aid)
+            if gen is not None and a.qualification_generation < gen:
+                # The registry has accepted a newer qualification
+                # generation for this adapter — an old manifest must
+                # not activate under outdated qualification.
+                refused.append(
+                    f"{aid}: outdated qualification generation "
+                    f"{a.qualification_generation} (registry carries "
+                    f"{gen})")
                 continue
             if not a.enabled:
                 refused.append(f"{aid}: disabled")
@@ -513,15 +602,29 @@ class VerifiedAdapterRouter:
                                 key=lambda x: x.adapter_id)],
             "revoked": sorted(self._revoked),
             "suspended": sorted(self._suspended),
+            "generations": {k: v for k, v in
+                            sorted(self._generations.items())},
             "health": {k: list(v) for k, v in
                        sorted(self._health.items())}}
-        return json.dumps(seal_state(state, self._seq, signer),
-                          indent=2, sort_keys=True)
+        doc = seal_state(state, self._seq, signer)
+        if self._state_authority is not None and signer is not None:
+            # Attest the newest accepted state under the separately-held
+            # authority — a load can then prove it sees the NEWEST
+            # signed generation, not just some signed generation.
+            self._state_authority.record_head(
+                signer, seq=self._seq, state_digest=digest(state),
+                event_head_digest=(self._event_log.last_digest()
+                                   if self._event_log is not None
+                                   else GENESIS_DIGEST))
+        return json.dumps(doc, indent=2, sort_keys=True)
 
     @classmethod
     def from_json(cls, path: str | Path, *, strict_state: bool = False,
                   registry_verifier: Ed25519Verifier | None = None,
                   revocation_log=None, min_seq: int = 0,
+                  event_log=None, state_authority=None,
+                  require_authority: bool = False,
+                  event_authority=None,
                   **kw) -> "VerifiedAdapterRouter":
         """Load a registry file, newest schema first.
 
@@ -540,12 +643,42 @@ class VerifiedAdapterRouter:
         authoritative revocation record: its verified entries are
         unioned over the file's own list, so deleting a revocation from
         a snapshot — signed or not — never restores access.
+
+        v4.0.3 adds two authority layers:
+
+        * ``event_log`` (a ``RegistryEventLog`` or path) — the signed
+          state-transition chain. When it verifies, its folded final
+          status is AUTHORITATIVE for every adapter it covers: a
+          revoke cannot be dropped from history, and a REQUALIFIED
+          generation overrides stale doc-level revocations. A broken
+          chain is never folded; under ``require_authority`` it fails
+          the load outright.
+        * ``state_authority`` (a ``RegistryStateAuthority`` or path) —
+          a separately-custodied signed head binding
+          (seq, state_digest, event-head). The loaded file must match
+          the attested head exactly: a stale signed snapshot or a
+          truncated ledger is refused. ``require_authority`` makes the
+          authority mandatory — production loads fail closed when it
+          is missing, unreadable or disagreeing.
         """
         raw = json.loads(Path(path).read_text())
         schema = raw.get("schema")
         log = (revocation_log if revocation_log is None
                or isinstance(revocation_log, RevocationLog)
                else RevocationLog(revocation_log))
+        ev_log = (event_log if event_log is None
+                  or isinstance(event_log, RegistryEventLog)
+                  else RegistryEventLog(event_log))
+        authority_store = (
+            state_authority if state_authority is None
+            or isinstance(state_authority, RegistryStateAuthority)
+            else RegistryStateAuthority(state_authority))
+        if schema in (SCHEMA_REGISTRY_V1, SCHEMA_REGISTRY_V2) \
+                and require_authority:
+            raise ValueError(
+                f"registry schema {schema!r} cannot satisfy the "
+                "authority requirement — it predates signed sequenced "
+                "state entirely")
         if schema == SCHEMA_REGISTRY_V1:
             # A v1 file never recorded revocation/suspension/health — any
             # of its adapters could have been revoked before save and the
@@ -590,10 +723,21 @@ class VerifiedAdapterRouter:
                 raise ValueError(
                     "strict_state requires an authenticated registry — "
                     "supply registry_verifier")
+            if require_authority and not opened["authenticated"]:
+                raise ValueError(
+                    "unsigned registry state cannot satisfy the "
+                    "authority requirement")
+            ctor_kw = dict(kw)
+            if ev_log is not None:
+                ctor_kw["event_log"] = ev_log
+            if authority_store is not None:
+                ctor_kw["state_authority"] = authority_store
             r = cls([QualifiedAdapterManifest(**a)
-                     for a in state.get("adapters", [])], **kw)
+                     for a in state.get("adapters", [])], **ctor_kw)
             r._revoked = {str(x) for x in state.get("revoked", [])}
             r._suspended = {str(x) for x in state.get("suspended", [])}
+            r._generations = {str(k): int(v) for k, v in
+                              state.get("generations", {}).items()}
             r._health = {str(k): [int(x) for x in v]
                          for k, v in state.get("health", {}).items()}
             r._seq = opened["seq"]
@@ -602,6 +746,66 @@ class VerifiedAdapterRouter:
                 r.registry_warnings.append(
                     "registry state is unsigned — revocation deletions "
                     "cannot be detected; provisional mode only")
+
+            # Durable state authority (v4.0.3): the file must match the
+            # separately-custodied attested head exactly — seq AND state
+            # digest AND the event log's head. A stale signed snapshot
+            # or a ledger swapped for a shorter one is refused.
+            if authority_store is not None or require_authority:
+                if authority_store is None:
+                    raise ValueError(
+                        "registry state authority required but not "
+                        "configured")
+                if registry_verifier is None:
+                    raise ValueError(
+                        "registry state authority cannot be "
+                        "authenticated without registry_verifier")
+                ev_head = (ev_log.last_digest()
+                           if (ev_log is not None
+                               and ev_log.path.exists()) else None)
+                reason = authority_store.check(
+                    opened["seq"], digest(state),
+                    verifier=registry_verifier,
+                    event_head_digest=ev_head)
+                if reason:
+                    raise ValueError(reason)
+
+            # Signed event chain (v4.0.3): when it verifies, its folded
+            # final status is authoritative for the adapters it covers —
+            # a dropped tail event is a dropped revocation, so a broken
+            # chain is never folded and fails closed under
+            # require_authority.
+            if ev_log is not None:
+                if not ev_log.path.exists():
+                    msg = ("registry event ledger missing — cannot "
+                           "prove current authorization state")
+                    if require_authority:
+                        raise ValueError(msg)
+                    r.registry_warnings.append(msg)
+                else:
+                    folded, failures = ev_log.effective_state(
+                        registry_verifier, event_authority)
+                    if failures:
+                        if require_authority:
+                            raise ValueError(
+                                "registry event chain failed "
+                                "verification: " + "; ".join(failures))
+                        r.registry_warnings.extend(
+                            f"event log: {f}" for f in failures)
+                    else:
+                        for aid, st in folded.items():
+                            if st["status"] == "revoked":
+                                r._revoked.add(aid)
+                                r._suspended.discard(aid)
+                            elif st["status"] == "suspended":
+                                r._suspended.add(aid)
+                                r._revoked.discard(aid)
+                            else:
+                                r._revoked.discard(aid)
+                                r._suspended.discard(aid)
+                            r._generations[aid] = max(
+                                r._generations.get(aid, 0),
+                                st["generation"])
         # The authoritative revocation log overrides whatever the file
         # claims: logged revocations are unioned in, never removed.
         if log is not None:

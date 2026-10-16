@@ -95,7 +95,13 @@ def test_reinstate_requires_new_evidence():
     r.revoke("a1")
     with pytest.raises(ValueError):
         r.reinstate(m)  # same evidence digest — forbidden
-    r.reinstate(_manifest(evidence=digest({"e": "new"})))
+    # v4.0.3: a new evidence digest is necessary but not sufficient —
+    # requalification must also carry a NEW qualification generation
+    with pytest.raises(ValueError):
+        r.reinstate(_manifest(evidence=digest({"e": "new"}),
+                              qualification_generation=1))
+    r.reinstate(_manifest(evidence=digest({"e": "new"}),
+                          qualification_generation=2))
     d = r.route("reverse this", family="tr-reverse",
                 model_revision="rev1")
     assert d.selected == "a1"

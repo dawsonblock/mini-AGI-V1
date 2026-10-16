@@ -140,10 +140,15 @@ def test_revoked_after_registration_never_activates(tmp_path):
 # ---- V4-31 — outcome receipts: a flag is not verification -------------
 
 def test_capability_outcome_receipt_verification(tmp_path):
-    """--verified requires evidence that checks out on its own."""
+    """--verified requires evidence that checks out on its own.
+
+    v4.0.3: a hash-consistent self-authored run directory is
+    INTEGRITY_VERIFIED at best — local file consistency is not an
+    independent evaluation, so it cannot enter verified history."""
     from minagi.v161.capability_outcomes import verify_outcome_receipt
 
-    # a committed run directory verifies itself
+    # a self-authored committed run: COMPLETE + matching inventory +
+    # METRICS.json proves integrity only — NOT a verified outcome
     run = tmp_path / "run1"
     run.mkdir()
     (run / "METRICS.json").write_text("{}")
@@ -152,7 +157,9 @@ def test_capability_outcome_receipt_verification(tmp_path):
                         __import__("hashlib").sha256(b"{}").hexdigest()}}
     (run / "RUN_COMMIT.json").write_text(__import__("json").dumps(commit))
     res = verify_outcome_receipt(run)
-    assert res["verified"] and res["kind"] == "committed_run"
+    assert res["kind"] == "committed_run"
+    assert not res["verified"]              # integrity only — refused
+    assert res["verification_state"] == "INTEGRITY_VERIFIED"
 
     # a FAILED run is not verification of success
     commit["status"] = "FAILED"

@@ -1,3 +1,75 @@
+# v4.0.3 — evidence-boundary and authority repair
+
+Repairs for the verification and authorization defects the v4.0.2
+source audit identified (details in `DEFECT_REGISTER_V4.json`,
+V4-32..V4-37). Version identity bumped to 4.0.3 across VERSION,
+pyproject, `minagi.__version__`, SBOM and RELEASE_VALIDATION.
+
+- **Integrity is not qualification.** `capability_outcomes.py` no
+  longer accepts a self-authored hash-consistent run as "verified".
+  New module `src-python/minagi/v161/qualified_outcome.py` defines
+  `INTEGRITY_VERIFIED` / `EVALUATION_VERIFIED` / `QUALIFIED` and
+  `derive_qualified_outcome`, which derives every outcome number —
+  baseline/adapted accuracy, delta, retention regression, measured
+  costs — only from independently rescored evidence (strict
+  reconciliation of every committed prediction split) or from a
+  signed evaluator/qualification document verified against a trust
+  root. Signed qualification decisions (`QUALIFICATION.json`) must
+  bind run_id + evidence digest under a `qualification`-role key.
+- **The CLI cannot mint verified numbers.**
+  `scripts/capability_control.py record` refuses `--delta` /
+  `--retention-drop` / `--cost` alongside `--receipt`; verified
+  history entries carry the derived outcome digest. Manual values are
+  permitted only under explicit `--diagnostic`, which always records
+  `verified=false` and can never promote.
+- **Registry anti-rollback is durable.**
+  `authenticated_registry.py` gains `RegistryEventLog` (signed,
+  hash-chained transitions: REGISTERED/QUALIFIED/REVOKED/REQUALIFIED/
+  SUSPENDED/RESTORED, each binding adapter id, qualification
+  generation, artifact digest, model revision, previous event digest,
+  seq) and `RegistryStateAuthority` (a separately-custodied signed
+  head binding seq + state digest + event head; monotonic on write).
+  `VerifiedAdapterRouter.from_json` folds a verified event chain as
+  authoritative over mutable snapshot fields, refuses missing/broken/
+  forged chains, and under `require_authority` fails closed when the
+  attested head is absent or disagrees. Manifests carry
+  `qualification_generation`; reinstatement requires a strictly newer
+  generation, and a revoked adapter's old generation can no longer
+  re-register or activate.
+- **Filesystem containment.** `run_reservation.py` enforces a
+  filename-safe identifier grammar for run/attempt ids, refuses
+  symlinked `.claims`/`.staging` infrastructure and symlink
+  destinations, verifies resolved-parent containment, and publishes
+  via an `os.mkdir` no-replace nonce with `RUN_COMMIT.json` moved
+  last — concurrent attempts can no longer replace a committed run
+  even in the empty-directory rename corner.
+- **Evidence completeness is mandatory.**
+  `evidence_reconciliation.py` requires every reported metric that a
+  committed prediction surface makes resolvable (hidden/subset/
+  validation/compositional/within-holdout/retention accuracies, plus
+  capability-destruction counts with list/count consistency), enforces
+  finite `[0,1]` values, and treats unparseable committed JSON —
+  including a truncated RUN_COMMIT — as INVALID/INCONSISTENT instead
+  of a verifier crash.
+- **Campaign completeness.**
+  `scripts/requalify_executed_campaign.py` gains
+  `--expected-manifest` (every historical run id, including failed
+  ones, must be present with an accurate status),
+  `--strict-completeness` (unlisted dirs fail) and
+  `--require-evidence` (empty collections and zero-evidence COMPLETE
+  runs fail) with nonzero exit codes.
+- **Release integrity.** `verify_release.py` treats `dist/` as a
+  build-artifact directory (like `build/`); the source manifest,
+  signature and attestation were reissued over the final tree with
+  the existing release key.
+
+Phase-acceptance: no invented numerical gain can enter the
+controller's verified outcome history; production adapter
+authorization survives restarts while rejecting stale, missing or
+tampered authority state; invalid evidence resolves to
+INVALID/INCONSISTENT, never VERIFIED. No scientific learning
+improvement is claimed by these gates.
+
 # v4.0.1 — external-review hardening
 
 Repairs for the four defects an external architecture review confirmed

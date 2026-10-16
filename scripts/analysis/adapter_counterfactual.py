@@ -67,15 +67,9 @@ def main() -> int:
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
 
-    import torch
-    import yaml
-    from peft import PeftModel
-    from minagi.platforms.cuda.hf_runtime import (HFLoadSpec, load_causal_lm,
-                                                  load_tokenizer)
-    from minagi.v161.prompt_contract import (build_prompt_contract,
-                                             encode_generation,
-                                             output_contract_from_config)
-
+    # Validate arguments BEFORE importing the optional training stack —
+    # a bad --adapter spec must be rejected without requiring
+    # torch/peft to import successfully.
     adapters = []
     for spec in args.adapter:
         if "=" not in spec:
@@ -86,6 +80,15 @@ def main() -> int:
         adapters.append((name, path))
     if not adapters:
         raise SystemExit("at least one --adapter is required")
+
+    import torch
+    import yaml
+    from peft import PeftModel
+    from minagi.platforms.cuda.hf_runtime import (HFLoadSpec, load_causal_lm,
+                                                  load_tokenizer)
+    from minagi.v161.prompt_contract import (build_prompt_contract,
+                                             encode_generation,
+                                             output_contract_from_config)
 
     cfg = yaml.safe_load((ROOT / args.config).read_text())
     output_contract = output_contract_from_config(

@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections import Counter
 from pathlib import Path
 
@@ -154,7 +155,16 @@ def verify_run(run_dir: Path, *,
         out["status"] = INVALID
         out["checks"]["commit"] = "RUN_COMMIT.json missing"
         return out
-    commit = json.loads(commit_path.read_text())
+    try:
+        commit = json.loads(commit_path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        out["status"] = INVALID
+        out["checks"]["commit"] = f"RUN_COMMIT.json unparseable ({exc})"
+        return out
+    if not isinstance(commit, dict):
+        out["status"] = INVALID
+        out["checks"]["commit"] = "RUN_COMMIT.json is not an object"
+        return out
     run_status = commit.get("status")
     out["checks"]["commit_status"] = run_status
     if commit.get("run_id") and commit["run_id"] != run_dir.name:
@@ -179,12 +189,25 @@ def verify_run(run_dir: Path, *,
     if run_status == "COMPLETE":
         out["checks"]["uncommitted_files"] = extra
 
+    def _load(path: Path, label: str) -> dict:
+        """A committed JSON file that cannot be parsed is evidence
+        damage — recorded as a mismatch, never a verifier crash."""
+        if not path.is_file():
+            return {}
+        try:
+            doc = json.loads(path.read_text())
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            mismatch(f"{label} unparseable ({exc})")
+            return {}
+        if not isinstance(doc, dict):
+            mismatch(f"{label} is not a JSON object")
+            return {}
+        return doc
+
     config_path = run_dir / "CONFIG.json"
-    config = json.loads(config_path.read_text()) \
-        if config_path.is_file() else {}
+    config = _load(config_path, "CONFIG.json")
     metrics_path = run_dir / "METRICS.json"
-    reported = json.loads(metrics_path.read_text()) \
-        if metrics_path.is_file() else {}
+    reported = _load(metrics_path, "METRICS.json")
     if run_status == "COMPLETE":
         if not config_path.is_file():
             mismatch("CONFIG.json missing on a COMPLETE run")
@@ -274,6 +297,8 @@ def verify_run(run_dir: Path, *,
     rep_adapted = reported.get("adapted") or {}
     rep_frozen = reported.get("frozen") or {}
     rep_val = reported.get("validation") or {}
+    rep_who = reported.get("within_holdout") or {}
+    rep_ret = reported.get("retention") or {}
 
     def cmp(fname, want, label):
         sc = split_scores.get(fname)
@@ -283,33 +308,57 @@ def verify_run(run_dir: Path, *,
         if got is not None and abs(got - float(want)) > TOL:
             mismatch(f"{label}: reported {want} vs strict rescore {got}")
 
-    cmp("PREDICTIONS-FROZEN.jsonl", rep_frozen.get("hidden"),
-        "frozen.hidden")
-    cmp("PREDICTIONS-ADAPTED.jsonl", rep_adapted.get("hidden"),
-        "adapted.hidden")
-    cmp("PREDICTIONS-SUBSET.jsonl", rep_adapted.get("subset"),
-        "adapted.subset")
+    # Required metric schema (v4.0.3): a COMPLETE run must report every
+    # measurement its prediction surfaces make resolvable — an absent
+    # required field is a mismatch, not a silently skipped check, and
+    # every reported rate must be finite and inside [0, 1].
+    def _req(fname, want, label):
+        sc = split_scores.get(fname)
+        if run_status != "COMPLETE" or not sc:
+            return      # surface absent — the coverage pass ruled on it
+        if want is None:
+            mismatch(f"{label}: required metric absent")
+            return
+        try:
+            v = float(want)
+        except (TypeError, ValueError):
+            mismatch(f"{label}: reported {want!r} is not numeric")
+            return
+        if not math.isfinite(v) or not (0.0 <= v <= 1.0):
+            mismatch(f"{label}: reported {want} outside [0,1]")
+            return
+        got = _mean(sc.values())
+        if got is not None and abs(got - v) > TOL:
+            mismatch(f"{label}: reported {want} vs strict rescore {got}")
+
+    _req("PREDICTIONS-FROZEN.jsonl", rep_frozen.get("hidden"),
+         "frozen.hidden")
+    _req("PREDICTIONS-ADAPTED.jsonl", rep_adapted.get("hidden"),
+         "adapted.hidden")
+    _req("PREDICTIONS-SUBSET.jsonl", rep_adapted.get("subset"),
+         "adapted.subset")
+    _req("PREDICTIONS-FROZEN-VALIDATION.jsonl",
+         rep_frozen.get("validation"), "frozen.validation")
+    _req("PREDICTIONS-ADAPTED-VALIDATION.jsonl",
+         rep_adapted.get("validation"), "adapted.validation")
+    _req("PREDICTIONS-FROZEN-COMPOSITIONAL.jsonl",
+         rep_frozen.get("compositional"), "frozen.compositional")
+    _req("PREDICTIONS-ADAPTED-COMPOSITIONAL.jsonl",
+         rep_adapted.get("compositional"), "adapted.compositional")
+    _req("PREDICTIONS-FROZEN-WITHIN_HOLDOUT.jsonl",
+         rep_frozen.get("within_holdout"), "frozen.within_holdout")
+    _req("PREDICTIONS-ADAPTED-WITHIN_HOLDOUT.jsonl",
+         rep_adapted.get("within_holdout"), "adapted.within_holdout")
+    _req("PREDICTIONS-FROZEN-RETENTION.jsonl",
+         rep_frozen.get("retention"), "frozen.retention")
+    _req("PREDICTIONS-ADAPTED-RETENTION.jsonl",
+         rep_adapted.get("retention"), "adapted.retention")
+
+    # fit_gate.adapted_subset_accuracy is a duplicate measurement of the
+    # same subset surface — optional, but checked when present.
     cmp("PREDICTIONS-SUBSET.jsonl",
         (reported.get("fit_gate") or {}).get("adapted_subset_accuracy"),
         "fit_gate.adapted_subset_accuracy")
-    cmp("PREDICTIONS-FROZEN-VALIDATION.jsonl",
-        rep_frozen.get("validation"), "frozen.validation")
-    cmp("PREDICTIONS-ADAPTED-VALIDATION.jsonl",
-        rep_adapted.get("validation"), "adapted.validation")
-    cmp("PREDICTIONS-FROZEN-COMPOSITIONAL.jsonl",
-        rep_frozen.get("compositional"), "frozen.compositional")
-    cmp("PREDICTIONS-ADAPTED-COMPOSITIONAL.jsonl",
-        rep_adapted.get("compositional"), "adapted.compositional")
-    rep_who = reported.get("within_holdout") or {}
-    cmp("PREDICTIONS-FROZEN-WITHIN_HOLDOUT.jsonl",
-        rep_frozen.get("within_holdout"), "frozen.within_holdout")
-    cmp("PREDICTIONS-ADAPTED-WITHIN_HOLDOUT.jsonl",
-        rep_adapted.get("within_holdout"), "adapted.within_holdout")
-    rep_ret = reported.get("retention") or {}
-    cmp("PREDICTIONS-FROZEN-RETENTION.jsonl",
-        rep_frozen.get("retention"), "frozen.retention")
-    cmp("PREDICTIONS-ADAPTED-RETENTION.jsonl",
-        rep_adapted.get("retention"), "adapted.retention")
 
     # within-/untrained-family decomposition of within-family splits
     trained = set(config.get("families") or [])
@@ -344,10 +393,30 @@ def verify_run(run_dir: Path, *,
                 mismatch(f"{label0}.{label}.{key}: reported {want} "
                          f"vs strict rescore {got}")
 
-    # capability-destruction id lists on the hidden split
+    # capability-destruction id lists on the hidden split — required
+    # accounting on a COMPLETE run with hidden predictions (v4.0.3):
+    # aggregate net accuracy must never conceal destroyed work, so the
+    # destruction/acquisition counts are mandatory, not optional.
     f_hid = split_scores.get("PREDICTIONS-FROZEN.jsonl")
     a_hid = split_scores.get("PREDICTIONS-ADAPTED.jsonl")
     rep_cd = reported.get("capability_destruction") or {}
+    if run_status == "COMPLETE" and f_hid and a_hid is not None:
+        if not rep_cd:
+            mismatch("capability_destruction: required accounting "
+                     "absent on a COMPLETE run")
+        else:
+            for field in ("n_frozen_correct_hidden", "destroyed_ids",
+                          "gained_ids"):
+                if rep_cd.get(field) is None:
+                    mismatch(f"capability_destruction.{field}: "
+                             "required field absent")
+            for n_field, ids_field in (("n_destroyed", "destroyed_ids"),
+                                       ("n_gained", "gained_ids")):
+                nv, iv = rep_cd.get(n_field), rep_cd.get(ids_field)
+                if nv is not None and isinstance(iv, list) and \
+                        int(nv) != len(iv):
+                    mismatch(f"capability_destruction.{n_field}: "
+                             f"{nv} != len({ids_field})")
     if f_hid is not None and a_hid is not None and rep_cd:
         destroyed = sorted(rid for rid in f_hid
                            if f_hid[rid] == 1.0 and a_hid.get(rid) == 0.0)
@@ -424,7 +493,7 @@ def verify_run(run_dir: Path, *,
                              "from the config body")
         aman_path = run_dir / "ADAPTER_MANIFEST.json"
         if aman_path.is_file():
-            aman = json.loads(aman_path.read_text())
+            aman = _load(aman_path, "ADAPTER_MANIFEST.json")
             if aman.get("run_id") != run_dir.name:
                 ident.append("ADAPTER_MANIFEST.run_id mismatch")
             for k in ("prompt_contract_digest",
@@ -446,7 +515,7 @@ def verify_run(run_dir: Path, *,
         tr_path = run_dir / "TRAINING_RECEIPT.json"
         adir = run_dir / "adapter"
         if tr_path.is_file() and adir.is_dir():
-            tr = json.loads(tr_path.read_text())
+            tr = _load(tr_path, "TRAINING_RECEIPT.json")
             try:
                 actual = adapter_artifact_digest_of(adir)
             except Exception as exc:
@@ -459,13 +528,13 @@ def verify_run(run_dir: Path, *,
                                  "digest != adapter bytes on disk")
         spec_path = adir / "TRAINING_SPEC.json"
         if spec_path.is_file() and config.get("lora_spec_digest"):
-            if digest(json.loads(spec_path.read_text())) != \
+            if digest(_load(spec_path, "TRAINING_SPEC.json")) != \
                     config["lora_spec_digest"]:
                 ident.append("adapter/TRAINING_SPEC.json digest != "
                              "CONFIG.lora_spec_digest")
         acfg = adir / "adapter_config.json"
         if acfg.is_file() and config.get("model_id"):
-            bm = json.loads(acfg.read_text()).get(
+            bm = _load(acfg, "adapter_config.json").get(
                 "base_model_name_or_path")
             if bm and bm != config["model_id"]:
                 ident.append(f"adapter base model {bm!r} != CONFIG "

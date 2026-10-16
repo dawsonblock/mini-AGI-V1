@@ -1,5 +1,42 @@
 # Remaining defects
 
+## v4.0.3 addendum — what changed and what did not
+
+The audit-found engineering defects are closed: the evidence boundary
+(V4-32), registry anti-rollback + generation-bound reinstatement
+(V4-33), run-filesystem hardening (V4-34), mandatory evidence
+completeness (V4-35), campaign completeness accounting (V4-36) and the
+counterfactual import-order defect (V4-37). Details and regression
+tests are in `DEFECT_REGISTER_V4.json`; the table below remains
+accurate for the items it lists.
+
+Limitations **introduced or still standing** after v4.0.3:
+
+- **Authority custody is still development-held.** The event log
+  signers, the state-authority signer and the release key all live on
+  one development machine. The registry state authority is *designed*
+  for separate custody, but this repository ships only the mechanism —
+  production deployments must hold `HEAD.json` and its signer off the
+  registry host, or the anti-rollback guarantee reduces to
+  same-attacker storage. (Extends RD-2.)
+- **`QUALIFICATION.json` is post-commit evidence.** An independent
+  qualifier writes it *after* the run commits, so it is deliberately
+  not inside the run's own inventory. The reconciliation reports it as
+  an uncommitted file; qualification verification binds it to the
+  committed evidence digest — a decision over other bytes does not
+  qualify this run. Runs *without* one are EVALUATION_VERIFIED, not
+  QUALIFIED.
+- **v4.1.0/v4.2.0 scientific claims remain unearned.** Genuine
+  capability acquisition on unseen tasks and improved learning
+  efficiency over fixed baselines have NOT been demonstrated by this
+  release. This is an engineering-integrity release; RD-3 still
+  stands.
+- **`pc-rev`/`pc-swap` (RD-17)** remains OPEN by prior decision;
+  RD-20 (IDE lint resolving `minagi` from a sibling checkout) remains
+  OPEN with the same in-tree mitigation.
+
+---
+
 Every item below is a real limitation of this release. None of them is
 presented as a pass, and none of them changes a qualification rule.
 
