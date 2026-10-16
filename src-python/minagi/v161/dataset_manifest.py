@@ -209,14 +209,47 @@ class DatasetPartitionSetV4(DatasetPartitionSetV3):
     Constraints: sample-disjoint from every partition; family-disjoint
     from hidden/compositional/final_holdout; family subset of train.
 
+    ``rehearsal`` (optional) is a TRAIN-SIDE partition: verified-correct
+    pairs of capabilities other than the acquisition target that a
+    rehearsal arm may interleave during training. Its families must be
+    disjoint from train, validation, within_holdout, hidden,
+    compositional and final_holdout — rehearsing a measured family (or
+    the target itself) would contaminate the measurement.
+
     NEW schema — V1/V2/V3 partition digests used by executed campaigns
     stay byte-stable.
     """
     within_holdout: DatasetMembershipManifest | None = None
+    rehearsal: DatasetMembershipManifest | None = None
     schema: str = "mini-agi-v4.1-dataset-partition-set-v1"
 
     def assert_disjoint(self) -> None:
         super().assert_disjoint()
+        if self.rehearsal is not None:
+            for name, part in (
+                    ("train", self.train),
+                    ("validation", self.validation),
+                    ("hidden", self.hidden),
+                    ("retention", self.retention),
+                    ("security", self.security),
+                    ("compositional", self.compositional),
+                    ("final_holdout", self.final_holdout),
+                    ("within_holdout", self.within_holdout)):
+                if part is None:
+                    continue
+                if part.sample_ids & self.rehearsal.sample_ids:
+                    raise PermissionError(
+                        f"rehearsal sample leakage into {name}")
+            measured = [self.train, self.validation, self.hidden,
+                        self.compositional, self.final_holdout,
+                        self.within_holdout]
+            fam_overlap = self.rehearsal.family_ids & frozenset().union(
+                *(p.family_ids for p in measured if p is not None))
+            if fam_overlap:
+                raise PermissionError(
+                    f"rehearsal family leakage into measured surfaces: "
+                    f"{sorted(fam_overlap)[:5]} — rehearsing a measured "
+                    "capability contaminates the measurement")
         if self.within_holdout is None:
             return
         for name, part in (("train", self.train),
@@ -251,4 +284,6 @@ class DatasetPartitionSetV4(DatasetPartitionSetV3):
         p["schema"] = "mini-agi-v4.1-disjointness-proof-v1"
         p["within_holdout_digest"] = (self.within_holdout.digest
                                       if self.within_holdout else None)
+        p["rehearsal_digest"] = (self.rehearsal.digest
+                                 if self.rehearsal else None)
         return p

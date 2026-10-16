@@ -507,10 +507,15 @@ def main() -> int:
                               .read_text().splitlines() if ln.strip())
                     if str(r.get("family", "")) not in trained_families]
         else:
+            # The `rehearsal` partition exists for exactly this purpose:
+            # corpora whose train/validation rows are all inside the
+            # trained families (campaign 3e/4a) would otherwise yield an
+            # empty pool and the preservation arms could not run.
             cand = [{"prompt": str(r["prompt"]),
                      "response": str(r["expected"])}
                     for r in rows
-                    if r["split"] in ("train", "validation")
+                    if r["split"] in ("train", "validation",
+                                      "rehearsal")
                     and r["family"] not in trained_families]
         rehearsal_examples, rehearsal_rejected, _ = \
             frozen_correct(cand, frozen)

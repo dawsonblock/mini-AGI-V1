@@ -60,8 +60,13 @@ def _run_fit(run_id: str, run_root: Path, extra: list[str],
     proc = subprocess.run(cmd, capture_output=True, text=True,
                           cwd=str(ROOT))
     mpath = run_root / run_id / "METRICS.json"
-    if proc.returncode != 0 or not mpath.is_file():
+    # A nonzero exit with a committed METRICS.json is a RESULT, not an
+    # execution failure — the runner exits nonzero when the fit gate
+    # fails, and arm F (shuffled negative control) is *expected* to fail
+    # it. A cell is FAILED only when no committed metrics exist at all.
+    if not mpath.is_file():
         return {"run_id": run_id, "status": "FAILED",
+                "returncode": proc.returncode,
                 "stderr_tail": proc.stderr[-2000:]}
     m = json.loads(mpath.read_text())
     m["run_id"] = run_id
@@ -280,7 +285,8 @@ def main() -> int:
              "kl": ["--kl-weight", str(args.kl_weight)],
              "both": ["--rehearsal-fraction",
                       str(args.rehearsal_fraction),
-                      "--kl-weight", str(args.kl_weight)]}
+                      "--kl-weight", str(args.kl_weight)],
+             "shuffled": ["--shuffle-labels"]}
     known = set(flags) | {"routed", "skill_memory"}
     requested = [s.strip() for s in args.strategies.split(",") if s.strip()]
     unknown = [s for s in requested if s not in known]

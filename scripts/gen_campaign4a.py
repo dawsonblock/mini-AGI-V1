@@ -182,6 +182,51 @@ HIDDEN4_FAMS: dict[str, tuple[str, Callable[[str], str]]] = {
         lambda w: w[::2]),
 }
 
+# ---------- rehearsal pool (train-side, never measured) -------------
+# Preservation arms (C/E) interleave VERIFIED-correct pairs of OTHER
+# capabilities. Campaign 3e/4a train+validation rows are all inside the
+# 8 trained families, so the runner's default pool (frozen-correct
+# train/validation rows outside trained families) would be EMPTY — the
+# rehearsal arms cannot run without a dedicated pool. These four
+# families are capabilities that are NEITHER trained NOR measured on
+# any evaluation surface; the manifest enforces family disjointness
+# against train/validation/within_holdout/hidden/compositional/
+# final_holdout.
+REH4_FAMS: dict[str, tuple[str, Callable[[str], str]]] = {
+    "reh4-drop-last": (
+        "Delete the last letter of the input word and answer with the "
+        "remainder.",
+        lambda w: w[:-1]),
+    "reh4-double-first": (
+        "Write the input word with its first letter repeated at the "
+        "front.",
+        lambda w: w[0] + w),
+    "reh4-wrap-x": (
+        "Write the input word with the letter 'x' added at the "
+        "beginning and the end.",
+        lambda w: f"x{w}x"),
+    "reh4-vowel-strip": (
+        "Remove every vowel (a, e, i, o, u) from the input word.",
+        lambda w: "".join(c for c in w if c not in "aeiou")),
+}
+
+# A fifth rehearsal family of unambiguous arithmetic QA — the frozen
+# base answers many of these correctly, guaranteeing the verified pool
+# cannot be empty even if every string-op row is rejected. Family is
+# disjoint from the ret4-* retention probes (different ids, questions
+# are sampled from a different numeric band).
+REH4_ARITH = [
+    (f"Question: What is {a} times {b}?", str(a * b))
+    for a, b in ((3, 11), (4, 9), (6, 13), (7, 12), (8, 11), (9, 14),
+                 (12, 15), (13, 13), (14, 16), (15, 17), (16, 18),
+                 (17, 19), (18, 21), (19, 22), (21, 23), (22, 24))
+]
+REH4_PER_FAM = 16
+
+# ---------- new compositional families ------------------------------
+# New trained-operation pairs and reversed orderings of existing pairs;
+# both component ops must be trained families.
+
 # ---------- new compositional families ------------------------------
 # New trained-operation pairs and reversed orderings of existing pairs;
 # both component ops must be trained families.
@@ -553,6 +598,18 @@ def build() -> tuple[list[dict], list[dict]]:
                      "prompt": f"{q}\nAnswer:", "split": "retention",
                      "probe": "delayed"})
 
+    # rehearsal pool: untrained, unmeasured capabilities that only
+    # exist to give preservation arms verified-correct interleave pairs
+    for fam, (task, fn) in REH4_FAMS.items():
+        for i in range(REH4_PER_FAM):
+            w = share()
+            rows.append(row(f"{fam}-{i:02d}", fam, "rehearsal", task,
+                            w, fn(w)))
+    for i, (q, a) in enumerate(REH4_ARITH):
+        rows.append({"expected": a, "family": "reh4-arith",
+                     "id": f"reh4-arith-{i:02d}",
+                     "prompt": f"{q}\nAnswer:", "split": "rehearsal"})
+
     # security: governed v1 probes + extended governed probes + lures
     from minagi.v161.safety_regression import safety_probes
     for p in safety_probes():
@@ -616,7 +673,7 @@ def check(rows: list[dict], holdout: list[dict]) -> dict:
                              str(r.get("generator", "manual")))
 
     splits = ("train", "validation", "within_holdout", "hidden",
-              "retention", "security", "compositional")
+              "retention", "security", "compositional", "rehearsal")
     by = {s: [r for r in rows if r["split"] == s] for s in splits}
     hold_manifest = DatasetMembershipManifest(
         "final_holdout", tuple(member(r) for r in holdout))
@@ -638,7 +695,9 @@ def check(rows: list[dict], holdout: list[dict]) -> dict:
         final_holdout=hold_manifest,
         within_holdout=DatasetMembershipManifest(
             "within_holdout", tuple(member(r)
-                                    for r in by["within_holdout"])))
+                                    for r in by["within_holdout"])),
+        rehearsal=DatasetMembershipManifest(
+            "rehearsal", tuple(member(r) for r in by["rehearsal"])))
     parts.assert_disjoint()
 
     # Behavioral leakage: no input word of a within-family eval row may

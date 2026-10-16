@@ -265,6 +265,14 @@ def test_within_holdout_and_retention_surfaces_are_evaluated():
                   '"destruction_rate"', '"acquisition_rate"'):
         assert field in src, f"metrics omit {field}"
     # the confirmation surface must NEVER feed the rehearsal pool —
-    # the pool admits only the whitelisted train/validation splits, so
-    # within_holdout/retention rows cannot contaminate training
-    assert 'r["split"] in ("train", "validation")' in src
+    # the pool admits only whitelisted train-side splits
+    # (train/validation/rehearsal), so within_holdout/retention rows
+    # cannot contaminate training
+    import re as _re
+    m = _re.search(r'r\["split"\] in \(([^)]*)\)', src)
+    assert m, "default rehearsal pool whitelist not found"
+    allowed = set(_re.findall(r'"(\w+)"', m.group(1)))
+    assert allowed <= {"train", "validation", "rehearsal"}, allowed
+    assert allowed.isdisjoint(
+        {"within_holdout", "retention", "hidden", "security",
+         "compositional", "final_holdout"}), allowed
