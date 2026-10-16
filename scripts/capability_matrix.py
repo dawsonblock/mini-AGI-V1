@@ -326,7 +326,9 @@ def main() -> int:
            "matrix_id": args.matrix_id, "corpus": args.corpus,
            "families": args.families, "steps": args.steps,
            "seed": args.seed, "strategies": results}
-    out = run_root.parent / f"CAPABILITY_MATRIX-{args.matrix_id}.json"
+    # seed in the filename — a multi-seed confirmatory sweep must not
+    # overwrite each seed's own summary document.
+    out = run_root.parent / f"CAPABILITY_MATRIX-{args.matrix_id}-s{args.seed}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, indent=2, sort_keys=True))
     print(json.dumps({k: (v.get("status") or "ok")

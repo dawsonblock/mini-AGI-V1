@@ -353,7 +353,7 @@ RET_GENERAL4 = (
 RET_DELAYED4 = (
     ("Question: What is the capital city of Germany?", "Berlin"),
     ("Question: What is 12 minus 5?", "7"),
-    ("Question: How many minutes are in an hour?", "60"),
+    ("Question: How many degrees are in a full circle?", "360"),
     ("Question: What is the capital city of Italy?", "Rome"),
     ("Question: What is 3 cubed?", "27"),
     ("Question: What is the capital city of Spain?", "Madrid"),

@@ -52,13 +52,18 @@ def _family_map(corpus: Path) -> dict[str, str]:
 
 
 def _correct_map(run: Path, fname: str) -> dict[str, int]:
-    """id -> 0/1 correctness, from the committed prediction file."""
+    """id -> 0/1 correctness, INDEPENDENTLY rescored from the committed
+    prediction file under the strict oracle (exact-match-v2) — the
+    records carry `output` (raw generation), not a precomputed score."""
+    from minagi.v161.evaluators import exact_match_strict
     p = run / fname
     if not p.is_file():
         return {}
     out = {}
     for r in _load_jsonl(p):
-        out[str(r["id"])] = int(r.get("score", 0))
+        pred = str(r.get("output", r.get("prediction", "")))
+        exp = str(r.get("expected", ""))
+        out[str(r["id"])] = int(exact_match_strict(pred, exp))
     return out
 
 

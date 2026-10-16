@@ -940,7 +940,7 @@
 {"expected": "10", "family": "ret4-general", "id": "ret4-general-75", "prompt": "Question: What is 20 percent of 50?\nAnswer:", "split": "retention"}
 {"expected": "Berlin", "family": "ret4-delayed", "id": "ret4-delayed-00", "probe": "delayed", "prompt": "Question: What is the capital city of Germany?\nAnswer:", "split": "retention"}
 {"expected": "7", "family": "ret4-delayed", "id": "ret4-delayed-01", "probe": "delayed", "prompt": "Question: What is 12 minus 5?\nAnswer:", "split": "retention"}
-{"expected": "60", "family": "ret4-delayed", "id": "ret4-delayed-02", "probe": "delayed", "prompt": "Question: How many minutes are in an hour?\nAnswer:", "split": "retention"}
+{"expected": "360", "family": "ret4-delayed", "id": "ret4-delayed-02", "probe": "delayed", "prompt": "Question: How many degrees are in a full circle?\nAnswer:", "split": "retention"}
 {"expected": "Rome", "family": "ret4-delayed", "id": "ret4-delayed-03", "probe": "delayed", "prompt": "Question: What is the capital city of Italy?\nAnswer:", "split": "retention"}
 {"expected": "27", "family": "ret4-delayed", "id": "ret4-delayed-04", "probe": "delayed", "prompt": "Question: What is 3 cubed?\nAnswer:", "split": "retention"}
 {"expected": "Madrid", "family": "ret4-delayed", "id": "ret4-delayed-05", "probe": "delayed", "prompt": "Question: What is the capital city of Spain?\nAnswer:", "split": "retention"}
