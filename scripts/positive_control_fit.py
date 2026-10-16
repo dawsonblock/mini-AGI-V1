@@ -26,6 +26,15 @@ first experiment were lost. Each run now owns a unique directory, is
 built in staging, hashed, verified by reload, and atomically published.
 A failed run is recorded as FAILED rather than vanishing.
 
+V4-26 — atomic run reservation (``minagi.v161.run_reservation``).
+Staging is ownership-bound (``.staging/<run_id>.<attempt_id>``, unique
+per attempt and never deleted or reused), the canonical run name is
+claimed atomically under ``.claims/<run_id>/`` before any costly work,
+publication is a guarded rename that cannot replace a committed run,
+and a failure renames the attempt's own directory to a durable
+``<run_id>.FAILED-<attempt_id>`` sibling — it never removes another
+attempt's files and never burns the canonical name.
+
 SCI-403 — the generation contract is the only source of the token
 budget. The earlier revision accepted ``--max-new-tokens`` separately
 from the frozen contract, so a run could generate with a budget the
@@ -43,8 +52,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
-import shutil
 import sys
 import time
 import uuid
@@ -264,24 +271,40 @@ def main() -> int:
     slug = "-".join(f.split("-")[-1] for f in families)[:24] or "fit"
     run_id = args.run_id or f"{slug}-{identity_digest[7:19]}-{attempt_id[:8]}"
 
+    from minagi.v161 import run_reservation
+
     run_root = ROOT / args.run_root
     run_root.mkdir(parents=True, exist_ok=True)
-    final_dir = run_root / run_id
-    if final_dir.exists():
-        raise SystemExit(
-            f"run destination already exists, refusing to overwrite: "
-            f"{final_dir} — a committed run is never modified")
-    staging = run_root / f".staging-{run_id}"
-    if staging.exists():
-        shutil.rmtree(staging)
-    staging.mkdir(parents=True)
+    try:
+        reservation = run_reservation.reserve(
+            run_root, run_id, attempt_id, config_digest=identity_digest)
+    except run_reservation.DestinationCommitted as exc:
+        raise SystemExit(str(exc))
+    staging = reservation.staging
     print(f"run id   : {run_id}")
+    print(f"attempt  : {attempt_id}")
     print(f"staging  : {staging}")
+    if not reservation.owns_claim:
+        # Another attempt holds the canonical claim. Our evidence stays
+        # in this attempt's own staging directory; we never touch the
+        # other attempt's work or the canonical name.
+        holder = None
+        try:
+            holder = json.loads((reservation.claim_dir /
+                                 "CLAIM.json").read_text()
+                                ).get("attempt_id")
+        except Exception:
+            pass
+        print(f"claim held by attempt {holder or 'unknown'} — this "
+              f"attempt cannot publish; evidence retained at {staging}")
+        return 3
 
     ctx = {"config_digest": identity_digest}
 
     def fail(reason: str) -> int:
-        """A failed run is recorded, never silently dropped."""
+        """A failed run is recorded, never silently dropped — and a
+        failure record can never delete or replace another attempt's
+        evidence (V4-26)."""
         (staging / "RUN_COMMIT.json").write_text(json.dumps({
             "run_id": run_id, "status": "FAILED", "reason": reason,
             "config_digest": ctx["config_digest"],
@@ -289,10 +312,8 @@ def main() -> int:
             "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                          time.gmtime()),
         }, indent=2, sort_keys=True) + "\n")
-        if final_dir.exists():
-            shutil.rmtree(final_dir)
-        os.replace(staging, final_dir)
-        print(f"FAILED: {reason}\n  recorded at {final_dir}")
+        preserved = reservation.fail()
+        print(f"FAILED: {reason}\n  recorded at {preserved}")
         return 2
 
     # ------------------------------------------------------------------
@@ -699,8 +720,8 @@ def main() -> int:
         "files": inventory,
     }, indent=2, sort_keys=True) + "\n")
 
-    os.replace(staging, final_dir)
-    print(f"published: {final_dir}")
+    published = reservation.publish()
+    print(f"published: {published}")
     print(f"fit gate : {fit_acc:.3f} "
           f"({'PASS' if fit_acc >= 0.95 else 'FAIL'} at 0.95)")
     print(f"hidden   : frozen {metrics['frozen']['hidden']:.3f} -> "

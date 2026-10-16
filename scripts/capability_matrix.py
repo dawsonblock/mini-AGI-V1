@@ -198,6 +198,9 @@ def routed_family_eval(args, run_root: Path) -> dict:
                 dec = router.route(
                     str(r["prompt"]),
                     family=(fam if mode == "hinted" else None),
+                    # the hinted path models authenticated dispatch
+                    # metadata; inferred carries no hint at all (V4-28)
+                    family_authenticated=(mode == "hinted"),
                     model_revision=spec.revision)
                 cell = acc[(mode, split_name)]
                 if dec.selected:
@@ -278,19 +281,31 @@ def main() -> int:
              "both": ["--rehearsal-fraction",
                       str(args.rehearsal_fraction),
                       "--kl-weight", str(args.kl_weight)]}
-    for name in [s.strip() for s in args.strategies.split(",")
-                 if s.strip()]:
+    known = set(flags) | {"routed", "skill_memory"}
+    requested = [s.strip() for s in args.strategies.split(",") if s.strip()]
+    unknown = [s for s in requested if s not in known]
+    if unknown:
+        # V4-29: an unrecognized strategy is a hard failure — silently
+        # skipping it would let a partially-executed matrix read as a
+        # completed comparison.
+        print(f"unknown strateg{'y' if len(unknown) == 1 else 'ies'}: "
+              f"{unknown} (known: {sorted(known)})", file=sys.stderr)
+        return 2
+    for name in requested:
         if name == "routed":
-            results["routed_family"] = routed_family_eval(args, run_root)
+            try:
+                results["routed_family"] = routed_family_eval(args,
+                                                              run_root)
+            except Exception as exc:                    # noqa: BLE001
+                results["routed_family"] = {
+                    "status": "FAILED",
+                    "error": f"{type(exc).__name__}: {exc}"}
             continue
         if name == "skill_memory":
             results["skill_memory"] = {
                 "status": "DELEGATED",
                 "note": "verified-replay baseline runs in the campaign "
                         "lane (arm L5b) — not duplicated here"}
-            continue
-        if name not in flags:
-            print(f"unknown strategy {name!r}", file=sys.stderr)
             continue
         rid = f"{args.matrix_id}-{name}-s{args.seed}"
         if args.skip_existing and \
@@ -311,6 +326,13 @@ def main() -> int:
     print(json.dumps({k: (v.get("status") or "ok")
                       for k, v in results.items()}, indent=1))
     print(f"wrote {out}")
+    # V4-29: incomplete execution fails the command — a matrix with a
+    # FAILED cell is not a finished comparison.
+    failed = [k for k, v in results.items()
+              if isinstance(v, dict) and v.get("status") == "FAILED"]
+    if failed:
+        print(f"FAILED cells: {failed}", file=sys.stderr)
+        return 1
     return 0
 
 

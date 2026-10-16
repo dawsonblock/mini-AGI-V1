@@ -17,18 +17,47 @@ def test_required_cells_includes_per_arm_extras():
     assert required_cells(s, "L1") == ("L1",)
 
 
+def _cell(**over):
+    d = {"model_digest": "m", "tokenizer_digest": "t",
+         "evaluator_digest": "e", "environment_digest": "env",
+         "dataset_digest": "d"}
+    d.update(over)
+    return d
+
+
 def test_complete_matrix():
     s = _spec()
-    cells = {(0, "L1"): {}, (0, "L6"): {}, (1, "L1"): {}, (1, "L6"): {}}
+    cells = {(s_, a): _cell() for s_ in (0, 1) for a in ("L1", "L6")}
     rep = audit_matrix(s, cells)
     assert rep["status"] == COMPLETE
     assert rep["qualified_comparison"] is True
     assert rep["n_cells_present"] == rep["n_cells_required"] == 4
 
 
+def test_empty_digests_cannot_yield_complete():
+    """V4-30 — a present cell that cannot name its binding identities
+    is not verified evidence: empty digests block COMPLETE."""
+    s = _spec()
+    cells = {(s_, a): {} for s_ in (0, 1) for a in ("L1", "L6")}
+    rep = audit_matrix(s, cells)
+    assert rep["status"] != COMPLETE
+    assert rep["qualified_comparison"] is False
+    assert any(v.get("absent") for v in rep["identity_violations"])
+
+
+def test_partially_absent_identity_is_flagged():
+    s = _spec()
+    cells = {(s_, a): _cell() for s_ in (0, 1) for a in ("L1", "L6")}
+    cells[(1, "L6")] = _cell(dataset_digest="")   # one absent digest
+    rep = audit_matrix(s, cells)
+    assert rep["status"] != COMPLETE
+    assert any(v.get("absent") and v["field"] == "dataset_digest"
+               for v in rep["identity_violations"])
+
+
 def test_missing_cell_is_incomplete():
     s = _spec()
-    cells = {(0, "L1"): {}, (0, "L6"): {}, (1, "L1"): {}}
+    cells = {(0, "L1"): _cell(), (0, "L6"): _cell(), (1, "L1"): _cell()}
     rep = audit_matrix(s, cells)
     assert rep["status"] == INCOMPLETE
     assert rep["missing"] == [{"seed": 1, "cell": "L6"}]

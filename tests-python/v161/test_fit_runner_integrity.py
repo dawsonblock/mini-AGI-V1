@@ -87,13 +87,35 @@ def test_adapter_destination_is_run_scoped():
 
 def test_runs_are_staged_hashed_and_atomically_published():
     src = _source()
-    assert ".staging-" in src, "no staging directory"
-    assert "os.replace(staging, final_dir)" in src, "publish is not atomic"
+    assert "run_reservation" in src, \
+        "runs must go through the atomic reservation lifecycle (V4-26)"
+    assert "reservation.publish()" in src, "publish is not atomic"
     assert "RUN_COMMIT.json" in src and "dir_inventory" in src, \
         "the run must carry a hash inventory"
     assert "ADAPTER_MANIFEST.json" in src
     assert "reload_verified" in src, \
         "the adapter must be reload-verified before publication"
+
+
+def test_no_path_can_delete_another_attempts_evidence():
+    """The pre-v4.0.2 runner could ``rmtree`` a shared staging dir and a
+    committed final dir during failure cleanup. Those calls are gone —
+    no path in the runner may remove a directory at all."""
+    src = _source()
+    assert "shutil.rmtree" not in src, \
+        "the runner must never delete directories"
+    assert "os.replace" not in src, \
+        "publication must be a non-replacing guarded rename"
+    assert '".staging-"' not in src or '.staging-' not in src, (
+        "staging names shared between attempts are back")
+
+
+def test_failed_attempts_do_not_burn_the_canonical_name():
+    """A FAILED record lives at ``<run_id>.FAILED-<attempt>``, freeing
+    the canonical name for a later qualified attempt."""
+    src = _source()
+    assert "reservation.fail()" in src, \
+        "failures must go through the ownership-bound reservation"
 
 
 def test_a_failed_run_is_recorded_not_dropped():

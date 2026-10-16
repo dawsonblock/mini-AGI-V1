@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capability acquisition controller CLI (V4-13).
+"""Capability acquisition controller CLI (V4-13, V4-31).
 
 Reads measured evidence (a JSON mapping of FailureEvidence fields),
 produces a diagnosis and an intervention decision, and appends verified
@@ -12,7 +12,14 @@ outcomes to the controller's intervention history.
     # record a verified experimental outcome (closes the loop)
     python3 scripts/capability_control.py record \
         --history history.jsonl --intervention fixed_lora \
-        --delta 0.12 --retention-drop 0.02 --verified --cost 900
+        --delta 0.12 --retention-drop 0.02 --cost 900 \
+        --verified --receipt results/.../runs/<run_id>
+
+V4-31: ``--verified`` alone does NOT establish verification. It requires
+``--receipt`` naming independently verifiable evidence — a committed
+run directory (RUN_COMMIT inventory + rescorable metrics) or a signed
+receipt document checked against ``--trust-root``. The recorded entry
+carries the receipt digest so the verification claim can be re-audited.
 
 The history file is the controller's memory: prior verified failures
 block the same intervention under unchanged conditions unless
@@ -54,6 +61,14 @@ def main() -> int:
     r.add_argument("--retention-drop", type=float, default=0.0)
     r.add_argument("--cost", type=float, default=0.0)
     r.add_argument("--verified", action="store_true")
+    r.add_argument("--receipt", default=None,
+                   help="path to independently verifiable outcome "
+                        "evidence (a committed run dir, RUN_COMMIT.json, "
+                        "or a signed receipt document). Required for "
+                        "--verified.")
+    r.add_argument("--trust-root", default=None,
+                   help="TRUST_ROOT.json for checking a signed receipt "
+                        "document's signature")
     r.add_argument("--target", default="")
     r.add_argument("--conditions", default="")
 
@@ -75,15 +90,45 @@ def main() -> int:
         print(text)
         return 0
 
+    # ---- record -------------------------------------------------------
+    from minagi.v161.capability_outcomes import verify_outcome_receipt
+
+    verified = bool(args.verified)
+    receipt_digest = ""
+    if args.verified and not args.receipt:
+        print("error: --verified requires --receipt naming independently "
+              "verifiable evidence — a bare flag cannot establish "
+              "verification (V4-31)", file=sys.stderr)
+        return 2
+    if args.receipt:
+        verifier = None
+        if args.trust_root:
+            from minagi.v161.authority import AuthorityRegistry
+            verifier = AuthorityRegistry.load(args.trust_root).verifier()
+        res = verify_outcome_receipt(args.receipt, verifier)
+        if not res.get("verified"):
+            if args.verified:
+                print(f"error: receipt failed verification — "
+                      f"{res.get('reason')} (refusing to record a "
+                      f"verified outcome)", file=sys.stderr)
+                return 2
+            print(f"warning: receipt not verifiable "
+                  f"({res.get('reason')}) — recorded unverified",
+                  file=sys.stderr)
+            verified = False
+        else:
+            receipt_digest = res["receipt_digest"]
+
     rec = InterventionRecord(
         signature=_signature(args.intervention, args.target,
                              args.conditions),
         intervention=args.intervention,
         outcome_delta=args.delta,
         retention_drop=args.retention_drop,
-        verified=bool(args.verified),
+        verified=verified,
         cost=args.cost,
-        conditions=args.conditions)
+        conditions=args.conditions,
+        receipt_digest=receipt_digest)
     intervention_history_append(Path(args.history), rec)
     print(json.dumps(rec.__dict__, indent=1, sort_keys=True))
     return 0

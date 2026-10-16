@@ -555,7 +555,7 @@
    "release": "mini-AGI-V1-v16.4.8-Linux-Isolation-and-Security-Closure"
   }
  ],
- "release": "mini-AGI-V1-Verified-Capability-Acquisition-v4.0.1",
+ "release": "mini-AGI-V1-v4.0.2-integrity",
  "runtime_closure_v1644": {
   "change_manifest": "RELEASE_CHANGE_MANIFEST.json",
   "defects_closed": [
@@ -600,7 +600,18 @@
   "threat_model": "docs/research/THREAT_MODEL_V1645.md"
  },
  "signature_algorithm": "Ed25519",
- "status": "v4.0.1 verified capability acquisition \u2014 external-review hardening on the v4.0.0 line: router registry v2 persists revocation/suspension/health; Ed25519-signed adapter manifests with qualification-authority role checks and physical artifact verification; capability_matrix measures unhinted inferred routing as the result-of-record with hinted routing as diagnostic; campaign3e corpus adds a true within-family validation split (trained tr3-* functions on word-disjoint unseen inputs) and the fit runner now evaluates validation + compositional splits. Executed MPS runs: v401-3e-8fam-s0 exposure-4 fit FAIL 0.85 (honest negative); v401-3e-8fam-e8-s0 exposure-8 fit PASS 0.9875 with within-family validation 0.208->0.542 (n=24 word-disjoint unseen inputs) \u2014 measured within-family learning, single seed, not a qualification; hidden flat 0.021->0.021, compositional weak 0.0625. QUALIFICATION: tests 1351 passed/21 skipped; full-campaign CUDA lane pending; no recursive-self-improvement claim.",
+ "status": "v4.0.2 integrity release \u2014 correctness + evidence closure on the v4.0.1 line: atomic ownership-bound run lifecycle (run_reservation.py; concurrent attempts cannot delete/replace committed evidence); independent run verifier extended to every committed split + corpus join + identity bindings (evidence_reconciliation.py); both campaign3e runs VERIFIED on rescore (640-step within-family 0.208->0.542 survives independent verification, single seed, still not a qualification); 93 legacy runs marked INCONSISTENT under the strict oracle (recorded, not rewritten); EVIDENCE_MANIFEST_V4 hidden rows corrected 96->192; registry v3 signed+sequenced safety state with authoritative revocation log, activation-time artifact recheck, required model revision, untrusted family hints; matrix identity fields required; matrix/controller CLIs fail closed. Defects V4-26..V4-31 CLOSED (DEFECT_REGISTER_V4.json). QUALIFICATION: tests 696 passed/4 skipped in tests-python/v161. Detail: docs/research/V402_INTEGRITY_CLOSURE.md",
+ "v4_capability_acquisition": {
+  "closure_report": "docs/research/V402_INTEGRITY_CLOSURE.md",
+  "codebase_lineage": "minagi 16.4.10 (unchanged __version__)",
+  "defect_register": "DEFECT_REGISTER_V4.json (31 defects, all CLOSED/CLOSED-E)",
+  "evidence_manifest": "EVIDENCE_MANIFEST_V4.json",
+  "executed_run": "results/campaign3e/runs/v401-3e-8fam-e8-s0 re-qualified VERIFIED under the independent reconciler (7/7 prediction files rescore, corpus join, identity bindings); within-family 0.208->0.542 is a verified MEASUREMENT, single seed, not a qualification",
+  "historical_rescore": "95 runs requalified: 2 VERIFIED (campaign3e), 93 INCONSISTENT (legacy v1 casefold scoring; recorded, not rewritten). Manifest hidden rows corrected 96->192",
+  "python_tests": "tests-python/v161: 696 passed, 4 skipped",
+  "release_version": "4.0.2",
+  "reproduction_tool": "scripts/reproduce_campaign3e.py"
+ },
  "worker_isolation_v1646": {
   "defects_closed": [
    "SEC-501",
@@ -612,14 +623,5 @@
   "detail": "docs/research/WORKER_ISOLATION_SPEC_V1646.md, docs/research/V16_4_6_REPAIR_REPORT.md",
   "qualification": "946 passed / 4 skipped macOS; Linux root demotion qualified on Colab",
   "tests": "tests-python/runtime/test_v1646_worker_isolation.py (36) + worker suites"
- },
- "v4_capability_acquisition": {
-  "release_version": "4.0.1",
-  "codebase_lineage": "minagi 16.4.10 (unchanged __version__)",
-  "defect_register": "DEFECT_REGISTER_V4.json (25 defects, all CLOSED/CLOSED-E)",
-  "evidence_manifest": "EVIDENCE_MANIFEST_V4.json",
-  "executed_run": "results/campaign3b2/runs/v40-verify-s0 \u2014 fit gate PASS, hidden 0.333->0.333 NULL; results/campaign3e/runs/v401-3e-8fam-e8-s0 \u2014 fit gate PASS 0.9875, within-family validation 0.208->0.542 (n=24, single seed; measured learning, not qualified)",
-  "historical_rescore": "12/92 verified, 80/92 superseded (v1 casefold era)",
-  "python_tests": "1351 passed, 21 skipped, 0 failed"
  }
 }

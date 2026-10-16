@@ -119,7 +119,12 @@ class Hypothesis:
 
 @dataclass(frozen=True)
 class InterventionRecord:
-    """One historical experiment outcome — the controller's memory."""
+    """One historical experiment outcome — the controller's memory.
+
+    ``verified`` is only meaningful when ``receipt_digest`` binds the
+    record to independently checkable evidence (V4-31); a bare flag
+    asserted by the recording operator does not establish
+    verification."""
     signature: str
     intervention: str
     outcome_delta: float
@@ -127,6 +132,7 @@ class InterventionRecord:
     verified: bool
     cost: float = 0.0
     conditions: str = ""
+    receipt_digest: str = ""
 
 
 def diagnose(ev: FailureEvidence) -> tuple[Hypothesis, ...]:

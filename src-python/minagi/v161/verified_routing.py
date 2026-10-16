@@ -47,6 +47,29 @@ Routing policy (fail-closed):
    ``state_complete = False`` and refuses outright under
    ``strict_state=True``.
 
+V4-28 — authenticated registry state and activation-time binding:
+
+* Registry schema v3 seals the mutable safety state under an authority
+  signature plus a monotonic ``seq`` (see
+  ``authenticated_registry.py``). With a ``registry_verifier``,
+  ``from_json`` refuses a tampered or unsigned state — deleting a
+  revocation from the file can no longer restore access — and a
+  snapshot whose ``seq`` predates ``min_seq`` cannot roll safety state
+  backwards. An optional signed ``RevocationLog`` is unioned over the
+  file's revocation list as the authoritative record.
+* Adapter bytes are re-verified at activation: when an
+  ``artifact_resolver`` is configured, the selected adapter's on-disk
+  digest is re-checked inside ``route`` (``recheck_at_activation``,
+  default on) — weights modified between registration and use are
+  rejected, not served.
+* Model identity is required by default (``require_model_identity``):
+  a call without ``model_revision``, or a manifest without one, fails
+  closed rather than silently skipping the binding check.
+* Externally supplied ``family`` hints are untrusted unless
+  ``family_authenticated=True``: an unauthenticated hint narrows the
+  candidate set but never bypasses the lexical/OOD evidence gate — a
+  forged hint cannot force activation.
+
 Every decision appends a structured routing event so routing errors are
 measurable evidence, not silent behavior.
 """
@@ -64,6 +87,8 @@ from egai.common.canonical import digest, validate_digest
 from egai.common.crypto import (Ed25519Signer, Ed25519Verifier,
                                 SignedEnvelope)
 from minagi.v161.authority import AuthorityRegistry
+from minagi.v161.authenticated_registry import (RevocationLog,
+                                                open_state, seal_state)
 from minagi.v161.runtime_closure3 import sha256_path
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_'-]+")
@@ -71,7 +96,8 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9_'-]+")
 SCHEMA_MANIFEST_V1 = "mini-agi-v4.0-qualified-adapter-manifest-v1"
 SCHEMA_MANIFEST = "mini-agi-v4.0-qualified-adapter-manifest-v2"
 SCHEMA_REGISTRY_V1 = "mini-agi-v4.0-adapter-registry-v1"
-SCHEMA_REGISTRY = "mini-agi-v4.0-adapter-registry-v2"
+SCHEMA_REGISTRY_V2 = "mini-agi-v4.0-adapter-registry-v2"
+SCHEMA_REGISTRY = "mini-agi-v4.0-adapter-registry-v3"
 SCHEMA_EVENT = "mini-agi-v4.0-routing-event-v1"
 
 
@@ -196,7 +222,11 @@ class VerifiedAdapterRouter:
                  authority: AuthorityRegistry | None = None,
                  required_role: str = "qualification",
                  artifact_resolver: Callable[[str], str | Path] | None = None,
-                 artifact_digester: Callable[[str | Path], str] = sha256_path):
+                 artifact_digester: Callable[[str | Path], str] = sha256_path,
+                 require_model_identity: bool = True,
+                 recheck_at_activation: bool = True,
+                 state_signer: Ed25519Signer | None = None,
+                 revocation_log=None):
         self._adapters: dict[str, QualifiedAdapterManifest] = {}
         self._ineligible: dict[str, str] = {}
         self._revoked: set[str] = set()
@@ -208,7 +238,9 @@ class VerifiedAdapterRouter:
         self.health_window = int(health_window)
         self.events: list[dict] = []
         self.state_complete = True
+        self.state_authenticated = False
         self.registry_warnings: list[str] = []
+        self._seq = 0
         self._verifier = (manifest_verifier
                           if manifest_verifier is not None
                           else (authority.verifier() if authority is not None
@@ -217,6 +249,12 @@ class VerifiedAdapterRouter:
         self._required_role = str(required_role)
         self._artifact_resolver = artifact_resolver
         self._artifact_digester = artifact_digester
+        self._require_model_identity = bool(require_model_identity)
+        self._recheck_at_activation = bool(recheck_at_activation)
+        self._state_signer = state_signer
+        self._revocation_log = (revocation_log if revocation_log is None
+                                or isinstance(revocation_log, RevocationLog)
+                                else RevocationLog(revocation_log))
         for a in adapters:
             self.register(a)
 
@@ -259,13 +297,23 @@ class VerifiedAdapterRouter:
             return
         self._ineligible.pop(m.adapter_id, None)
         self._adapters[m.adapter_id] = m
+        self._seq += 1
 
     def ineligible(self) -> dict[str, str]:
         return dict(self._ineligible)
 
     def revoke(self, adapter_id: str) -> None:
-        """Immediate revocation — the adapter is dead for routing."""
+        """Immediate revocation — the adapter is dead for routing.
+
+        When the router carries a revocation log and state signer, the
+        revocation is also appended to the authoritative log — a
+        tampered registry file can no longer undo it."""
         self._revoked.add(adapter_id)
+        self._seq += 1
+        if self._revocation_log is not None and \
+                self._state_signer is not None:
+            self._revocation_log.append(self._state_signer, adapter_id,
+                                        self._seq)
 
     def reinstate(self, m: QualifiedAdapterManifest) -> None:
         """Re-enable only with NEW qualification evidence: the caller
@@ -286,6 +334,7 @@ class VerifiedAdapterRouter:
                 f"{self._ineligible.get(m.adapter_id, 'unknown reason')}")
         self._revoked.discard(m.adapter_id)
         self._suspended.discard(m.adapter_id)
+        self._seq += 1
 
     def snapshot(self) -> str:
         """Remember the current registry state for rollback."""
@@ -303,6 +352,7 @@ class VerifiedAdapterRouter:
         if self._snapshots:
             self._adapters = self._snapshots.pop()
             self._suspended.clear()
+            self._seq += 1
 
     # ---- health ------------------------------------------------------
 
@@ -310,6 +360,7 @@ class VerifiedAdapterRouter:
         h = self._health.setdefault(adapter_id, [])
         h.append(1 if correct else 0)
         del h[:-self.health_window]
+        self._seq += 1
         if len(h) >= max(4, self.health_window // 2) and \
                 sum(h) / len(h) < self.min_health:
             self._suspended.add(adapter_id)
@@ -321,14 +372,24 @@ class VerifiedAdapterRouter:
     # ---- routing -----------------------------------------------------
 
     def route(self, query: str, *, family: str | None = None,
+              family_authenticated: bool = False,
               model_revision: str | None = None,
               top_k: int = 1) -> RoutingDecision:
         """Route a query to a qualified adapter or abstain (fallback).
 
-        `family` is the caller's best estimate of the task family (from
-        dispatch metadata); when absent the router infers it from
-        family_terms overlap. `model_revision` must match the adapter's
-        qualified model when supplied.
+        ``family`` is the caller's estimate of the task family.
+        Externally supplied hints are UNTRUSTED by default
+        (``family_authenticated=False``): a hint narrows the candidate
+        set to adapters qualified for that family but never bypasses
+        the lexical/OOD evidence gate — a forged hint cannot force an
+        activation. Authenticated dispatch metadata
+        (``family_authenticated=True``, from a trusted dispatcher)
+        retains the direct-qualification path.
+
+        ``model_revision`` binds the routing decision to an actual
+        model identity. Under ``require_model_identity`` (default) a
+        call without it refuses every adapter — missing identity fails
+        closed, it does not skip the check.
         """
         refused: list[str] = [
             f"{aid}: ineligible manifest ({reason})"
@@ -346,17 +407,26 @@ class VerifiedAdapterRouter:
             if not a.enabled:
                 refused.append(f"{aid}: disabled")
                 continue
+            if self._require_model_identity and not model_revision:
+                refused.append(f"{aid}: model revision identity "
+                               "required")
+                continue
+            if not a.model_revision:
+                refused.append(f"{aid}: manifest carries no model "
+                               "revision")
+                continue
             if model_revision and a.model_revision != model_revision:
                 refused.append(f"{aid}: model revision mismatch")
                 continue
             fams = set(a.qualified_families)
             t = _terms(" ".join(a.family_terms or a.qualified_families))
-            # An explicit family hint is authoritative dispatch metadata —
-            # it qualifies the adapter directly. Without one, eligibility
-            # comes from lexical overlap alone and the OOD threshold must
-            # still be met.
             explicit = family is not None
             fam_match = (family in fams) if explicit else bool(q & t)
+            if fam_match and explicit and not family_authenticated:
+                # Untrusted hint: it may narrow WHICH adapters are
+                # considered, but eligibility still requires lexical
+                # evidence — the hint alone cannot force activation.
+                fam_match = bool(q & t)
             if not fam_match:
                 refused.append(f"{aid}: family not qualified "
                                f"({family or 'unresolved'})")
@@ -364,57 +434,118 @@ class VerifiedAdapterRouter:
             overlap = (len(q & t) / math.sqrt(len(q) * len(t))
                        if q and t else 0.0)
             score = (0.85 * overlap + 0.15 * max(0.0, min(1.0, a.priority))
-                     if not explicit
+                     if not (explicit and family_authenticated)
                      else 0.85 + 0.15 * max(0.0, min(1.0, a.priority)))
             scored.append((a, score))
         scored.sort(key=lambda x: (x[1], x[0].adapter_id), reverse=True)
 
-        if not scored:
-            dec = RoutingDecision(None, 0.0, "no qualified adapter",
-                                  family, True, tuple(refused))
-        else:
+        dec: RoutingDecision | None = None
+        while scored:
             a, score = scored[0]
             if score < self.ood_threshold:
                 dec = RoutingDecision(None, score,
                                       "OOD: below activation threshold",
                                       family, True, tuple(refused))
-            else:
-                dec = RoutingDecision(a.adapter_id, score, "qualified",
-                                      family, False, tuple(refused))
+                break
+            if self._artifact_resolver is not None and \
+                    self._recheck_at_activation:
+                # The qualification binding is re-verified at the moment
+                # of activation — bytes changed since registration make
+                # the adapter ineligible, they are never served.
+                reason = ""
+                try:
+                    actual = self._artifact_digester(
+                        self._artifact_resolver(a.adapter_id))
+                    if actual != a.adapter_digest:
+                        reason = "artifact digest mismatch at activation"
+                except Exception as exc:
+                    reason = f"artifact unverifiable at activation ({exc})"
+                if reason:
+                    self._ineligible[a.adapter_id] = reason
+                    refused.append(f"{a.adapter_id}: {reason}")
+                    self.events.append({
+                        "schema": SCHEMA_EVENT, "ts": round(time.time(), 3),
+                        "kind": "activation_recheck_failed",
+                        "adapter_id": a.adapter_id, "reason": reason})
+                    scored.pop(0)
+                    continue
+            dec = RoutingDecision(a.adapter_id, score, "qualified",
+                                  family, False, tuple(refused))
+            break
+        if dec is None:
+            dec = RoutingDecision(None, 0.0, "no qualified adapter",
+                                  family, True, tuple(refused))
         self.events.append({
             "schema": SCHEMA_EVENT, "ts": round(time.time(), 3),
             "query_digest": digest({"q": query}),
+            "family_hint": family,
+            "family_hint_authenticated": bool(family_authenticated),
             "controls": {
                 "signature_enforced": self._verifier is not None
                 or self._authority is not None,
                 "authority_role": (self._required_role
                                    if self._authority is not None else None),
                 "artifact_verified": self._artifact_resolver is not None,
+                "artifact_rechecked_at_activation":
+                    self._artifact_resolver is not None
+                    and self._recheck_at_activation,
+                "model_identity_required": self._require_model_identity,
             },
             "decision": asdict(dec)})
         return dec
 
     # ---- persistence -------------------------------------------------
 
-    def to_json(self) -> str:
-        """Registry schema v2 — adapters plus the safety state a v1 file
-        silently dropped (revocations, suspensions, health history)."""
-        return json.dumps(
-            {"schema": SCHEMA_REGISTRY,
-             "adapters": [asdict(a) for a in
-                          sorted(self._adapters.values(),
-                                 key=lambda x: x.adapter_id)],
-             "revoked": sorted(self._revoked),
-             "suspended": sorted(self._suspended),
-             "health": {k: list(v) for k, v in
-                        sorted(self._health.items())}},
-            indent=2, sort_keys=True)
+    def to_json(self, signer: Ed25519Signer | None = None) -> str:
+        """Registry schema v3 — adapters plus the mutable safety state
+        (revocations, suspensions, health history) sealed under a
+        monotonic ``seq`` and, when ``signer`` (or the router's
+        ``state_signer``) is supplied, an authority signature.
+
+        An unsigned v3 document is a *claim* about state — loadable in
+        non-strict mode but flagged ``state_authenticated = False``. A
+        signed document is an authorization snapshot: tampering with it
+        fails verification at load."""
+        signer = signer or self._state_signer
+        state = {
+            "adapters": [asdict(a) for a in
+                         sorted(self._adapters.values(),
+                                key=lambda x: x.adapter_id)],
+            "revoked": sorted(self._revoked),
+            "suspended": sorted(self._suspended),
+            "health": {k: list(v) for k, v in
+                       sorted(self._health.items())}}
+        return json.dumps(seal_state(state, self._seq, signer),
+                          indent=2, sort_keys=True)
 
     @classmethod
     def from_json(cls, path: str | Path, *, strict_state: bool = False,
+                  registry_verifier: Ed25519Verifier | None = None,
+                  revocation_log=None, min_seq: int = 0,
                   **kw) -> "VerifiedAdapterRouter":
+        """Load a registry file, newest schema first.
+
+        * v3 — ``open_state`` enforces the signature whenever a
+          ``registry_verifier`` is given (tampered state — e.g. a
+          deleted revocation — fails closed) and refuses a ``seq``
+          below ``min_seq``. ``strict_state=True`` additionally
+          requires the state to be authenticated.
+        * v2 — structurally complete but UNauthenticated (unsigned,
+          unsequenced): loads non-strict with a warning, refuses under
+          ``strict_state``.
+        * v1 — cannot prove its safety state at all: loads marked
+          ``state_complete = False``, refuses under ``strict_state``.
+
+        ``revocation_log`` (a ``RevocationLog`` or path) is the
+        authoritative revocation record: its verified entries are
+        unioned over the file's own list, so deleting a revocation from
+        a snapshot — signed or not — never restores access.
+        """
         raw = json.loads(Path(path).read_text())
         schema = raw.get("schema")
+        log = (revocation_log if revocation_log is None
+               or isinstance(revocation_log, RevocationLog)
+               else RevocationLog(revocation_log))
         if schema == SCHEMA_REGISTRY_V1:
             # A v1 file never recorded revocation/suspension/health — any
             # of its adapters could have been revoked before save and the
@@ -433,13 +564,50 @@ class VerifiedAdapterRouter:
                 "registry schema v1 predates revocation/suspension "
                 "persistence — a revoked adapter saved under v1 reloads "
                 "as routable; this file cannot prove none existed")
-            return r
-        if schema != SCHEMA_REGISTRY:
-            raise ValueError(f"registry schema must be {SCHEMA_REGISTRY}")
-        r = cls([QualifiedAdapterManifest(**a)
-                 for a in raw.get("adapters", [])], **kw)
-        r._revoked = {str(x) for x in raw.get("revoked", [])}
-        r._suspended = {str(x) for x in raw.get("suspended", [])}
-        r._health = {str(k): [int(x) for x in v]
-                     for k, v in raw.get("health", {}).items()}
+        elif schema == SCHEMA_REGISTRY_V2:
+            # v2 recorded the safety state but unsigned and unsequenced —
+            # a modified file cannot be detected and the file cannot
+            # prove it is the newest state.
+            if strict_state:
+                raise ValueError(
+                    "v2 registries are unauthenticated — the safety "
+                    "state cannot be verified against tampering; "
+                    "refusing under strict_state")
+            r = cls([QualifiedAdapterManifest(**a)
+                     for a in raw.get("adapters", [])], **kw)
+            r._revoked = {str(x) for x in raw.get("revoked", [])}
+            r._suspended = {str(x) for x in raw.get("suspended", [])}
+            r._health = {str(k): [int(x) for x in v]
+                         for k, v in raw.get("health", {}).items()}
+            r.registry_warnings.append(
+                "registry schema v2 is unauthenticated — revocations "
+                "are mutable in the file and there is no sequence to "
+                "rule out a stale snapshot")
+        else:
+            opened = open_state(raw, registry_verifier, min_seq=min_seq)
+            state = opened["state"]
+            if strict_state and registry_verifier is None:
+                raise ValueError(
+                    "strict_state requires an authenticated registry — "
+                    "supply registry_verifier")
+            r = cls([QualifiedAdapterManifest(**a)
+                     for a in state.get("adapters", [])], **kw)
+            r._revoked = {str(x) for x in state.get("revoked", [])}
+            r._suspended = {str(x) for x in state.get("suspended", [])}
+            r._health = {str(k): [int(x) for x in v]
+                         for k, v in state.get("health", {}).items()}
+            r._seq = opened["seq"]
+            r.state_authenticated = opened["authenticated"]
+            if not opened["authenticated"]:
+                r.registry_warnings.append(
+                    "registry state is unsigned — revocation deletions "
+                    "cannot be detected; provisional mode only")
+        # The authoritative revocation log overrides whatever the file
+        # claims: logged revocations are unioned in, never removed.
+        if log is not None:
+            logged, failures, log_seq = log.load(registry_verifier)
+            r._revoked |= logged
+            r.registry_warnings.extend(
+                f"revocation log: {f}" for f in failures)
+            r._seq = max(r._seq, log_seq)
         return r

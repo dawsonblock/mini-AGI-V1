@@ -22,6 +22,13 @@ cells against it and returns an explicit status:
 INCOMPLETE and INCONSISTENT are terminal for qualification claims: the
 experiment may continue executing, but nothing downstream may treat the
 matrix as a finished comparison.
+
+V4-30 — a cell that exists but cannot name its binding identities is
+not verified evidence. ``MatrixSpec.required_identity_fields`` names
+the identity fields every present cell must carry non-empty (default:
+all five). A present cell with an absent required field is recorded as
+an identity violation and the audit cannot return COMPLETE — empty
+digests never yield a qualified comparison.
 """
 from __future__ import annotations
 
@@ -56,6 +63,14 @@ class MatrixSpec:
     #: identity values every cell must share; empty string = unbound
     #: (checked for internal consistency only, not against a value).
     expected_identity: CellIdentity = CellIdentity()
+    #: identity fields every PRESENT cell must carry non-empty. An
+    #: absent required digest is an identity violation — the cell's
+    #: evidence cannot be bound, so the matrix is not a verified
+    #: comparison. Defaults to all five fields (strict by default);
+    #: narrow it only for deliberately partial audits.
+    required_identity_fields: tuple[str, ...] = (
+        "model_digest", "tokenizer_digest", "evaluator_digest",
+        "environment_digest", "dataset_digest")
 
 
 def required_cells(spec: MatrixSpec, arm: str) -> tuple[str, ...]:
@@ -77,16 +92,20 @@ def audit_matrix(
     violations, and the complete deficit list."""
     missing: list[dict] = []
     present: dict[int, list[str]] = {s: [] for s in spec.seeds}
-    observed_identities: list[CellIdentity] = []
+    observed_identities: list[tuple[int, str, CellIdentity]] = []
 
     def _id_of(cell) -> CellIdentity:
         def g(name):
             if isinstance(cell, Mapping):
                 return str(cell.get(name, ""))
             return str(getattr(cell, name, ""))
+        # EvidenceReceiptV3 names its bound dataset identity
+        # ``evaluation_dataset_digest`` — the same identity under a
+        # receipt-specific field name; accept it as the dataset digest.
+        dataset = g("dataset_digest") or g("evaluation_dataset_digest")
         return CellIdentity(g("model_digest"), g("tokenizer_digest"),
                             g("evaluator_digest"), g("environment_digest"),
-                            g("dataset_digest"))
+                            dataset)
 
     for seed in spec.seeds:
         for arm in spec.arms:
@@ -96,11 +115,26 @@ def audit_matrix(
                     missing.append({"seed": seed, "cell": cell_name})
                 else:
                     present[seed].append(cell_name)
-                    observed_identities.append(_id_of(cell))
+                    observed_identities.append(
+                        (seed, cell_name, _id_of(cell)))
 
     violations: list[dict] = []
+    # V4-30: a present cell with an absent required identity field is a
+    # violation — its evidence cannot be bound to the experiment.
+    required = set(spec.required_identity_fields) | {
+        f for f in CellIdentity.__dataclass_fields__
+        if getattr(spec.expected_identity, f)}
+    for fname in sorted(required):
+        if fname not in CellIdentity.__dataclass_fields__:
+            raise ValueError(
+                f"unknown required identity field: {fname}")
+        for seed, cell_name, cid in observed_identities:
+            if not getattr(cid, fname):
+                violations.append({"field": fname, "seed": seed,
+                                   "cell": cell_name, "absent": True})
+
     for fname in CellIdentity.__dataclass_fields__:
-        vals = {getattr(c, fname) for c in observed_identities
+        vals = {getattr(c, fname) for _, _, c in observed_identities
                 if getattr(c, fname)}
         bound = getattr(spec.expected_identity, fname)
         if bound:

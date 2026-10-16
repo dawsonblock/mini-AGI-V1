@@ -249,6 +249,13 @@ def main() -> int:
             self._receipt = receipt
             self.metrics = metrics
 
+        @property
+        def dataset_digest(self):
+            # The v3 receipt names the bound evaluation dataset
+            # ``evaluation_dataset_digest``; the experiment matrix binds
+            # cells on ``dataset_digest`` — same identity, two names.
+            return self._receipt.evaluation_dataset_digest
+
         def __getattr__(self, name):
             return getattr(self._receipt, name)
 
