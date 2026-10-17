@@ -31,6 +31,17 @@ Limitations **introduced or still standing** after v4.0.3:
   efficiency over fixed baselines have NOT been demonstrated by this
   release. This is an engineering-integrity release; RD-3 still
   stands.
+- **v4.1.0 dev-lane result (post-release, same day):** the
+  development matrix ran on the campaign4a corpus — 2 seeds × arms
+  {fixed, rehearsal, kl, shuffled}, all committed runs independently
+  VERIFIED (see `docs/research/V410_DEV_MATRIX_REPORT.md`). Within-family
+  generalization replicated (+0.20…+0.32 on the independent
+  within_holdout surface), but NO declared arm held retention inside
+  the preregistered bound on both seeds — destruction is seed-level
+  scatter, and the `both` arm was screened unexecuted. The
+  confirmation lane is therefore NOT ready: a retention-preserving
+  mechanism is still missing, and no result is QUALIFIED (no
+  independent evaluator custody exists on this host).
 - **`pc-rev`/`pc-swap` (RD-17)** remains OPEN by prior decision;
   RD-20 (IDE lint resolving `minagi` from a sibling checkout) remains
   OPEN with the same in-tree mitigation.
