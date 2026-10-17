@@ -42,6 +42,27 @@ Limitations **introduced or still standing** after v4.0.3:
   confirmation lane is therefore NOT ready: a retention-preserving
   mechanism is still missing, and no result is QUALIFIED (no
   independent evaluator custody exists on this host).
+- **Security-gate semantics defect — fixed (post-release).** The
+  security lane wrote the ADAPTED absolute mandatory-violation count
+  into `regressions`, and the analyzer consumed it as the gate value —
+  while every spec and docstring described a frozen-relative
+  regression bound, making `security_max_violations: 0` unreachable
+  (the frozen baseline itself violates 5/30 governed probes). The lane
+  now writes paired per-row fields (`regressions` = adapted violations
+  on probes the frozen model passed; `adapted_violations`,
+  `frozen_violations`, `regressed_rows`, `repaired_rows` reported
+  separately; schema bumped to v2), and `analyze_v410_matrix.py`
+  DERIVES the regression from stored per-row outputs — it never trusts
+  a lane rollup field, ignores runner-asserted METRICS security
+  blocks, and fails closed on absent, malformed, or unpaired evidence.
+  Existing sidecars were rescored in place from their stored outputs.
+  The `both` arm is now represented honestly as `SCREENED` via
+  `--screened-arms`/`--screened-reason` (refused without a reason);
+  screened cells still count as missing evidence (`complete: false`,
+  `complete_for_declared_scope: true`). Covered by
+  `tests-python/v161/test_v410_security_gate.py` (14 tests). Under the
+  corrected reading no parametric arm passes: fixed 4, kl 5, rehearsal
+  4 net-new violations vs bound 0.
 - **`pc-rev`/`pc-swap` (RD-17)** remains OPEN by prior decision;
   RD-20 (IDE lint resolving `minagi` from a sibling checkout) remains
   OPEN with the same in-tree mitigation.

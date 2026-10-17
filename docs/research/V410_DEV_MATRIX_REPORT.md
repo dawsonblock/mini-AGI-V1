@@ -22,22 +22,30 @@ Analysis artifact: `results/v410_dev/CONFIRMATION_ANALYSIS-v410-dev.json`.
 | shuffled-s0, shuffled-s1 | committed, VERIFIED |
 | both-s0, both-s1 | **screened — not executed** |
 
-`both` (rehearsal 0.25 + KL 0.1) was screened out and is honestly MISSING in the
+`both` (rehearsal 0.25 + KL 0.1) was screened out and reports `SCREENED` in the
 analysis artifact: its rehearsal component alone fails the fit gate at fraction
 0.25 on both seeds, and its KL component is separately shown non-protective and
 ~17× the compute. Running it could not change the per-arm verdicts. This is a
-development-lane screening decision, recorded here, not an edit to the
-preregistered matrix — the confirmation lane must decide the arm set explicitly.
+development-lane screening decision, recorded verbatim in the analysis artifact
+(`--screened-arms`/`--screened-reason`, which are refused without a reason), not
+an edit to the preregistered matrix — the confirmation lane must decide the arm
+set explicitly, and a screened cell still counts as a missing evidence gap
+(`complete: false`).
 
 ## Gate evaluation (gates from confirmation.yaml)
 
-| arm | fit all seeds | G5 within_holdout Δ (family-cluster 95% CI) | G6 retention max destruction | security regressions | all gates |
+Security regressions below are **paired per-row net-new violations**: a
+governed probe counts only if the adapted model violates it and the frozen
+model passed it. The frozen baseline itself violates 5/30 governed probes —
+absolute counts are reported alongside but are not the gate quantity.
+
+| arm | fit all seeds | G5 within_holdout Δ (family-cluster 95% CI) | G6 retention max destruction | security net-new regressions (adapted abs.) | all gates |
 |---|---|---|---|---|---|
-| fixed | pass (0.988 / 0.975) | **+0.3125 [0.147, 0.475] PASS** | 0.156 **FAIL** | 12 | FAIL |
-| kl | pass (0.963 / 1.000) | **+0.2949 [0.141, 0.445] PASS** | 0.219 **FAIL** | 13 | FAIL |
-| rehearsal | **fail** (0.938 / 0.850) | +0.2363 [0.098, 0.377] | 0.625 **FAIL** | 12 | FAIL |
-| shuffled (NC) | fail by design (0.0) | −0.078 [−0.188, 0.004] null | 0.844 | 0 (degenerate) | FAIL |
-| both | not executed | — | — | — | MISSING |
+| fixed | pass (0.988 / 0.975) | **+0.3125 [0.147, 0.475] PASS** | 0.156 **FAIL** | 4 (5, 7) **FAIL** | FAIL |
+| kl | pass (0.963 / 1.000) | **+0.2949 [0.141, 0.445] PASS** | 0.219 **FAIL** | 5 (7, 6) **FAIL** | FAIL |
+| rehearsal | **fail** (0.938 / 0.850) | +0.2363 [0.098, 0.377] | 0.625 **FAIL** | 4 (6, 6) **FAIL** | FAIL |
+| shuffled (NC) | fail by design (0.0) | −0.078 [−0.188, 0.004] null | 0.844 | 0 (0, 0) degenerate | FAIL |
+| both | not executed | — | — | — | SCREENED |
 
 ## Findings
 
@@ -82,12 +90,18 @@ preregistered matrix — the confirmation lane must decide the arm set explicitl
 6. **Hidden transfer remains absent** (adapted hidden ≈ 0.01–0.02, no arm
    acquires cross-family behavior) — acquisition is within-family only.
 
-7. **Security-gate tension to resolve before confirmation:** the declared
-   `security_max_violations: 0` reads as an absolute in the analyzer, but the
-   frozen baseline itself already violates 5/33 — as written the gate is
-   unreachable by any model including the base. Adapted-vs-frozen net
-   regressions were +0…+2 per arm. The gate needs a stated interpretation
-   (absolute vs net-new) before the confirmatory protocol freezes.
+7. **Security gate is a paired regression bound — resolved.** The declared
+   `security_max_violations: 0` was ambiguous between an absolute adapted
+   count (which the frozen baseline itself fails at 5/30 governed probes)
+   and the campaign convention of a frozen-relative regression bound. It is
+   now implemented and documented as the latter: the analyzer derives
+   net-new violations per row from the sidecar's stored frozen+adapted
+   outputs (never trusting a lane rollup field), and unevaluated/unpaired
+   evidence fails closed. Under the corrected reading every parametric arm
+   still fails (fixed 4, kl 5, rehearsal 4 net-new); notably fixed-s0 shows
+   the case pairing catches — adapted and frozen violate the *same count*
+   (5) but on *different rows* (1 regressed, 1 repaired). The shuffled
+   control's 0 is degenerate (it emits no marker-shaped output at all).
 
 ## Standing vs the v4.1.0 claim
 

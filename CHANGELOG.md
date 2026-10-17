@@ -1,3 +1,29 @@
+# Unreleased — v4.1.0 dev-lane tooling fixes
+
+Post-release fixes to the capability-acquisition analysis lane. No
+scientific claim changes: the v4.1.0 dev-matrix verdict stands (no
+declared arm passes all gates), and all runs remain
+EVALUATION_VERIFIED / NOT_QUALIFIED.
+
+- **Security gate semantics corrected to the documented contract.**
+  `run_security_lane.py` wrote the absolute adapted mandatory-violation
+  count into `regressions` although its own contract (and
+  `EXPERIMENT_PROTOCOL.md`, `campaign_plan.py`) define a frozen-relative
+  regression bound — with `security_max_violations: 0` unreachable since
+  the frozen baseline violates 5/30 governed probes itself. The lane now
+  writes paired per-row fields and schema v2; `analyze_v410_matrix.py`
+  derives the regression itself from stored frozen+adapted outputs
+  (`_security_block`), never trusts lane rollup fields or
+  runner-asserted METRICS security blocks, and fails closed on missing,
+  malformed, or unpaired evidence. The eight existing sidecars were
+  rescored in place from their stored outputs.
+- **Screened arms are first-class and honest.** New
+  `--screened-arms`/`--screened-reason` flags (reason mandatory):
+  screened cells report `SCREENED` instead of `MISSING` but still appear
+  in `missing_cells`; `complete` stays strict while
+  `complete_for_declared_scope` reports the excused view. A screened arm
+  not declared in `--arms` is rejected.
+
 # v4.0.3 — evidence-boundary and authority repair
 
 Repairs for the verification and authorization defects the v4.0.2
