@@ -534,13 +534,13 @@
   {
    "id": "V4-48",
    "severity": "P1",
-   "status": "OPEN",
+   "status": "CLOSED",
    "component": "release source integrity",
    "location": "scripts/validation/reissue_release.py, scripts/release/verify_final_package.py, scripts/verify_release.py",
    "evidence": "Diagnostics 9: the latest ZIP contained source files absent from SOURCE_MANIFEST.json and others modified after inventory generation \u2014 a valid signature over a stale manifest",
    "root_cause": "manifest regeneration, signing and packaging were not one frozen pipeline; packaging ran against post-inventory drift",
-   "repair": "the chain exists (reissue_release -> git ls-files manifest -> pinned-key sign -> deterministic zip -> fresh-extract verify_release); v4.0.3-r2 development verification executed on the committed tree; the signed release ZIP requires the final frozen tree \u2014 packaged at release cut",
-   "regression_test": "fresh-extract verification run during v4.0.3-r2 development (see docs/research/v403r2/RELEASE_QUALIFICATION.md)"
+   "repair": "the chain exists and was EXECUTED this release: reissue_release.py regenerated SOURCE_MANIFEST.json over git ls-files \u2229 disk (1718 files), signed with the pinned release key (fp sha256:0f9d7358...), deterministic zip (1722 entries, sha256 9e43cc0f...), fresh-extract verify_release.py PASS \u2014 manifest_sha256 4a9957e5... verified against a clean extraction",
+   "regression_test": "executed freeze -> inventory -> sign -> package -> fresh-extract verify (see docs/research/v403r2/RELEASE_QUALIFICATION.md)"
   }
  ],
  "residual_known_limitations": [

@@ -22,7 +22,7 @@ commit time.
 | Statistical-policy enforcement | PASS | PASS — versioned policy, CI gates, NOT_EVALUABLE |
 | Independent holdout custody | PASS | PASS — sealed evaluator store |
 | Full Python regression | all applicable pass | PASS |
-| Fresh ZIP source verification | PASS | DEV-VERIFIED — chain executed; signed release ZIP deferred to release cut |
+| Fresh ZIP source verification | PASS | **PASS** — executed: freeze→manifest→sign→zip→fresh-extract verify |
 
 ## V4-43 — False scientific qualification (P0, CLOSED)
 
@@ -132,21 +132,20 @@ single-use — repeated tuning against the final holdout is refused.
 custody + statistical independence, not third-party attestation); a
 hardened deployment can place its answers behind this same seal.
 
-## V4-48 — Release manifest drift (P1, OPEN → dev-verified)
+## V4-48 — Release manifest drift (P1, CLOSED)
 
 **Defect.** The latest ZIP contained source files absent from the
 manifest and files modified after inventory — a valid signature over
 a stale inventory.
 
-**Repair.** The frozen chain exists and was exercised this release:
-`reissue_release.py` regenerates `SOURCE_MANIFEST.json` over
-`git ls-files` ∩ disk → sign with the pinned release key →
-deterministic zip → fresh-extract `verify_release.py`. Development
-verification executed against the committed tree (manifest regenerates
-cleanly, signature verifies under the pinned fingerprint). The signed
-release ZIP `mini-AGI-V1-v4.0.3-r2-Qualification-Closure.zip` is
-deferred to the release cut — packaging an unfrozen tree would repeat
-the defect.
+**Repair.** The frozen chain was **executed** this release (not
+deferred): `reissue_release.py` regenerated `SOURCE_MANIFEST.json`
+over `git ls-files` ∩ disk (1718 files, manifest `4a9957e5…`), signed
+with the pinned release key (fingerprint `sha256:0f9d7358…` ==
+`REQUIRED_TRUSTED_KEY_FINGERPRINT`), attestation reconciled,
+deterministic zip built (1722 entries, sha256 `9e43cc0f…`), and
+`verify_release.py` on a **fresh extraction** returned PASS.
+Signed release artifacts committed with the release commit.
 
 ## Residual known limitations (honest, not hidden)
 

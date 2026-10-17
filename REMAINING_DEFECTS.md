@@ -588,7 +588,7 @@ Diagnostics 9's engineering blockers are closed; the scientific
 | RD-23 | mandatory evidence identities could be null/absent | **CLOSED** — trusted_evidence resolver + evaluator_policy, V4-45 |
 | RD-24 | statistical qualification not enforced (point estimates, degenerate CIs) | **CLOSED** — statistical_policy.yaml, CI gates, NOT_EVALUABLE, V4-46 |
 | RD-25 | final holdout answers shipped — no confirmation surface | **CLOSED** — sealed evaluator store, single-use evals, V4-47 |
-| RD-26 | signed release covered a stale inventory | **DEV-VERIFIED** — chain executes on committed tree; signed release ZIP deferred to release cut, V4-48 |
+| RD-26 | signed release covered a stale inventory | **CLOSED** — executed: manifest reissued (1718 files), pinned-key sign, deterministic zip, fresh-extract verify PASS, V4-48 |
 | RD-27 | evaluation key custody is development-held on this host | **limitation declared** — mechanism closed; real confirmation needs evaluator under a separate OS identity |
 | RD-28 | no committed run carries execution provenance | **limitation declared** — committed runs top out at LOCALLY_RECOMPUTED; matrix correctly fails closed until evaluator-custody runs exist |
 | RD-29 | sealed confirmation exercised via mock loader in tests | **scope limit** — real-model sealed confirmation is a confirmation-lane run, not a unit test |

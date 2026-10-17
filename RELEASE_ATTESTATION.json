@@ -88,7 +88,7 @@
   "qualification": "macOS suite green; Linux boundary run pending",
   "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
  },
- "manifest_sha256": "da9b22ed465fafe342678e85d0744af8eb9bb59dfca08e96646a6976bef3f302",
+ "manifest_sha256": "4a9957e551910b54a2767243b027369d5e5e6e5da7f95b56fd7af7985513c48b",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
  "python_validation": "1067 passed, 18 skipped, 0 failed (macOS); container: 62/62 v16.4.10 + 50/50 executor-isolation + 2/2 G10",
@@ -533,9 +533,15 @@
    "manifest_sha256": "da9b22ed465fafe342678e85d0744af8eb9bb59dfca08e96646a6976bef3f302",
    "reason": "v4.0.3 evidence-integrity release: outcome verification split into INTEGRITY_VERIFIED/EVALUATION_VERIFIED/QUALIFIED (qualified_outcome.py); fabricated/caller-supplied deltas can no longer enter verified controller history; signed hash-chained registry event ledger + separately-custodied monotonic state authority; generation-bound reinstatement; filename-safe run ids, symlink containment, no-replace publish nonce; mandatory evidence metric schema; campaign completeness gates; defects V4-32..V4-37 closed; 787 passed/4 skipped in tests-python/v161",
    "utc": "2026-10-16T22:41:34.062032+00:00"
+  },
+  {
+   "commit": "363d679",
+   "manifest_sha256": "4a9957e551910b54a2767243b027369d5e5e6e5da7f95b56fd7af7985513c48b",
+   "reason": "v4.0.3-r2 qualification & execution-provenance closure: separate matrix/candidate semantics (V4-43), evaluator-owned model executor + model-execution-receipt-v1 (V4-44), mandatory evidence identities + trusted resolver + custody (V4-45), versioned statistical policy with CI gates (V4-46), sealed evaluator holdout (V4-47); 1584 passed/21 skipped",
+   "utc": "2026-10-17T09:43:44.288569+00:00"
   }
  ],
- "reissued_utc": "2026-10-16T22:41:34.062032+00:00",
+ "reissued_utc": "2026-10-17T09:43:44.288569+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -567,7 +573,7 @@
    "release": "mini-AGI-V1-v16.4.8-Linux-Isolation-and-Security-Closure"
   }
  ],
- "release": "mini-AGI-V1-v4.0.3-integrity",
+ "release": "mini-AGI-V1-v4.0.3-r2-Qualification-Closure",
  "runtime_closure_v1644": {
   "change_manifest": "RELEASE_CHANGE_MANIFEST.json",
   "defects_closed": [
