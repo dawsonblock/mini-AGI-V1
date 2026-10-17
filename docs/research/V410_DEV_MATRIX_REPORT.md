@@ -104,17 +104,63 @@ preregistered matrix — the confirmation lane must decide the arm set explicitl
   question. A retention-preserving intervention must first survive the dev
   lane.
 
-## Candidate dev iterations (not yet run — require a new dev sweep)
+## Follow-up probes executed in this lane (post-matrix dev iteration)
 
-- Rehearsal over a pool of capabilities the frozen model verifiably *has*
-  (e.g., general-QA/format pairs passing frozen-correct regeneration at high
-  rate), not transform families it lacks; measure pool size vs destruction.
-- Lower rehearsal fraction (0.05–0.10) to recover fit margin — only worth
-  testing once the pool is big enough to matter.
-- Lower exposure/LR to find whether a milder adaptation exists inside the
-  acquisition window before the forgetting regime.
-- Post-adaptation repair (e.g., weight-space interpolation toward frozen)
-  evaluated with the same gates.
+The starved-pool finding (item 3) motivated a concrete test: build a rehearsal
+corpus from capabilities the frozen model verifiably *has*. A pool file of 136
+campaign3 train/validation/retention rows (all families outside tr3-*, none on
+campaign4a measurement surfaces) was written to
+`results/v410_dev/rehearsal_pool_c3.jsonl`; frozen-correct regeneration admits
+**27 verified pairs** (109 rejected) — 13.5× the declared corpus's pool.
+
+Three candidate arms ran the same verified pipeline (2 seeds each):
+
+| candidate config | seed | fit | who Δ | retention destruction |
+|---|---|---|---|---|
+| rehearsal 0.25, pool=27 | s0 | 0.900 FAIL | +0.242 | 1/32 (0.031) |
+| rehearsal 0.25, pool=27 | s1 | 0.938 FAIL | +0.223 | 2/32 (0.063) |
+| rehearsal 0.10, pool=27 | s0 | 0.988 PASS | +0.262 | 1/32 (0.031) |
+| rehearsal 0.10, pool=27 | s1 | 0.912 FAIL | +0.301 | 4/32 (0.125) |
+| rehearsal 0.10, pool=27, steps 720 | s0 | 0.988 PASS | +0.246 | 1/32 (0.031) |
+| rehearsal 0.10, pool=27, steps 720 | s1 | 0.963 PASS | +0.301 | 6/32 (0.188) |
+
+(all six committed runs independently VERIFIED, zero mismatches.)
+
+### What the probes establish
+
+- **Pool size controls retention, replicated:** on seed 1, the same
+  intervention at the same fraction destroys 20/32 with a 2-pair pool vs
+  2/32 with a 27-pair pool. Verified-pair rehearsal is a real mechanism —
+  when the pool contains capabilities the model actually has.
+- **Fit margin is a budget problem, fixable:** steps 720 at fraction 0.10
+  restores task presentations to ~648 (≈ the fixed arm's 640) and passes the
+  fit gate on both seeds (0.988 / 0.963).
+- **Retention is still not inside the gate on seed 1.** Every configuration
+  scatters around the 0.10 bound on that seed (0.063–0.188); destruction
+  counts of 2–6/32 are within noise of each other, and nothing yet separates
+  "protected" from "lucky".
+
+### Dev-lane verdict
+
+A candidate arm *shape* now exists — compensated-budget rehearsal over an
+enlarged frozen-correct pool — that beats every arm in the declared matrix and
+clears all gates on seed 0. It does **not** yet clear them on seed 1, so it is
+not a confirmation-ready arm. The honest next dev iterations are a bigger and
+more *diverse* verified pool (hundreds of pairs, not tens), pool composition
+matched to the retention surface's task types, or a lower rehearsal fraction
+with the same budget compensation. The confirmatory lane remains unrun and
+unearned.
+
+## Candidate dev iterations (remaining)
+
+- Rehearsal pool at 100+ verified pairs across heterogeneous frozen-correct
+  task types (QA, format, lexical) — the pool-size result suggests coverage,
+  not count alone, is the binding constraint.
+- rehearsal_fraction 0.05 with steps ≥ 720 — less diversion, same budget.
+- Weight-space interpolation toward frozen post-training (model averaging)
+  evaluated under identical gates.
+- Lower learning rate / lower rank to probe the acquisition–forgetting
+  tradeoff boundary.
 
 None of these is a claim; each is a proposed dev-lane arm whose evidence must
 pass through the same verified pipeline.
