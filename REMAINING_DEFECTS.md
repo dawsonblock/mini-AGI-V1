@@ -573,3 +573,22 @@ cross-checkout resolution; no code action warranted.
 | RD-18 | case-insensitive scorer inflated all numbers | **CLOSED** — strict oracle + full rescore published |
 | RD-19 | sealed custody overclaimed independence | **CLOSED** — fail-closed custody + production/synthetic modes |
 | RD-20 | IDE lint resolves minagi against sibling checkout | **OPEN** — mitigated in-tree; workspace config is IDE-side |
+
+---
+
+## v4.0.3-r2 addendum — qualification & execution-provenance closure
+
+Diagnostics 9's engineering blockers are closed; the scientific
+(retention) blocker is explicitly NOT claimed — that is v4.1.1.
+
+| # | Item | Status |
+|---|------|--------|
+| RD-21 | matrix_qualified conflated completeness with qualification | **CLOSED** — separate matrix/candidate semantics, V4-43 |
+| RD-22 | evaluator signed submitted predictions without executing the model | **CLOSED** — evaluator-owned executor + model-execution-receipt-v1, V4-44 |
+| RD-23 | mandatory evidence identities could be null/absent | **CLOSED** — trusted_evidence resolver + evaluator_policy, V4-45 |
+| RD-24 | statistical qualification not enforced (point estimates, degenerate CIs) | **CLOSED** — statistical_policy.yaml, CI gates, NOT_EVALUABLE, V4-46 |
+| RD-25 | final holdout answers shipped — no confirmation surface | **CLOSED** — sealed evaluator store, single-use evals, V4-47 |
+| RD-26 | signed release covered a stale inventory | **DEV-VERIFIED** — chain executes on committed tree; signed release ZIP deferred to release cut, V4-48 |
+| RD-27 | evaluation key custody is development-held on this host | **limitation declared** — mechanism closed; real confirmation needs evaluator under a separate OS identity |
+| RD-28 | no committed run carries execution provenance | **limitation declared** — committed runs top out at LOCALLY_RECOMPUTED; matrix correctly fails closed until evaluator-custody runs exist |
+| RD-29 | sealed confirmation exercised via mock loader in tests | **scope limit** — real-model sealed confirmation is a confirmation-lane run, not a unit test |

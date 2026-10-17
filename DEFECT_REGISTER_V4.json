@@ -475,6 +475,72 @@
    "root_cause": "security_doc was accepted by derive_qualified_outcome but not forwarded by the receipt-verification wrappers or the analyzer",
    "repair": "security_doc now flows verify_outcome_receipt -> _verify_run_dir -> derive_qualified_outcome -> verify_evaluation_receipt -> evidence_binding; the matrix analyzer presents the lane sidecar it loaded for the gate to the binding check; capability_control.py record/record-outcome gain --security-evidence; a receipt bound with security evidence fails closed when the document is absent",
    "regression_test": "tests-python/v161/test_matrix_false_positive.py (security-bound receipt verifies through the analyzer path) + manual: issue+verify against results/v410_dev/runs/v410-dev-fixed-s0 with the lane sidecar"
+  },
+  {
+   "id": "V4-43",
+   "severity": "P0",
+   "status": "CLOSED",
+   "component": "scientific qualification semantics",
+   "location": "scripts/analyze_v410_matrix.py",
+   "evidence": "Diagnostics 9: an experiment failing its generalization gate still produced matrix_qualified=true \u2014 the analyzer equated a complete evidence matrix with a qualified candidate",
+   "root_cause": "matrix_qualified was matrix_status == 'COMPLETE'; gate outcomes were never consulted, and no per-candidate qualification existed",
+   "repair": "matrix completeness and candidate qualification are separate calculations: statuses INCOMPLETE/INVALID/COMPLETE/COMPLETE_WITH_FAILURES/QUALIFIED; candidate_qualified requires matrix_complete + authorized evidence + fit/generalization/retention/security/statistical gates; negative controls fail acquisition gates without blocking completeness; strict/informational CLI modes (--strict-completeness, --require-qualified)",
+   "regression_test": "tests-python/v161/test_matrix_false_positive.py, tests-python/v161/test_failed_gate_qualification.py (10 Diagnostics-9 scenarios)"
+  },
+  {
+   "id": "V4-44",
+   "severity": "P0",
+   "status": "CLOSED",
+   "component": "model execution provenance",
+   "location": "src-python/minagi/v161/independent_model_executor.py, src-python/minagi/v161/model_execution_receipt.py",
+   "evidence": "Diagnostics 9: the independent evaluator authenticated researcher-submitted predictions without establishing the claimed model+adapter produced them",
+   "root_cause": "no evaluator-owned inference path existed \u2014 receipts bound submitted outputs, not executed artifacts",
+   "repair": "executor loads the frozen base revision + exact adapter bytes itself, runs contract-bound inference on evaluator-controlled tasks, scores independently and signs model-execution-receipt-v1 binding model/revision/tokenizer/adapter/dataset/generation-config/environment/outputs/scores; mock loaders produce 'simulated' receipts refused for real-model confirmation; execution provenance and training provenance remain separate claims",
+   "regression_test": "tests-python/v161/test_model_execution_provenance.py (12 cases incl. real Qwen2.5-0.5B load+inference)"
+  },
+  {
+   "id": "V4-45",
+   "severity": "P1",
+   "status": "CLOSED",
+   "component": "evidence identity resolution",
+   "location": "src-python/minagi/v161/trusted_evidence.py, src-python/minagi/v161/evaluator_custody.py, configs/capability_acquisition/evaluator_policy.yaml",
+   "evidence": "final evaluations required bindings for base model/tokenizer/adapter/dataset/scorer/protocol/generation/predictions/security/retention/receipts \u2014 nulls were silently permitted",
+   "root_cause": "no resolver enforced mandatory identities; receipts alone did not prove every referenced artifact",
+   "repair": "resolve_identities + resolve_trusted_evidence enforce mandatory non-null identities with a declared adapter-free exception only; refused receipts make evidence INVALID; evaluator_custody.check_signing_key_custody enforces 0600/uid/external-location on signing keys; evaluator_policy.yaml declares the policy",
+   "regression_test": "tests-python/v161/test_mandatory_evidence.py (15 cases)"
+  },
+  {
+   "id": "V4-46",
+   "severity": "P1",
+   "status": "CLOSED",
+   "component": "statistical qualification",
+   "location": "configs/capability_acquisition/statistical_policy.yaml, scripts/analyze_v410_matrix.py",
+   "evidence": "confidence intervals were computed but not consistently used for qualification; a point estimate or one-cluster bootstrap could read as passing evidence",
+   "root_cause": "no versioned statistical contract; insufficiency collapsed to favorable-looking numbers instead of NOT_EVALUABLE",
+   "repair": "statistical_policy.yaml freezes method+thresholds (LCB(delta) > delta_min acquisition, UCB(destruction) <= max retention, min family clusters, min independent seeds, missing-data=fail_closed, frozen seeds); analyzer --statistical-policy overrides confirmation statistical keys; insufficient seeds/clusters/undefined intervals are NOT_EVALUABLE",
+   "regression_test": "tests-python/v161/test_statistical_gates.py (5 cases incl. policy-override QUALIFIED<->COMPLETE_WITH_FAILURES flip)"
+  },
+  {
+   "id": "V4-47",
+   "severity": "P1",
+   "status": "CLOSED",
+   "component": "final-holdout custody",
+   "location": "src-python/minagi/v161/sealed_evaluator.py",
+   "evidence": "the campaign4a final holdout shipped with expected answers \u2014 reclassified as a public dev benchmark; no evaluator-custody confirmation surface existed",
+   "root_cause": "answers and prompts traveled together; the training agent could read or regenerate labels",
+   "repair": "SealedHoldoutStore keeps answers in a 0700 store with 0600 files outside the research workspace; only the dataset commitment is bound; run_sealed_confirmation executes the candidate itself, scores privately and returns aggregate+receipt only; eval sets are single-use (attempt log refuses repeated tuning)",
+   "regression_test": "tests-python/v161/test_sealed_evaluator.py (6 cases)"
+  },
+  {
+   "id": "V4-48",
+   "severity": "P1",
+   "status": "OPEN",
+   "component": "release source integrity",
+   "location": "scripts/validation/reissue_release.py, scripts/release/verify_final_package.py, scripts/verify_release.py",
+   "evidence": "Diagnostics 9: the latest ZIP contained source files absent from SOURCE_MANIFEST.json and others modified after inventory generation \u2014 a valid signature over a stale manifest",
+   "root_cause": "manifest regeneration, signing and packaging were not one frozen pipeline; packaging ran against post-inventory drift",
+   "repair": "the chain exists (reissue_release -> git ls-files manifest -> pinned-key sign -> deterministic zip -> fresh-extract verify_release); v4.0.3-r2 development verification executed on the committed tree; the signed release ZIP requires the final frozen tree \u2014 packaged at release cut",
+   "regression_test": "fresh-extract verification run during v4.0.3-r2 development (see docs/research/v403r2/RELEASE_QUALIFICATION.md)"
   }
  ],
  "residual_known_limitations": [

@@ -49,12 +49,31 @@ def _write_jsonl(path: Path, rows):
                             for r in rows))
 
 
+#: Shared surface specs — the matrix corpus declares exactly these ids
+#: per split, and the corpus binding requires every declared corpus id
+#: to have a prediction. Two within_holdout families so the clustered
+#: statistical gate can evaluate; ten frozen-correct retention probes.
+DEFAULT_WHO = (("w1", "famA", "G", 1, 1), ("w2", "famA", "H", 0, 1),
+               ("w3", "famB", "M", 0, 1), ("w4", "famB", "N", 1, 1))
+DEFAULT_RET = tuple((f"r{i}", "famR", f"R{i}", 1, 1)
+                    for i in range(10))
+DEFAULT_SUB = (("s1", "famA", "E", 1), ("s2", "famA", "F", 1))
+
+
 def build_run(root: Path, run_id="run-ok", *,
               frozen_hidden=("h1", "h2", "h3", "h4"),
-              adapted_hidden_correct=("h2",)) -> Path:
+              adapted_hidden_correct=("h2",),
+              who_rows=DEFAULT_WHO,
+              ret_rows=DEFAULT_RET,
+              subset_rows=DEFAULT_SUB) -> Path:
     """A minimal COMPLETE, rescorable run (same shape the reconciliation
     and outcome tests use), with a within_holdout and a retention
-    surface so every binding field is exercised."""
+    surface so every binding field is exercised.
+
+    ``who_rows``/``ret_rows`` are ``(id, family, expected,
+    frozen_correct, adapted_correct)`` tuples so tests can steer the
+    measured deltas; ``subset_rows`` are ``(id, family, expected,
+    adapted_correct)`` for the fit gate."""
     d = root / run_id
     (d / "adapter").mkdir(parents=True)
 
@@ -63,16 +82,16 @@ def build_run(root: Path, run_id="run-ok", *,
     hid_a = [_rec(r, "fx", r.upper(),
                   r.upper() if r in adapted_hidden_correct else "X",
                   "hidden") for r in frozen_hidden]
-    sub = [_rec("s1", "famA", "E", "E", "train-subset"),
-           _rec("s2", "famA", "F", "F", "train-subset")]
-    who_f = [_rec("w1", "famA", "G", "G", "within_holdout"),
-             _rec("w2", "famA", "H", "X", "within_holdout")]
-    who_a = [_rec("w1", "famA", "G", "G", "within_holdout"),
-             _rec("w2", "famA", "H", "H", "within_holdout")]
-    ret_f = [_rec("r1", "famR", "K", "K", "retention"),
-             _rec("r2", "famR", "L", "L", "retention")]
-    ret_a = [_rec("r1", "famR", "K", "K", "retention"),
-             _rec("r2", "famR", "L", "L", "retention")]
+    sub = [_rec(r, f, e, e if ok else "X", "train-subset")
+           for r, f, e, ok in subset_rows]
+    who_f = [_rec(r, f, e, e if fz else "X", "within_holdout")
+             for r, f, e, fz, _ in who_rows]
+    who_a = [_rec(r, f, e, e if az else "X", "within_holdout")
+             for r, f, e, _, az in who_rows]
+    ret_f = [_rec(r, f, e, e if fz else "X", "retention")
+             for r, f, e, fz, _ in ret_rows]
+    ret_a = [_rec(r, f, e, e if az else "X", "retention")
+             for r, f, e, _, az in ret_rows]
 
     _write_jsonl(d / "PREDICTIONS-FROZEN.jsonl", hid_f)
     _write_jsonl(d / "PREDICTIONS-ADAPTED.jsonl", hid_a)
@@ -89,10 +108,14 @@ def build_run(root: Path, run_id="run-ok", *,
     (d / "adapter" / "TRAINING_SPEC.json").write_text(json.dumps(spec))
 
     config = {
-        "families": ["famA"], "model_id": "model/m1",
+        "families": sorted({r[1] for r in who_rows}
+                           | {r[1] for r in ret_rows}
+                           | {r[1] for r in subset_rows}),
+        "model_id": "model/m1",
         "model_revision": "rev-1", "score_oracle": "exact-match-v2",
-        "subset_rows": 2, "hidden_rows": len(frozen_hidden),
-        "within_holdout_rows": 2, "retention_rows": 2,
+        "subset_rows": len(subset_rows), "hidden_rows": len(frozen_hidden),
+        "within_holdout_rows": len(who_rows),
+        "retention_rows": len(ret_rows),
         "seed": 0, "lora_spec_digest": digest(spec),
         "prompt_contract_digest": "sha256:" + "1" * 64,
         "output_contract_digest": "sha256:" + "2" * 64,
@@ -107,19 +130,40 @@ def build_run(root: Path, run_id="run-ok", *,
                        - set(adapted_hidden_correct))
     gained = sorted(set(adapted_hidden_correct)
                     - set(frozen_hidden[:1]))
+    who_f_acc = sum(1 for r in who_rows if r[3]) / len(who_rows)
+    who_a_acc = sum(1 for r in who_rows if r[4]) / len(who_rows)
+    ret_f_acc = sum(1 for r in ret_rows if r[3]) / len(ret_rows)
+    ret_a_acc = sum(1 for r in ret_rows if r[4]) / len(ret_rows)
+    n_ret_fc = sum(1 for r in ret_rows if r[3])
+    ret_destroyed = sorted(r[0] for r in ret_rows if r[3] and not r[4])
+    ret_gained = sorted(r[0] for r in ret_rows
+                        if not r[3] and r[4])
+    n_ret_wrong = len(ret_rows) - n_ret_fc
+    sub_acc = sum(1 for r in subset_rows if r[3]) / len(subset_rows)
     metrics = {
-        "fit_gate": {"adapted_subset_accuracy": 1.0, "threshold": 0.95,
-                     "passed": True},
+        "fit_gate": {"adapted_subset_accuracy": sub_acc,
+                     "threshold": 0.95,
+                     "passed": sub_acc >= 0.95},
         "frozen": {"subset": 1.0, "hidden": n_frozen_correct / 4,
-                   "within_holdout": 0.5, "retention": 1.0},
-        "adapted": {"subset": 1.0,
+                   "within_holdout": who_f_acc, "retention": ret_f_acc},
+        "adapted": {"subset": sub_acc,
                     "hidden": len(adapted_hidden_correct) / 4,
-                    "within_holdout": 1.0, "retention": 1.0},
-        "within_holdout": {"rows": 2, "frozen": 0.5, "adapted": 1.0},
-        "retention": {"rows": 2, "frozen": 1.0, "adapted": 1.0,
-                      "n_frozen_correct": 2, "n_destroyed": 0,
-                      "destroyed_ids": [], "gained_ids": [],
-                      "destruction_rate": 0.0},
+                    "within_holdout": who_a_acc,
+                    "retention": ret_a_acc},
+        "within_holdout": {"rows": len(who_rows), "frozen": who_f_acc,
+                           "adapted": who_a_acc},
+        "retention": {"rows": len(ret_rows), "frozen": ret_f_acc,
+                      "adapted": ret_a_acc,
+                      "n_frozen_correct": n_ret_fc,
+                      "n_destroyed": len(ret_destroyed),
+                      "destroyed_ids": ret_destroyed,
+                      "gained_ids": ret_gained,
+                      **({"destruction_rate":
+                          len(ret_destroyed) / n_ret_fc}
+                         if n_ret_fc else {}),
+                      **({"acquisition_rate":
+                          len(ret_gained) / n_ret_wrong}
+                         if n_ret_wrong else {})},
         "capability_destruction": {
             "n_frozen_correct_hidden": n_frozen_correct,
             "destroyed_ids": destroyed, "n_destroyed": len(destroyed),

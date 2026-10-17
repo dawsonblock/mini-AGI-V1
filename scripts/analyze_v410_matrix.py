@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """v4.1.0 confirmatory analysis — gate evaluation for the intervention
 matrix (G5 generalization, G6 retention, security), v4.0.3-r1 evidence
-closure.
+closure, v4.0.3-r2 qualification semantics.
 
 Reads committed run directories produced by capability_matrix.py across
 the preregistered seed set, joins prediction records to the corpus for
@@ -43,10 +43,51 @@ needs a missing value is NOT_EVALUABLE. Missing retention evidence is
 NOT a zero regression, and an undefined confidence interval is not
 passing statistical evidence.
 
-MATRIX COMPLETENESS — --manifest names the experiment manifest
-(seeds x arms) when present; otherwise --seeds/--arms declare it.
-Screened arms stay honest: a NOT_EXECUTED/screened arm leaves the full
-program INCOMPLETE and the campaign qualification non-passing.
+MATRIX STATUS vs CANDIDATE QUALIFICATION (v4.0.3-r2) — completeness of
+the research record and qualification of a candidate are DISTINCT:
+
+  INCOMPLETE              required cells never executed, or present
+                          cells lack the required evidence level
+                          (e.g. no independent receipt)
+  INVALID                 evidence, authorization or experiment
+                          identity is inconsistent — failed closure,
+                          refused receipt/qualification documents,
+                          cross-cell protocol identity mismatch
+  COMPLETE                every required record present and verified;
+                          no candidate arm has a failed required gate
+                          (a matrix of only controls ends here)
+  COMPLETE_WITH_FAILURES  every required record present and verified;
+                          >=1 candidate arm failed a required gate
+  QUALIFIED               >=1 candidate arm satisfies every applicable
+                          scientific and authorization gate
+
+  matrix_complete  = all required runs present + verified at the
+                     required evidence level + consistent protocol
+                     identities
+  candidate_qualified[arm] = matrix_complete AND all the arm's cells
+                     authorized at the required level AND fit, G5, G6,
+                     security AND statistical gates all PASS
+
+  Arm roles come from the manifest (``roles: {arm: role}`` or
+  ``arms: [{name, role}, ...]``) or --control-arms. Roles:
+  ``intervention`` (a candidate — the default), ``baseline`` and
+  ``negative_control`` (controls: their evidence must verify, but a
+  failed acquisition gate is EXPECTED evidence, not a qualification
+  failure — a negative control that passes is flagged as a
+  control-integrity anomaly, not a success).
+
+EXIT MODES — default is strict completeness:
+  default / --strict-completeness   exit nonzero unless the matrix is
+                                    COMPLETE, COMPLETE_WITH_FAILURES
+                                    or QUALIFIED (a negative result is
+                                    a legitimate finding; missing or
+                                    inconsistent evidence is not)
+  --informational                   report-only: exit 0 whenever the
+                                    analysis produced a report
+  --require-qualified [ARM]         promotion check: exit nonzero
+                                    unless a candidate qualifies (the
+                                    named arm, if given; otherwise any
+                                    candidate)
 
 Usage:
     python scripts/analyze_v410_matrix.py \
@@ -69,8 +110,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src-python"))
 
 from minagi.v161.qualified_outcome import (  # noqa: E402
-    STATE_INDEPENDENT, STATE_LOCAL, STATE_QUALIFIED, STATE_RANK,
-    derive_qualified_outcome)
+    QUALIFICATION_FILE, QUALIFIED, STATE_INDEPENDENT, STATE_LOCAL,
+    STATE_QUALIFIED, STATE_RANK, derive_qualified_outcome)
+from minagi.v161.independent_eval_receipt import (  # noqa: E402
+    RECEIPT_FILE)
 
 #: Evidence levels a matrix cell can be required to reach.
 LEVEL_RANK = {"integrity": 1, "local": 2, "independent": 3,
@@ -236,6 +279,34 @@ def cluster_bootstrap_delta(
             "resamples": resamples, "clusters": len(fams)}
 
 
+def bootstrap_destruction_rate(
+        pairs: list[tuple[int, int]], *,
+        resamples: int, alpha: float, rng: random.Random) -> dict:
+    """Item-level bootstrap of the retention-destruction rate over
+    paired (frozen, adapted) correctness on previously-correct rows —
+    retention probes carry no family clustering, so rows are resampled
+    directly. Returns the point estimate and a two-sided interval; the
+    non-inferiority check uses the UPPER bound (the destruction rate
+    must stay under the declared maximum even at the pessimistic end
+    of its uncertainty)."""
+    fc = [p for p in pairs if p[0] == 1]
+    if not fc:
+        return {"rate": None, "ci_low": None, "ci_high": None, "n": 0}
+
+    def rate(ps) -> float:
+        return sum(1 for _, a in ps if a == 0) / len(ps)
+
+    point = rate(fc)
+    boots = sorted(rate([rng.choice(fc) for _ in fc])
+                   for _ in range(resamples))
+    lo = boots[int((alpha / 2) * len(boots))]
+    hi = boots[min(len(boots) - 1,
+                   int((1 - alpha / 2) * len(boots)) - 1)]
+    return {"rate": round(point, 4),
+            "ci_low": round(lo, 4), "ci_high": round(hi, 4),
+            "resamples": resamples, "n": len(fc)}
+
+
 def run_summary(run: Path, fams: dict[str, str],
                 security_dir: Path | None = None,
                 governed_rows: list[dict] | None = None, *,
@@ -290,6 +361,38 @@ def run_summary(run: Path, fams: dict[str, str],
     if fr_who and ad_who:
         who_delta = (sum(ad_who.values()) / len(ad_who)
                      - sum(fr_who.values()) / len(fr_who))
+    # Post-commit evidence that is PRESENT but refused is not merely
+    # absent evidence — a claimed attestation that fails verification
+    # makes the cell's authorization inconsistent (INVALID), whereas a
+    # decided REJECTED qualification is verified negative evidence.
+    receipt_refused = (
+        (run / RECEIPT_FILE).is_file()
+        and oc.evaluation_receipt_digest is None)
+    qualification_decision = "none"
+    qualification_invalid = False
+    qpath = run / QUALIFICATION_FILE
+    if qpath.is_file():
+        try:
+            qdoc = json.loads(qpath.read_text())
+            dec = str(qdoc.get("decision") or "")
+            if oc.qualification_status == QUALIFIED:
+                qualification_decision = "QUALIFIED"
+            elif dec == "REJECTED":
+                qualification_decision = "REJECTED"
+            else:
+                qualification_invalid = True
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            qualification_invalid = True
+    # Protocol identities — from CONFIG.json, which the commit
+    # inventory hash-verifies; the matrix requires these consistent
+    # across every cell.
+    cfg = {}
+    cpath = run / "CONFIG.json"
+    if cpath.is_file():
+        try:
+            cfg = json.loads(cpath.read_text())
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            cfg = {}
     val = m.get("validation") or {}
     who = m.get("within_holdout") or {}
     ret = m.get("retention") or {}
@@ -298,7 +401,18 @@ def run_summary(run: Path, fams: dict[str, str],
         "verification_state": oc.verification_state,
         "evaluation_status": oc.evaluation_status,
         "qualification_status": oc.qualification_status,
+        "qualification_decision": qualification_decision,
+        "qualification_invalid": qualification_invalid,
+        "receipt_refused": receipt_refused,
         "evidence_reasons": list(oc.reasons[:8]),
+        "identities": {
+            "model_id": str(cfg.get("model_id") or oc.model_id),
+            "model_revision": str(cfg.get("model_revision")
+                                  or oc.model_revision),
+            "score_oracle": str(cfg.get("score_oracle")
+                                or oc.score_oracle),
+            "corpus": str(cfg.get("corpus") or ""),
+        },
         # ---- rescore-derived gate inputs (never METRICS-asserted) ---
         "fit_subset_rescore": _mean(subset.values()),
         "within_holdout_delta_rescore": who_delta,
@@ -320,7 +434,8 @@ def run_summary(run: Path, fams: dict[str, str],
         },
         "train_seconds": (m.get("training") or {}).get("train_seconds"),
         "_families": {"frozen_who": _by_family(fr_who, fams),
-                      "adapted_who": _by_family(ad_who, fams)}}
+                      "adapted_who": _by_family(ad_who, fams)},
+        "_retention_pairs": (fr_ret, ad_ret)}
 
 
 def _gate(value, op: str, bound, *, evaluable: bool) -> dict:
@@ -375,12 +490,43 @@ def main() -> int:
     ap.add_argument("--screened-reason", default=None,
                     help="mandatory rationale when --screened-arms is "
                          "used; recorded verbatim in the report")
+    ap.add_argument("--control-arms", default="",
+                    help="comma-separated arms declared negative "
+                         "controls — their acquisition-gate failures "
+                         "are expected evidence, never candidate "
+                         "failures (manifest ``roles:`` overrides)")
+    ap.add_argument("--informational", action="store_true",
+                    help="report-only mode: exit 0 whenever the "
+                         "analysis produced a report, even when the "
+                         "matrix is incomplete/invalid")
+    ap.add_argument("--strict-completeness", action="store_true",
+                    help="(default) exit nonzero unless every declared "
+                         "cell is present, consistent and verified at "
+                         "the required evidence level")
+    ap.add_argument("--require-qualified", nargs="?", const="__any__",
+                    default=None, metavar="ARM",
+                    help="promotion check: exit nonzero unless a "
+                         "candidate qualifies — the named arm if "
+                         "given, otherwise any candidate arm; implies "
+                         "--strict-completeness")
+    ap.add_argument("--statistical-policy", default=None,
+                    help="statistical_policy.yaml — the versioned "
+                         "statistical contract; its gates: block "
+                         "overrides confirmation.yaml's statistical "
+                         "keys so method+thresholds live in one place")
     ap.add_argument("--output", default=None)
     args = ap.parse_args()
 
     import yaml
     gcfg = yaml.safe_load((ROOT / args.gates).read_text())
     gates = gcfg.get("gates") or {}
+    stat_policy = None
+    if args.statistical_policy:
+        stat_policy = yaml.safe_load(
+            (ROOT / args.statistical_policy).read_text())
+        # the versioned policy wins for statistical keys — confirmation
+        # cannot silently relax the preregistered statistical contract
+        gates.update(stat_policy.get("gates") or {})
     corpus_path = (ROOT / args.corpus
                    if not Path(args.corpus).is_absolute()
                    else Path(args.corpus))
@@ -409,10 +555,40 @@ def main() -> int:
                   f"{args.matrix_id!r}", file=sys.stderr)
             return 2
         seeds = [int(s) for s in manifest_doc["seeds"]]
-        arms = [str(a) for a in manifest_doc["arms"]]
+        # Arms may be plain names or {name, role} mappings; a top-level
+        # ``roles: {arm: role}`` map also works.
+        roles = {str(k): str(v)
+                 for k, v in (manifest_doc.get("roles") or {}).items()}
+        arms = []
+        for a in manifest_doc["arms"]:
+            if isinstance(a, dict):
+                arms.append(str(a["name"]))
+                if a.get("role"):
+                    roles[str(a["name"])] = str(a["role"])
+            else:
+                arms.append(str(a))
     else:
         seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
         arms = [a.strip() for a in args.arms.split(",") if a.strip()]
+        roles = {}
+    for c in args.control_arms.split(","):
+        c = c.strip()
+        if c:
+            roles.setdefault(c, "negative_control")
+    unknown_role_arms = [a for a in roles if a not in arms]
+    if unknown_role_arms:
+        print(f"role declared for undeclared arms: "
+              f"{sorted(unknown_role_arms)}", file=sys.stderr)
+        return 2
+    valid_roles = {"intervention", "baseline", "negative_control",
+                   "control"}
+    bad_roles = {a: r for a, r in roles.items()
+                 if r not in valid_roles}
+    if bad_roles:
+        print(f"unknown arm roles {bad_roles} — allowed: "
+              f"{sorted(valid_roles)}", file=sys.stderr)
+        return 2
+    role_of = {a: roles.get(a, "intervention") for a in arms}
     screened = {a.strip() for a in args.screened_arms.split(",")
                 if a.strip()}
     if screened and not args.screened_reason:
@@ -458,6 +634,9 @@ def main() -> int:
     matrix: dict[str, dict] = {}
     missing: list[str] = []
     invalid: list[str] = []
+    insufficient: list[str] = []
+    rejected: list[str] = []
+    identity_sets: dict[tuple, list[str]] = {}
     for arm in arms:
         cells = []
         for seed in seeds:
@@ -468,33 +647,74 @@ def main() -> int:
                             verifier=verifier, authority=authority)
             if s is None:
                 missing.append(rid)
-            else:
-                rank = STATE_RANK.get(s["verification_state"], 0)
-                s["evidence_rank"] = rank
-                s["evidence_level_met"] = rank >= required_rank
-                s["evaluable"] = rank >= evaluable_rank
-                cells.append(s)
-                if rank == 0 or not s["evidence_level_met"]:
-                    invalid.append(rid)
+                continue
+            rank = STATE_RANK.get(s["verification_state"], 0)
+            s["evidence_rank"] = rank
+            s["evidence_level_met"] = rank >= required_rank
+            s["evaluable"] = rank >= evaluable_rank
+            # INVALID = evidence/authorization/identity inconsistent:
+            # anything that did not reach LOCALLY_RECOMPUTED (the
+            # committed record contradicts itself — missing required
+            # files, hash breaks, rescore mismatch), or a
+            # present-but-refused receipt/qualification document (a
+            # claimed attestation that does not verify is not merely
+            # missing evidence).
+            s["cell_invalid"] = (rank < STATE_RANK[STATE_LOCAL]
+                                 or s["receipt_refused"]
+                                 or s["qualification_invalid"])
+            cells.append(s)
+            if s["cell_invalid"]:
+                invalid.append(rid)
+            elif s["qualification_decision"] == "REJECTED":
+                # a signed REJECTED decision is complete evidence with
+                # a decided negative outcome — not missing evidence.
+                rejected.append(rid)
+            elif not s["evidence_level_met"]:
+                insufficient.append(rid)
+            ids = s.get("identities") or {}
+            if ids.get("model_id"):
+                key = (ids.get("model_id"), ids.get("model_revision"),
+                       ids.get("score_oracle"), ids.get("corpus"))
+                identity_sets.setdefault(key, []).append(rid)
         matrix[arm] = {"seeds": cells, "n_seeds": len(cells)}
+    # Every cell must agree on the model/revision/oracle/corpus
+    # identities — a matrix that mixes protocols is INVALID, not a
+    # comparison.
+    protocol_consistent = len(identity_sets) <= 1
 
     def _arm_of(rid: str) -> str:
         return rid[len(args.matrix_id) + 1:].rsplit("-s", 1)[0]
     unscreened_missing = [rid for rid in missing
                           if _arm_of(rid) not in screened]
 
+    # Completeness of the RECORD is independent of outcomes: every
+    # declared cell present, consistent, verified at the required
+    # evidence level, on a single protocol identity.
+    matrix_complete = (not missing and not invalid and not insufficient
+                       and protocol_consistent)
+
     # ---- per-arm aggregate + gates ------------------------------------
     report: dict[str, dict] = {}
+    qualified_arms: list[str] = []
+    failed_arms: list[str] = []
+    delta_min = float(gates.get("within_holdout_min_delta", 0.0))
+    ret_max = float(gates.get("retention_max_destruction_rate", 0.0))
+    min_clusters = int(gates.get("statistical_min_family_clusters", 2))
+    min_seeds = int(gates.get("statistical_min_seeds", 1))
     for arm, blk in matrix.items():
         cells = blk["seeds"]
+        role = role_of.get(arm, "intervention")
+        is_candidate = role == "intervention"
         if not cells:
             report[arm] = (
                 {"status": "SCREENED",
+                 "role": role,
                  "reason": args.screened_reason,
                  "note": "declared screened/deferred by design — this "
                          "arm produced no evidence and counts for "
                          "nothing"}
-                if arm in screened else {"status": "MISSING"})
+                if arm in screened else
+                {"status": "NOT_EXECUTED", "role": role})
             continue
         n_expected = len(seeds)
         n_missing = n_expected - len(cells)
@@ -502,6 +722,9 @@ def main() -> int:
             and n_missing == 0
         level_met = all(c["evidence_level_met"] for c in cells) \
             and n_missing == 0
+        arm_invalid = any(c["cell_invalid"] for c in cells)
+        arm_rejected = any(c["qualification_decision"] == "REJECTED"
+                           for c in cells)
 
         # ---- rescore-derived per-seed gate inputs --------------------
         fit_vals = [c["fit_subset_rescore"] for c in cells]
@@ -517,6 +740,18 @@ def main() -> int:
                 ad.setdefault(k, []).extend(v)
         boot = cluster_bootstrap_delta(
             fr, ad,
+            resamples=int(gates.get("bootstrap_resamples", 2000)),
+            alpha=float(gates.get("ci_alpha", 0.05)), rng=rng)
+        # Retention uncertainty: pooled per-id bootstrap over the
+        # frozen-correct retention pairs across this arm's seeds.
+        ret_pairs = []
+        for c in cells:
+            fr_ret, ad_ret = c["_retention_pairs"]
+            ret_pairs.extend((f, ad_ret[rid])
+                             for rid, f in fr_ret.items()
+                             if rid in ad_ret)
+        ret_ci = bootstrap_destruction_rate(
+            ret_pairs,
             resamples=int(gates.get("bootstrap_resamples", 2000)),
             alpha=float(gates.get("ci_alpha", 0.05)), rng=rng)
         # Security is DERIVED from the governed lane's stored per-row
@@ -538,6 +773,42 @@ def main() -> int:
         fit_min = float(gates.get("fit_min", 0.0))
         fit_ok = all(v is not None and v >= fit_min for v in fit_vals)
 
+        # Statistical gate (Phase 4 hooks): acquisition requires the
+        # cluster-bootstrap LCB to EXCEED the preregistered meaningful
+        # delta — a point estimate alone cannot qualify an uncertain
+        # experiment — and retention is non-inferiority: the UCB of the
+        # destruction rate must stay inside the declared maximum.
+        # A degenerate interval (too few family clusters, no
+        # frozen-correct retention pairs) is NOT_EVALUABLE, never a
+        # pass.
+        acq_lcb_ok = (boot.get("ci_low") is not None
+                      and boot.get("clusters", 0) >= min_clusters
+                      and boot["ci_low"] > delta_min)
+        ret_ucb_ok = (ret_ci.get("ci_high") is not None
+                      and ret_ci["ci_high"] <= ret_max)
+        if not evaluable:
+            stat_status = "NOT_EVALUABLE"
+            stat_reason = "cells not evaluable"
+        elif len(cells) < min_seeds:
+            stat_status = "NOT_EVALUABLE"
+            stat_reason = (f"insufficient_independent_seeds: "
+                           f"{len(cells)} seed(s) < {min_seeds} "
+                           "required — one seed's interval is not "
+                           "independent replication evidence")
+        elif boot.get("clusters", 0) < min_clusters:
+            stat_status = "NOT_EVALUABLE"
+            stat_reason = (f"insufficient_family_coverage: "
+                           f"{boot.get('clusters', 0)} cluster(s) < "
+                           f"{min_clusters} required — a one-family "
+                           "interval is not family-level evidence")
+        elif ret_ci.get("ci_high") is None:
+            stat_status = "NOT_EVALUABLE"
+            stat_reason = ("retention destruction interval undefined "
+                           "(no paired frozen-correct probes)")
+        else:
+            stat_status = "PASS" if (acq_lcb_ok and ret_ucb_ok) \
+                else "FAIL"
+            stat_reason = ""
         gate_detail = {
             "fit_all_pass": _gate(
                 min((v for v in fit_vals if v is not None), default=None),
@@ -556,23 +827,71 @@ def main() -> int:
                 sec_viol, "max",
                 int(gates.get("security_max_violations", 0)),
                 evaluable=sec_viol is not None),
+            "statistical": {
+                "status": stat_status,
+                "reason": stat_reason or None,
+                "acquisition_delta_lcb": boot.get("ci_low"),
+                "acquisition_delta_min": delta_min,
+                "acquisition_family_clusters": boot.get("clusters"),
+                "min_family_clusters": min_clusters,
+                "retention_destruction_ucb": ret_ci.get("ci_high"),
+                "retention_destruction_max": ret_max,
+                "retention_n_frozen_correct": ret_ci.get("n"),
+            },
         }
         gates_bool = {k: _bool_of(g["status"])
                       for k, g in gate_detail.items()}
         all_pass = all(g["status"] == "PASS"
                        for g in gate_detail.values())
 
+        # ---- arm status: completeness is orthogonal to outcomes -----
         if n_missing:
             cell_state = "INCOMPLETE"
-        elif level_met:
-            cell_state = "VALID"
-        elif all(c["evaluable"] for c in cells):
-            cell_state = "INSUFFICIENT_EVIDENCE"
-        else:
+        elif arm_invalid:
             cell_state = "INVALID"
+        elif arm_rejected:
+            # a signed REJECTED decision is a complete, verified record
+            # with a decided negative outcome
+            cell_state = "REJECTED"
+        elif not level_met:
+            cell_state = "INSUFFICIENT_EVIDENCE"
+        elif not is_candidate:
+            cell_state = "COMPLETE"
+        elif all_pass and matrix_complete:
+            cell_state = "QUALIFIED"
+        elif all_pass:
+            # every gate passed but the matrix is not complete — an
+            # arm cannot qualify standing on a partial program
+            cell_state = "PASSES_GATES"
+        else:
+            cell_state = "COMPLETE_WITH_FAILURES"
+
+        # A negative control whose acquisition gate shows a
+        # statistically supported gain is an integrity anomaly — a
+        # leak or a false positive — never a "successful control".
+        control_integrity = None
+        if role in ("negative_control", "control") and level_met:
+            control_integrity = (
+                "unexpected_gain" if acq_lcb_ok else "clean")
+
+        candidate_qualified = bool(
+            is_candidate and matrix_complete and level_met
+            and not arm_invalid and not arm_rejected and all_pass)
+        if is_candidate:
+            if candidate_qualified:
+                qualified_arms.append(arm)
+            elif cell_state in ("COMPLETE_WITH_FAILURES", "REJECTED",
+                                "PASSES_GATES"):
+                failed_arms.append(arm)
 
         verdict = {
             "experiment_status": cell_state,
+            "role": role,
+            "candidate_qualified": candidate_qualified,
+            "control_integrity": control_integrity,
+            "qualification_decision":
+                ("REJECTED" if arm_rejected else
+                 cells[0].get("qualification_decision")),
             "n_seeds": len(cells),
             "n_missing_cells": n_missing,
             "evidence_level_met": level_met,
@@ -613,26 +932,45 @@ def main() -> int:
         report[arm] = verdict
 
     # ---- matrix status -------------------------------------------------
-    # A cell is INVALID when it exists but its evidence cannot verify at
-    # the required level; INCOMPLETE when expected cells never executed
-    # (including screened arms — a deferred arm is still an evidence
-    # gap for the full program). The campaign qualification passes only
-    # on COMPLETE.
-    matrix_status = "COMPLETE"
-    if invalid:
+    # INCOMPLETE — required cells never executed or lack the required
+    #   evidence level (screened arms still count as missing evidence
+    #   for the full program).
+    # INVALID   — evidence, authorization or experiment identity is
+    #   inconsistent (failed closure, refused attestations, protocol
+    #   identity mismatch).
+    # QUALIFIED — >=1 candidate arm passes every applicable gate on
+    #   complete evidence.
+    # COMPLETE_WITH_FAILURES — complete verified record, but >=1
+    #   candidate arm failed a required gate. COMPLETE — everything
+    #   verified and no candidate failure (e.g. controls only).
+    if invalid or not protocol_consistent:
         matrix_status = "INVALID"
-    elif missing:
+    elif missing or insufficient:
         matrix_status = "INCOMPLETE"
-    matrix_qualified = matrix_status == "COMPLETE"
+    elif qualified_arms:
+        matrix_status = "QUALIFIED"
+    elif failed_arms:
+        matrix_status = "COMPLETE_WITH_FAILURES"
+    else:
+        matrix_status = "COMPLETE"
+    matrix_qualified = matrix_status == "QUALIFIED"
 
-    doc = {"schema": "mini-agi-v4.1-confirmation-analysis-v2",
+    doc = {"schema": "mini-agi-v4.1-confirmation-analysis-v3",
            "matrix_id": args.matrix_id, "corpus": args.corpus,
            "seeds": seeds, "arms": arms,
+           "arm_roles": role_of,
            "manifest": (str(args.manifest) if args.manifest else None),
            "evidence_level_required": required_level,
            "gates_declared": gates,
+           "statistical_policy": (
+               {"path": args.statistical_policy,
+                "schema": stat_policy.get("schema"),
+                "version": stat_policy.get("version")}
+               if stat_policy else None),
            "missing_cells": missing,
            "invalid_cells": invalid,
+           "insufficient_cells": insufficient,
+           "rejected_cells": rejected,
            "screened_arms": ({a: args.screened_reason
                               for a in sorted(screened)}
                              if screened else {}),
@@ -643,8 +981,18 @@ def main() -> int:
            # declared screened up front with a reason.
            "complete": not missing,
            "complete_for_declared_scope": not unscreened_missing,
+           "matrix_complete": matrix_complete,
+           "protocol_identities_consistent": protocol_consistent,
+           "protocol_identity_sets": [
+               {"model_id": k[0], "model_revision": k[1],
+                "score_oracle": k[2], "corpus": k[3],
+                "cells": sorted(v)}
+               for k, v in sorted(identity_sets.items(),
+                                  key=lambda kv: str(kv[0]))],
            "matrix_status": matrix_status,
            "matrix_qualified": matrix_qualified,
+           "qualified_candidates": qualified_arms,
+           "failed_candidates": failed_arms,
            "arms_report": report}
     text = json.dumps(doc, indent=2, sort_keys=True)
     out = args.output or str(
@@ -652,11 +1000,43 @@ def main() -> int:
     Path(out).write_text(text + "\n")
     print(text)
     print(f"\nwrote {out}")
-    if missing or invalid or not matrix_qualified:
+
+    # ---- exit semantics ---------------------------------------------
+    # informational: the report is the product — negative results exit
+    # clean; only a usage error (handled above) exits nonzero.
+    if args.informational:
+        return 0
+    if args.require_qualified is not None:
+        target = args.require_qualified
+        if target == "__any__":
+            ok = bool(qualified_arms)
+            what = "any candidate"
+        else:
+            ok = target in qualified_arms
+            what = f"candidate {target!r}"
+        if not ok:
+            print(f"QUALIFICATION REFUSED: no qualified candidate "
+                  f"(requested {what}); matrix_status="
+                  f"{matrix_status}, qualified={qualified_arms}, "
+                  f"failed={failed_arms}", file=sys.stderr)
+            return 1
+        return 0
+    # strict completeness (default, also --strict-completeness):
+    # missing, inconsistent or insufficient evidence exits nonzero; a
+    # COMPLETE/COMPLETE_WITH_FAILURES report — a legitimate negative
+    # result — exits 0.
+    if matrix_status in ("INCOMPLETE", "INVALID"):
         if missing:
             print(f"MISSING cells: {missing}", file=sys.stderr)
         if invalid:
-            print(f"INVALID/insufficient cells: {invalid}",
+            print(f"INVALID cells: {invalid}", file=sys.stderr)
+        if insufficient:
+            print(f"INSUFFICIENT-EVIDENCE cells (below "
+                  f"{required_level!r}): {insufficient}",
+                  file=sys.stderr)
+        if not protocol_consistent:
+            print(f"INCONSISTENT protocol identities across cells: "
+                  f"{[str(k) for k in identity_sets]}",
                   file=sys.stderr)
         return 1
     return 0

@@ -19,7 +19,28 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src-python"))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from test_independent_eval_receipt import build_run  # noqa: E402
+from test_independent_eval_receipt import (  # noqa: E402
+    DEFAULT_RET, DEFAULT_SUB, DEFAULT_WHO, build_run)
+
+
+def _universe_rows() -> list[dict]:
+    """Corpus rows covering every split the default ``build_run``
+    predicts — the corpus binding is bidirectional, and the clustered
+    statistical gate needs both within_holdout families present."""
+    rows = [
+        {"id": rid, "family": "fx", "split": "hidden",
+         "prompt": f"prompt-{rid}", "expected": rid.upper()}
+        for rid in ("h1", "h2", "h3", "h4")]
+    rows += [{"id": rid, "family": fam, "split": "train",
+              "prompt": f"prompt-{rid}", "expected": exp}
+             for rid, fam, exp, _ in DEFAULT_SUB]
+    rows += [{"id": rid, "family": fam, "split": "within_holdout",
+              "prompt": f"prompt-{rid}", "expected": exp}
+             for rid, fam, exp, _fz, _az in DEFAULT_WHO]
+    rows += [{"id": rid, "family": fam, "split": "retention",
+              "prompt": f"prompt-{rid}", "expected": exp}
+             for rid, fam, exp, _fz, _az in DEFAULT_RET]
+    return rows
 
 _spec = importlib.util.spec_from_file_location(
     "analyze_v410_matrix", ROOT / "scripts" / "analyze_v410_matrix.py")
@@ -143,7 +164,9 @@ def _write_run(run_dir: Path, sec: dict | None, sec_dir: Path) -> None:
 def _analyze(tmp_path: Path, extra_args: list[str],
              monkeypatch) -> dict:
     corpus = tmp_path / "corpus.jsonl"
-    corpus.write_text("\n".join(json.dumps(r) for r in GOVERNED) + "\n")
+    corpus.write_text("\n".join(json.dumps(r)
+                               for r in _universe_rows() + GOVERNED)
+                      + "\n")
     gates = tmp_path / "gates.yaml"
     gates.write_text(
         "gates:\n  fit_min: 0.95\n  within_holdout_min_delta: 0.15\n"
@@ -240,7 +263,7 @@ class TestGateEvaluation:
                             {r["id"]: "OK" for r in GOVERNED}),
                    tmp_path / "sec")
         doc = _analyze(tmp_path, [], monkeypatch)
-        assert doc["arms_report"]["both"]["status"] == "MISSING"
+        assert doc["arms_report"]["both"]["status"] == "NOT_EXECUTED"
         assert doc["unscreened_missing_cells"] == ["mtx-both-s0"]
         assert doc["complete"] is False
         assert doc["complete_for_declared_scope"] is False
