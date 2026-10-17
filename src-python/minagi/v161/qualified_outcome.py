@@ -1,4 +1,4 @@
-"""Authoritative qualification-bound outcome records (v4.0.3 / Phase 1).
+"""Authoritative qualification-bound outcome records (v4.0.3-r1).
 
 The v4.0.2 receipt check answered "are this run's files internally
 consistent?" — commit status COMPLETE, inventory hashes matching,
@@ -7,26 +7,37 @@ experiment produced the numbers it claims: a self-authored directory
 with a fabricated METRICS.json and a hash-consistent RUN_COMMIT.json
 sailed through as ``verified`` and entered the controller's history.
 
-This module implements the separation the release audit requires:
+v4.0.3-r1 separates verification into FOUR levels (the audit's
+required evidence states):
 
 * **INTEGRITY_VERIFIED** — the commit and its file inventory are
-  internally consistent. Necessary, never sufficient.
-* **EVALUATION_VERIFIED** — an independent evaluator recomputed the
-  results: every committed prediction file is strict-rescored, the
-  recomputed metrics reproduce the reported ones, and the identity
-  bindings (model id+revision, scorer, contract and adapter digests)
-  all agree. This is ``evidence_reconciliation.verify_run`` == VERIFIED.
+  internally consistent. Necessary, never sufficient. NOT eligible
+  for trusted learning history.
+* **LOCALLY_RECOMPUTED** — ``evidence_reconciliation.verify_run``
+  recomputed every committed prediction file and the reported metrics
+  reproduce. This is *local* reproduction: the "evaluator" is the same
+  codebase reading files the training pipeline wrote, so a fabricated
+  but self-consistent run reaches this level. NOT eligible for trusted
+  learning history.
+* **INDEPENDENTLY_VERIFIED** — additionally, a signed
+  ``independent-evaluation-v1`` receipt from an ``evaluation``-role
+  authority binds this run's exact evidence identities (predictions,
+  metrics, model/adapter, dataset, scorer, protocol). A training
+  process cannot generate its own receipt — the evaluator's key is a
+  different authority. ELIGIBLE for trusted learning history — including
+  verified NEGATIVE outcomes (a rejected candidate's real measurements
+  are evidence; dropping them would bias the controller toward
+  successes).
 * **QUALIFIED** — additionally, a signed qualification decision by a
   signer authorized for the ``qualification`` role binds this run_id
-  and this evidence digest. A locally constructed commit can never
-  grant itself qualification — the signer is a different role.
+  and this evidence digest. ELIGIBLE for promotion decisions.
 
-Only records in the EVALUATION_VERIFIED or QUALIFIED states may feed
-verified outcome history to the learning controller. The numeric
-fields (``baseline_accuracy``, ``adapted_accuracy``, ``outcome_delta``,
-``retention_regression``, costs) are DERIVED from the rescored
-prediction records — an operator cannot substitute asserted numbers
-for measured ones.
+Only records at INDEPENDENTLY_VERIFIED or QUALIFIED may feed verified
+outcome history to the learning controller. The numeric fields are
+populated at LOCALLY_RECOMPUTED and above — they are derived from the
+rescored prediction records, never from caller-supplied numbers; the
+``admissible`` gate is what keeps them out of trusted history until an
+authorized evaluator has signed the binding.
 """
 from __future__ import annotations
 
@@ -42,23 +53,38 @@ from egai.common.crypto import Ed25519Verifier, SignedEnvelope
 from .authority import AuthorityRegistry
 from .evidence_reconciliation import (
     FAILED_RUN, INCONSISTENT, VERIFIED, verify_run)
+from .independent_eval_receipt import (
+    RECEIPT_FILE, verify_evaluation_receipt)
 
 SCHEMA = "qualified-outcome-v1"
 QUALIFICATION_SCHEMA = "mini-agi-v4.0-qualification-decision-v1"
 QUALIFICATION_FILE = "QUALIFICATION.json"
 
-#: Verification states — the effective grade of a derived outcome.
+#: Verification states — the effective grade of a derived outcome, in
+#: ascending order of assurance.
 STATE_INVALID = "INVALID"
 STATE_INTEGRITY = "INTEGRITY_VERIFIED"
-STATE_EVALUATION = "EVALUATION_VERIFIED"
+STATE_LOCAL = "LOCALLY_RECOMPUTED"
+STATE_INDEPENDENT = "INDEPENDENTLY_VERIFIED"
 STATE_QUALIFIED = "QUALIFIED"
+
+#: Deprecated v4.0.3 name — what that release called
+#: EVALUATION_VERIFIED was local recomputation; the name now aliases
+#: the level the label was supposed to mean.
+STATE_EVALUATION = STATE_INDEPENDENT
 
 QUALIFIED = "QUALIFIED"
 NOT_QUALIFIED = "NOT_QUALIFIED"
 
 #: States that may supply verified experimental outcomes to the
-#: learning controller. Integrity alone never qualifies.
-CONTROLLER_ADMISSIBLE = (STATE_EVALUATION, STATE_QUALIFIED)
+#: learning controller. Integrity and local recomputation never
+#: qualify — an authorized independent evaluator must have signed the
+#: evidence binding.
+CONTROLLER_ADMISSIBLE = (STATE_INDEPENDENT, STATE_QUALIFIED)
+
+#: Ascending assurance order, for "at least level X" checks.
+STATE_RANK = {STATE_INVALID: 0, STATE_INTEGRITY: 1, STATE_LOCAL: 2,
+              STATE_INDEPENDENT: 3, STATE_QUALIFIED: 4}
 
 #: The derivation precedence for the run's primary outcome surface.
 #: within_holdout (v4.1.0 fresh-unseen-trained-family surface) wins;
@@ -72,16 +98,17 @@ _SURFACE_LABELS = {
 
 @dataclass(frozen=True)
 class QualifiedOutcome:
-    """One experiment's outcome, derived from independently verified
-    evidence — never from operator-supplied numbers.
+    """One experiment's outcome, derived from verifiable evidence —
+    never from operator-supplied numbers.
 
     ``verification_state`` is the effective grade:
-    INVALID | INTEGRITY_VERIFIED | EVALUATION_VERIFIED | QUALIFIED.
-    ``admissible`` is True only for the states that may enter verified
-    controller history. All numeric fields are None unless the record
-    reached EVALUATION_VERIFIED — a failed verification carries no
-    numbers, so a rejected outcome cannot leak a claimed delta into
-    downstream consumers."""
+    INVALID | INTEGRITY_VERIFIED | LOCALLY_RECOMPUTED |
+    INDEPENDENTLY_VERIFIED | QUALIFIED.
+    ``admissible`` is True only for the two states that may enter
+    verified controller history. Numeric fields populate at
+    LOCALLY_RECOMPUTED and above — they are rescored measurements, not
+    claims; below that they are None, so a failed verification carries
+    no numbers a claimed delta could leak through."""
 
     run_id: str
     intervention: str
@@ -97,6 +124,8 @@ class QualifiedOutcome:
     evaluation_seconds: float
     outcome_surface: str
     evidence_digest: str
+    evaluation_receipt_digest: str | None
+    evaluation_signer: str
     qualification_digest: str | None
     qualification_signer: str
     model_id: str
@@ -287,16 +316,23 @@ def derive_qualified_outcome(run_ref, *, repo_root=None,
                              corpus_rows=None,
                              verifier: Ed25519Verifier | None = None,
                              authority: AuthorityRegistry | None = None,
-                             qualification_doc: Mapping | None = None
+                             qualification_doc: Mapping | None = None,
+                             receipt_doc: Mapping | None = None,
+                             security_doc: Mapping | None = None
                              ) -> QualifiedOutcome:
-    """Derive an immutable outcome record from independently verifiable
-    experiment evidence.
+    """Derive an immutable outcome record from verifiable experiment
+    evidence.
 
     ``run_ref`` is a committed run directory (or its RUN_COMMIT.json).
     The reconciler re-verifies integrity, re-scores every committed
-    prediction file, and checks identity bindings; only then are
-    outcome numbers derived — all numeric fields remain None when
-    evaluation does not verify.
+    prediction file, and checks identity bindings — that is local
+    recomputation. INDEPENDENTLY_VERIFIED additionally requires a
+    signed ``independent-evaluation-v1`` receipt (the run's own
+    EVALUATION_RECEIPT.json, or ``receipt_doc``) whose binding
+    recomputes exactly and whose signer is authorized for the
+    ``evaluation`` role under ``authority``. QUALIFIED then requires a
+    qualification-authorized signed decision on top of the independent
+    evaluation — a qualification cannot stand on local evidence.
     """
     run_dir = Path(run_ref)
     if run_dir.is_file() and run_dir.name == "RUN_COMMIT.json":
@@ -314,19 +350,11 @@ def derive_qualified_outcome(run_ref, *, repo_root=None,
         if commit_path.is_file() else {}
     evidence_digest = digest(commit) if commit else ""
 
-    if status == VERIFIED:
-        evaluation_status = STATE_EVALUATION
-    elif status in (INCONSISTENT, FAILED_RUN):
-        evaluation_status = status if status == FAILED_RUN \
-            else "EVALUATION_FAILED"
-    else:
-        evaluation_status = "NOT_EVALUATED"
-
     base: dict = dict(
         run_id=str(commit.get("run_id") or run_id),
         intervention="",
         verification_state=STATE_INVALID,
-        evaluation_status=evaluation_status,
+        evaluation_status="NOT_EVALUATED",
         qualification_status=NOT_QUALIFIED,
         baseline_accuracy=None, adapted_accuracy=None,
         outcome_delta=None, cross_family_delta=None,
@@ -334,11 +362,16 @@ def derive_qualified_outcome(run_ref, *, repo_root=None,
         training_seconds=0.0, evaluation_seconds=0.0,
         outcome_surface="none",
         evidence_digest=evidence_digest,
+        evaluation_receipt_digest=None, evaluation_signer="",
         qualification_digest=None, qualification_signer="",
         model_id="", model_revision="", score_oracle="",
         seed=None, reasons=())
 
-    if evaluation_status != STATE_EVALUATION:
+    if status != VERIFIED:
+        base["evaluation_status"] = \
+            "FAILED_RUN" if status == FAILED_RUN else (
+                "EVALUATION_FAILED" if status == INCONSISTENT
+                else "NOT_EVALUATED")
         base["verification_state"] = (STATE_INTEGRITY if integrity_ok
                                       else STATE_INVALID)
         if status == FAILED_RUN:
@@ -347,7 +380,9 @@ def derive_qualified_outcome(run_ref, *, repo_root=None,
         base["reasons"] = tuple(reasons[:32])
         return QualifiedOutcome(**base)
 
-    # ---- derive numbers from the rescored evidence -------------------
+    # ---- LOCALLY_RECOMPUTED: derive numbers from the rescore ---------
+    base["evaluation_status"] = STATE_LOCAL
+    base["verification_state"] = STATE_LOCAL
     config_path = run_dir / "CONFIG.json"
     metrics_path = run_dir / "METRICS.json"
     config = json.loads(config_path.read_text())
@@ -377,10 +412,37 @@ def derive_qualified_outcome(run_ref, *, repo_root=None,
         model_id=str(config.get("model_id") or ""),
         model_revision=str(config.get("model_revision") or ""),
         score_oracle=str(config.get("score_oracle") or ""),
-        seed=config.get("seed"),
-        verification_state=STATE_EVALUATION)
+        seed=config.get("seed"))
 
-    # ---- qualification ------------------------------------------------
+    # ---- INDEPENDENTLY_VERIFIED: authorized evaluator receipt --------
+    rdoc = receipt_doc
+    if rdoc is None:
+        rpath = run_dir / RECEIPT_FILE
+        if rpath.is_file():
+            try:
+                rdoc = json.loads(rpath.read_text())
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                reasons.append("EVALUATION_RECEIPT.json unparseable")
+    if rdoc is None:
+        reasons.append(
+            "no authorized independent evaluation receipt — local "
+            "recomputation is not independent verification")
+    else:
+        rres = verify_evaluation_receipt(
+            rdoc, verifier=verifier, authority=authority,
+            run_dir=run_dir, repo_root=repo_root,
+            corpus_rows=corpus_rows, security_doc=security_doc)
+        if rres.get("verified"):
+            base["verification_state"] = STATE_INDEPENDENT
+            base["evaluation_status"] = STATE_INDEPENDENT
+            base["evaluation_receipt_digest"] = digest(dict(rdoc))
+            base["evaluation_signer"] = str(
+                rdoc.get("evaluator_authority_id") or "")
+        else:
+            reasons.append("evaluation receipt refused: "
+                           + str(rres.get("reason")))
+
+    # ---- QUALIFIED: signed decision over independent evidence --------
     qdoc = qualification_doc
     if qdoc is None:
         qpath = run_dir / QUALIFICATION_FILE
@@ -392,9 +454,14 @@ def derive_qualified_outcome(run_ref, *, repo_root=None,
     q_status, q_digest, q_reason = (NOT_QUALIFIED, None,
                                     "no qualification decision evidence")
     if qdoc is not None:
-        q_status, q_digest, q_reason = verify_qualification_document(
-            qdoc, verifier=verifier, authority=authority,
-            run_id=base["run_id"], evidence_digest=evidence_digest)
+        if base["verification_state"] != STATE_INDEPENDENT:
+            q_reason = ("qualification requires an independently "
+                        "verified evaluation receipt first — a signed "
+                        "decision cannot stand on local evidence")
+        else:
+            q_status, q_digest, q_reason = verify_qualification_document(
+                qdoc, verifier=verifier, authority=authority,
+                run_id=base["run_id"], evidence_digest=evidence_digest)
     if q_reason:
         reasons.append(q_reason)
     base["qualification_status"] = q_status

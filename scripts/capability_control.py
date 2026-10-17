@@ -15,12 +15,20 @@ outcomes to the controller's intervention history.
         --receipt results/.../runs/<run_id> \
         --trust-root config/trust/authority.json
 
-v4.0.3 contract (fabricated-outcome closure):
+v4.0.3-r1 contract (evidence-authority closure):
 
 * ``--receipt`` names independently verifiable evidence: a committed
-  run directory (RUN_COMMIT inventory + strict prediction rescore +
-  identity bindings via evidence_reconciliation.verify_run) or a
-  signed receipt document verified against ``--trust-root``.
+  run directory whose own EVALUATION_RECEIPT.json is a signed
+  ``independent-evaluation-v1`` receipt binding the exact evidence
+  (predictions, metrics, model/adapter, dataset, scorer, protocol),
+  or a signed receipt document verified against ``--trust-root``.
+* Four verification states: INTEGRITY_VERIFIED (hash-consistent
+  commit) < LOCALLY_RECOMPUTED (strict rescore reproduces the metrics)
+  < INDEPENDENTLY_VERIFIED (authorized evaluation-role receipt binds
+  the evidence) < QUALIFIED (qualification-role signed decision on
+  top). Only the last two enter verified controller history — and a
+  verified NEGATIVE outcome is admissible, since dropping failures
+  would bias the controller toward successes.
 * Verified records DERIVE their numbers — delta, retention regression,
   cost, intervention — from the rescored evidence via
   qualified_outcome.derive_qualified_outcome. ``--delta``/``--cost``/
@@ -29,10 +37,9 @@ v4.0.3 contract (fabricated-outcome closure):
 * Manual numbers remain available ONLY as an explicitly unverified
   diagnostic record (``--diagnostic``). Diagnostic records carry
   verified=false and can never promote into verified history.
-* A run reaches verified history only in state EVALUATION_VERIFIED
-  (independent rescore) or QUALIFIED (signed decision from a
-  qualification-authorized signer). A hash-consistent self-authored
-  commit is INTEGRITY_VERIFIED at best and is refused.
+* A hash-consistent self-authored commit is INTEGRITY_VERIFIED at
+  best, and a locally recomputed one is LOCALLY_RECOMPUTED — both are
+  refused without an authorized evaluator's signed receipt.
 
 The history file is the controller's memory: prior verified failures
 block the same intervention under unchanged conditions unless
@@ -102,6 +109,10 @@ def main() -> int:
     r.add_argument("--trust-root", default=None,
                    help="TRUST_ROOT.json — required for signed receipt "
                         "documents and for qualification decisions")
+    r.add_argument("--security-evidence", default=None,
+                   help="governed security-lane JSON the evaluator "
+                        "bound into the receipt (required when the "
+                        "receipt binds security evidence)")
     r.add_argument("--repo-root", default=str(ROOT))
     r.add_argument("--diagnostic", action="store_true",
                    help="explicitly UNVERIFIED diagnostic record: manual "
@@ -129,6 +140,9 @@ def main() -> int:
                    help="committed run dir or signed receipt — the "
                         "record's fields are derived from it")
     o.add_argument("--trust-root", default=None)
+    o.add_argument("--security-evidence", default=None,
+                   help="governed security-lane JSON bound into the "
+                        "evaluation receipt")
     o.add_argument("--repo-root", default=str(ROOT))
     o.add_argument("--diagnostic", action="store_true",
                    help="explicitly UNVERIFIED manual record")
@@ -259,9 +273,12 @@ def main() -> int:
         authority = None
         if args.trust_root:
             authority, verifier = _load_authority(args.trust_root)
+        sec_doc = json.loads(Path(args.security_evidence).read_text()) \
+            if args.security_evidence else None
         res = verify_outcome_receipt(args.receipt, verifier,
                                      authority=authority,
-                                     repo_root=args.repo_root)
+                                     repo_root=args.repo_root,
+                                     security_doc=sec_doc)
         if not res.get("verified"):
             print(f"error: receipt failed verification — "
                   f"{res.get('reason')} (a v4.2 outcome record must "
@@ -359,13 +376,18 @@ def main() -> int:
     authority = None
     if args.trust_root:
         authority, verifier = _load_authority(args.trust_root)
+    sec_doc = json.loads(Path(args.security_evidence).read_text()) \
+        if args.security_evidence else None
     res = verify_outcome_receipt(args.receipt, verifier,
                                  authority=authority,
-                                 repo_root=args.repo_root)
+                                 repo_root=args.repo_root,
+                                 security_doc=sec_doc)
     if not res.get("verified"):
         print(f"error: evidence did not verify — "
               f"{res.get('reason')} (refusing to record a verified "
-              f"outcome)", file=sys.stderr)
+              f"outcome; a LOCALLY_RECOMPUTED or INTEGRITY_VERIFIED run "
+              f"needs an authorized evaluator's signed "
+              f"independent-evaluation-v1 receipt)", file=sys.stderr)
         return 2
     oc = res.get("outcome") or {}
     intervention = oc.get("intervention") or args.intervention

@@ -1,7 +1,7 @@
 {
  "schema": "mini-agi-v4.0-defect-register-v1",
- "release": "mini-AGI-V1-v4.0.3-integrity",
- "audit_basis": "full source audit of research/campaign3b-diagnostics tree (v16.4.10+3B.3); every entry cites file:line evidence in this checkout, not README claims",
+ "release": "mini-AGI-V1-v4.0.3-r1-evidence-authority",
+ "audit_basis": "full source audit of research/campaign3b-diagnostics tree (v16.4.10+3B.3); every entry cites file:line evidence in this checkout, not README claims; v4.0.3-r1 adds the evidence-authority closure entries V4-38..V4-42 (audit of the evaluation/qualification trust boundary and the Campaign 4A matrix analyzer)",
  "severity_scale": {
   "P0": "produces wrong scientific verdicts or destroys evidence",
   "P1": "measurement integrity gap or missing required mechanism",
@@ -420,6 +420,61 @@
    "root_cause": "argument validation ordered after heavy optional imports",
    "repair": "--adapter NAME=PATH validation and the required-adapter check now run before torch/peft imports",
    "regression_test": "manual: --adapter BADSPEC and bare invocation reject with exit!=0 and no peft import"
+  },
+  {
+   "id": "V4-38",
+   "severity": "P0",
+   "status": "CLOSED",
+   "component": "evaluation/verification state machine",
+   "location": "src-python/minagi/v161/qualified_outcome.py, src-python/minagi/v161/capability_outcomes.py, src-python/minagi/v161/independent_eval_receipt.py, scripts/capability_control.py",
+   "evidence": "a locally supplied experiment could be strict-rescored by evidence_reconciliation.verify_run and then labelled EVALUATION_VERIFIED \u2014 the 'evaluator' was the same codebase reading files the training pipeline wrote, so a self-authored run with matching commit inventory reached verified controller history without any evaluator holding independent authority ever seeing it",
+   "root_cause": "local recomputation and independent evaluation were the same state; no evaluator-authorized artifact existed between rescore and qualification",
+   "repair": "four evidence states in ascending assurance order: INTEGRITY_VERIFIED (commit/inventory consistent) < LOCALLY_RECOMPUTED (strict rescore reproduces) < INDEPENDENTLY_VERIFIED (a signed independent-evaluation-v1 receipt from an evaluation-role authority binds experiment/candidate/base-model/dataset/scorer/protocol/predictions/metrics/retention/security identities; binding recomputes exactly or fails) < QUALIFIED (qualification-role signed decision, only reachable on top of independent verification). CONTROLLER_ADMISSIBLE = the last two only; verified NEGATIVE outcomes are admissible so trusted history does not select on success. capability_control.py record refuses --delta/--retention-drop/--cost beside --receipt and denies any receipt whose evidence does not reach INDEPENDENTLY_VERIFIED",
+   "regression_test": "tests-python/v161/test_independent_eval_receipt.py (12), test_fabricated_run_rejection.py (9), test_evaluator_authority.py (6), test_qualified_outcomes.py (rewritten; adds qualification-cannot-stand-on-local and local-only CLI denial)"
+  },
+  {
+   "id": "V4-39",
+   "severity": "P0",
+   "status": "CLOSED",
+   "component": "Campaign 4A matrix analyzer",
+   "location": "scripts/analyze_v410_matrix.py",
+   "evidence": "the analyzer could mark all four gates passing on a favorable METRICS.json alone \u2014 no committed predictions, no adapter, no closure; missing retention metrics were treated as zero regression; an incomplete matrix (unexecuted arms/seeds) could qualify because only present runs were analyzed",
+   "root_cause": "gate inputs consumed runner-asserted rollups; missing values defaulted; no experiment manifest bounded the expected matrix",
+   "repair": "every cell is evidence-closed through derive_qualified_outcome before any gate reads it (committed inventory + rescore reconciliation + identity bindings + configured evidence level via required_evidence_level / --evidence-level / --trust-root); gate inputs are rescore-derived from committed prediction bytes (fit_subset_rescore, within_holdout_delta_rescore, retention_destruction_rescore, paired security derivation); each metric is three-stated (measured | explicitly-optional | missing-required) \u2014 a gate needing a missing value is NOT_EVALUABLE, never a pass, and an undefined CI is not statistical evidence; --manifest declares the expected seeds\u00d7arms so NOT_EXECUTED cells keep the matrix INCOMPLETE and matrix_qualified false; exit is nonzero whenever any cell is missing or below the required level",
+   "regression_test": "tests-python/v161/test_matrix_false_positive.py (5: METRICS-only run INVALID/NOT_EVALUABLE/nonzero exit, missing retention not-zero, declared-unexecuted arm INCOMPLETE, qualified positive control, local-only below required level) + tests-python/v161/test_v410_security_gate.py (rewritten to real rescorable runs; 14 tests)"
+  },
+  {
+   "id": "V4-40",
+   "severity": "P1",
+   "status": "CLOSED",
+   "component": "receipt role authorization",
+   "location": "src-python/minagi/v161/capability_outcomes.py",
+   "evidence": "verify_outcome_receipt verified a signed receipt document with only a signature verifier \u2014 a valid signature from a key whose evaluation authority could not be established counted as verification",
+   "root_cause": "signature validity and role authority were not both required",
+   "repair": "a signed receipt now verifies only when the signer's authority role is established under a supplied AuthorityRegistry (evaluation/qualification for legacy schemas; the evaluation role exactly for independent-evaluation-v1) AND the signature verifies AND \u2014 for the new schema \u2014 the evidence binding recomputes; absent trust root, wrong role, revoked or expired keys all fail with auditable reasons",
+   "regression_test": "tests-python/v161/test_activation_authority.py (verifier-without-authority refused, wrong-role refused, authorized passes) + test_qualified_outcomes.py wrong-role/unsigned cases"
+  },
+  {
+   "id": "V4-41",
+   "severity": "P1",
+   "status": "CLOSED",
+   "component": "qualification precedence",
+   "location": "src-python/minagi/v161/qualified_outcome.py",
+   "evidence": "a signed QUALIFIED decision could elevate a run that had never been independently evaluated \u2014 qualification stood on local recomputation",
+   "root_cause": "the qualification check did not require the independent-evaluation layer first",
+   "repair": "QUALIFIED is reachable only from INDEPENDENTLY_VERIFIED: a qualification document on a lower-state run is NOT_QUALIFIED with the reason recorded; the decision still binds run_id + exact evidence digest and requires a qualification-role signer",
+   "regression_test": "tests-python/v161/test_qualified_outcomes.py::test_qualification_cannot_stand_on_local_evidence"
+  },
+  {
+   "id": "V4-42",
+   "severity": "P1",
+   "status": "CLOSED",
+   "component": "security evidence binding",
+   "location": "src-python/minagi/v161/capability_outcomes.py, scripts/analyze_v410_matrix.py, scripts/capability_control.py",
+   "evidence": "a receipt issued with a governed security sidecar bound into security_metrics_digest could never verify through verify_outcome_receipt \u2014 the binding recomputation had no way to receive the same document (found dogfooding the evaluator CLI on real v410_dev evidence)",
+   "root_cause": "security_doc was accepted by derive_qualified_outcome but not forwarded by the receipt-verification wrappers or the analyzer",
+   "repair": "security_doc now flows verify_outcome_receipt -> _verify_run_dir -> derive_qualified_outcome -> verify_evaluation_receipt -> evidence_binding; the matrix analyzer presents the lane sidecar it loaded for the gate to the binding check; capability_control.py record/record-outcome gain --security-evidence; a receipt bound with security evidence fails closed when the document is absent",
+   "regression_test": "tests-python/v161/test_matrix_false_positive.py (security-bound receipt verifies through the analyzer path) + manual: issue+verify against results/v410_dev/runs/v410-dev-fixed-s0 with the lane sidecar"
   }
  ],
  "residual_known_limitations": [

@@ -1,11 +1,12 @@
-"""v4.0.3 Phase 1 — the acquisition controller's evidence boundary.
+"""v4.0.3-r1 Phase 1 — the acquisition controller's evidence boundary.
 
 Adversarial coverage for the fabricated-outcome defect: a self-authored
 run containing METRICS.json and a hash-consistent RUN_COMMIT.json must
 NEVER enter verified history, and the CLI must never accept an
-operator-supplied improvement value for a verified record. The three
-verification states (INTEGRITY_VERIFIED / EVALUATION_VERIFIED /
-QUALIFIED) and the signed-qualification path are pinned end to end.
+operator-supplied improvement value for a verified record. The four
+verification states (INTEGRITY_VERIFIED / LOCALLY_RECOMPUTED /
+INDEPENDENTLY_VERIFIED / QUALIFIED), the signed independent-evaluation
+receipt and the signed-qualification path are pinned end to end.
 """
 import base64
 import hashlib
@@ -29,9 +30,11 @@ from minagi.v161.capability_outcomes import (  # noqa: E402
     verify_outcome_receipt)
 from minagi.v161.evidence_reconciliation import (  # noqa: E402
     adapter_artifact_digest_of)
+from minagi.v161.independent_eval_receipt import (  # noqa: E402
+    issue_evaluation_receipt, write_receipt_file)
 from minagi.v161.qualified_outcome import (  # noqa: E402
     NOT_QUALIFIED, QUALIFIED, QUALIFICATION_SCHEMA,
-    STATE_EVALUATION, STATE_INTEGRITY, STATE_QUALIFIED,
+    STATE_INDEPENDENT, STATE_INTEGRITY, STATE_LOCAL, STATE_QUALIFIED,
     derive_qualified_outcome, qualification_decision)
 
 CLI = ROOT / "scripts" / "capability_control.py"
@@ -192,12 +195,17 @@ def _cli(*argv) -> subprocess.CompletedProcess:
 
 # ---------- derived-outcome states -------------------------------------
 
-def test_rescored_run_is_evaluation_verified_and_derives_numbers(
+def test_rescored_run_is_locally_recomputed_and_derives_numbers(
         tmp_path):
+    """A run whose committed predictions strict-rescore to the reported
+    metrics is LOCALLY_RECOMPUTED — the numbers derive and are honest,
+    but local recomputation is NOT independent verification: the record
+    is inadmissible until an evaluation-role signer binds the evidence
+    in a signed receipt."""
     d = build_run(tmp_path)
     oc = derive_qualified_outcome(d)
-    assert oc.verification_state == STATE_EVALUATION
-    assert oc.admissible
+    assert oc.verification_state == STATE_LOCAL
+    assert not oc.admissible
     assert oc.outcome_surface == "validation_within"
     assert oc.baseline_accuracy == 0.5 and oc.adapted_accuracy == 1.0
     assert oc.outcome_delta == 0.5
@@ -211,6 +219,20 @@ def test_rescored_run_is_evaluation_verified_and_derives_numbers(
     # immutability: the record is a frozen value object
     with pytest.raises(Exception):
         oc.outcome_delta = 9.9
+
+
+def test_authorized_receipt_promotes_to_independently_verified(tmp_path):
+    """The same rescorable run WITH a signed independent-evaluation-v1
+    receipt reaches INDEPENDENTLY_VERIFIED and becomes admissible."""
+    d = build_run(tmp_path)
+    reg, ver, signers = _authority("evaluation")
+    write_receipt_file(
+        d, issue_evaluation_receipt(signers["evaluation"], d))
+    oc = derive_qualified_outcome(d, verifier=ver, authority=reg)
+    assert oc.verification_state == STATE_INDEPENDENT
+    assert oc.admissible
+    assert oc.evaluation_signer == signers["evaluation"].key_id
+    assert oc.evaluation_receipt_digest is not None
 
 
 def test_self_authored_commit_is_integrity_only(tmp_path):
@@ -234,7 +256,8 @@ def test_self_authored_commit_is_integrity_only(tmp_path):
 
 def test_self_authored_qualification_does_not_qualify(tmp_path):
     """A run cannot qualify itself: unsigned / self-signed decision
-    docs are NOT_QUALIFIED even when evaluation verifies."""
+    docs are NOT_QUALIFIED — and a signed decision cannot stand on a
+    run that never reached INDEPENDENTLY_VERIFIED."""
     d = build_run(tmp_path)
     # unsigned self-assertion inside the run dir
     (d / "QUALIFICATION.json").write_text(json.dumps({
@@ -242,7 +265,7 @@ def test_self_authored_qualification_does_not_qualify(tmp_path):
         "evidence_digest": "sha256:" + "0" * 64,
         "decision": "QUALIFIED"}))
     oc = derive_qualified_outcome(d)
-    assert oc.verification_state == STATE_EVALUATION
+    assert oc.verification_state == STATE_LOCAL
     assert oc.qualification_status == NOT_QUALIFIED
     # a forged signature from an unregistered key is likewise refused
     forger = Ed25519Signer.generate()
@@ -253,15 +276,18 @@ def test_self_authored_qualification_does_not_qualify(tmp_path):
     reg, ver, _ = _authority("qualification")
     oc2 = derive_qualified_outcome(d, verifier=ver, authority=reg)
     assert oc2.qualification_status == NOT_QUALIFIED
-    assert oc2.verification_state == STATE_EVALUATION
+    assert oc2.verification_state == STATE_LOCAL
 
 
 def test_authorized_qualification_reaches_qualified(tmp_path):
-    """The happy path: evaluation-verified run + a qualification-role
-    signature binding run_id and evidence digest => QUALIFIED."""
+    """The happy path: INDEPENDENTLY_VERIFIED run + a qualification-
+    role signature binding run_id and evidence digest => QUALIFIED."""
     d = build_run(tmp_path)
     reg, ver, signers = _authority("qualification", "evaluation")
+    write_receipt_file(
+        d, issue_evaluation_receipt(signers["evaluation"], d))
     oc = derive_qualified_outcome(d, verifier=ver, authority=reg)
+    assert oc.verification_state == STATE_INDEPENDENT
     qdoc = qualification_decision(
         signers["qualification"], run_id=oc.run_id,
         evidence_digest=oc.evidence_digest)
@@ -273,11 +299,30 @@ def test_authorized_qualification_reaches_qualified(tmp_path):
     assert oc.qualification_signer == signers["qualification"].key_id
 
 
+def test_qualification_cannot_stand_on_local_evidence(tmp_path):
+    """A validly-signed QUALIFIED decision over a run that is only
+    LOCALLY_RECOMPUTED is refused — qualification requires the
+    independent evaluation layer first."""
+    d = build_run(tmp_path)
+    reg, ver, signers = _authority("qualification")
+    oc0 = derive_qualified_outcome(d)
+    qdoc = qualification_decision(
+        signers["qualification"], run_id=oc0.run_id,
+        evidence_digest=oc0.evidence_digest)
+    (d / "QUALIFICATION.json").write_text(json.dumps(qdoc))
+    oc = derive_qualified_outcome(d, verifier=ver, authority=reg)
+    assert oc.qualification_status == NOT_QUALIFIED
+    assert oc.verification_state == STATE_LOCAL
+    assert any("independently verified" in r for r in oc.reasons)
+
+
 def test_qualification_binding_to_other_evidence_is_rejected(tmp_path):
     """A QUALIFIED decision over different bytes is not a qualification
     for this run — the evidence digest must match."""
     d = build_run(tmp_path)
-    reg, ver, signers = _authority("qualification")
+    reg, ver, signers = _authority("qualification", "evaluation")
+    write_receipt_file(
+        d, issue_evaluation_receipt(signers["evaluation"], d))
     qdoc = qualification_decision(
         signers["qualification"], run_id=d.name,
         evidence_digest="sha256:" + "f" * 64)    # wrong bytes
@@ -291,7 +336,9 @@ def test_wrong_role_signature_is_rejected(tmp_path):
     """A signature from a key authorized only for 'plan' is not a
     qualification — roles are separated."""
     d = build_run(tmp_path)
-    reg, ver, signers = _authority("plan")
+    reg, ver, signers = _authority("plan", "evaluation")
+    write_receipt_file(
+        d, issue_evaluation_receipt(signers["evaluation"], d))
     oc = derive_qualified_outcome(d, verifier=ver, authority=reg)
     qdoc = qualification_decision(
         signers["plan"], run_id=oc.run_id,
@@ -370,7 +417,7 @@ def test_signed_receipt_from_unauthorized_role_rejected(tmp_path):
     assert "not authorized" in res["reason"]
 
 
-def test_evaluator_signed_receipt_is_evaluation_verified(tmp_path):
+def test_evaluator_signed_receipt_is_independently_verified(tmp_path):
     reg, ver, signers = _authority("evaluation")
     receipt = {"schema": "mini-agi-v16.1-executed-run-receipt-v1",
                "run_id": "r",
@@ -381,7 +428,7 @@ def test_evaluator_signed_receipt_is_evaluation_verified(tmp_path):
     p.write_text(json.dumps(receipt))
     res = verify_outcome_receipt(p, ver, authority=reg)
     assert res["verified"]
-    assert res["verification_state"] == STATE_EVALUATION
+    assert res["verification_state"] == STATE_INDEPENDENT
 
 
 def test_receipt_signature_cannot_be_checked_is_not_verified(tmp_path):
@@ -398,17 +445,35 @@ def test_receipt_signature_cannot_be_checked_is_not_verified(tmp_path):
 
 def test_cli_record_derives_numbers_from_evidence(tmp_path):
     d = build_run(tmp_path)
+    reg, ver, signers = _authority("evaluation")
+    trust = _trust_root_file(tmp_path, signers)
+    write_receipt_file(
+        d, issue_evaluation_receipt(signers["evaluation"], d))
     hist = tmp_path / "history.jsonl"
-    proc = _cli("record", "--receipt", str(d), "--history", str(hist))
+    proc = _cli("record", "--receipt", str(d), "--history", str(hist),
+                "--trust-root", str(trust))
     assert proc.returncode == 0, proc.stderr
     rec = json.loads(proc.stdout)
     assert rec["verified"] is True
+    assert rec["verification_state"] == "INDEPENDENTLY_VERIFIED"
     assert rec["outcome_delta"] == 0.5       # derived, not asserted
     assert rec["intervention"] == "fixed_lora"
     assert rec["cost"] == 12.5
     loaded = intervention_history_load(hist)
     assert len(loaded) == 1 and loaded[0].verified
     assert loaded[0].receipt_digest
+
+
+def test_cli_record_refuses_local_only_evidence(tmp_path):
+    """v4.0.3-r1: the SAME rescorable run WITHOUT an authorized
+    evaluator's receipt is LOCALLY_RECOMPUTED — trusted import is
+    denied, even though local recomputation reproduces every number."""
+    d = build_run(tmp_path)
+    hist = tmp_path / "history.jsonl"
+    proc = _cli("record", "--receipt", str(d), "--history", str(hist))
+    assert proc.returncode == 2
+    assert "did not verify" in proc.stderr
+    assert not hist.exists() or not hist.read_text().strip()
 
 
 def test_cli_record_refuses_caller_supplied_delta(tmp_path):
@@ -462,9 +527,14 @@ def test_diagnostic_records_never_promote(tmp_path):
 
 def test_cli_record_outcome_derives_from_evidence(tmp_path):
     d = build_run(tmp_path)
+    reg, ver, signers = _authority("evaluation")
+    trust = _trust_root_file(tmp_path, signers)
+    write_receipt_file(
+        d, issue_evaluation_receipt(signers["evaluation"], d))
     out = tmp_path / "outcomes.jsonl"
     proc = _cli("record-outcome", "--receipt", str(d),
-                "--outcomes", str(out), "--intervention", "fixed_lora")
+                "--outcomes", str(out), "--intervention", "fixed_lora",
+                "--trust-root", str(trust))
     assert proc.returncode == 0, proc.stderr
     rec = json.loads(proc.stdout)
     ev = rec["evaluation"]
@@ -474,21 +544,24 @@ def test_cli_record_outcome_derives_from_evidence(tmp_path):
     # caller numbers are refused on the verified path
     proc = _cli("record-outcome", "--receipt", str(d),
                 "--outcomes", str(out), "--intervention", "fixed_lora",
-                "--within-delta", "999")
+                "--within-delta", "999", "--trust-root", str(trust))
     assert proc.returncode == 2
     # and an unqualified assertion cannot be made
     proc = _cli("record-outcome", "--receipt", str(d),
                 "--outcomes", str(out), "--intervention", "fixed_lora",
-                "--qualified")
+                "--qualified", "--trust-root", str(trust))
     assert proc.returncode == 2
     assert "qualification" in proc.stderr
 
 
 def test_cli_record_outcome_qualified_when_signed(tmp_path):
     d = build_run(tmp_path)
-    reg, ver, signers = _authority("qualification")
+    reg, ver, signers = _authority("qualification", "evaluation")
     trust = _trust_root_file(tmp_path, signers)
+    write_receipt_file(
+        d, issue_evaluation_receipt(signers["evaluation"], d))
     oc = derive_qualified_outcome(d, verifier=ver, authority=reg)
+    assert oc.verification_state == STATE_INDEPENDENT
     qdoc = qualification_decision(signers["qualification"],
                                   run_id=oc.run_id,
                                   evidence_digest=oc.evidence_digest)

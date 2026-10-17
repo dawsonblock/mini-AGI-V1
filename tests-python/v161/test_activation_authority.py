@@ -192,10 +192,28 @@ def test_capability_outcome_receipt_verification(tmp_path):
     # without a verifier a signed receipt is NOT verification —
     # a signature that cannot be checked proves nothing
     assert not verify_outcome_receipt(rp)["verified"]
-    res = verify_outcome_receipt(rp, v)
+    # v4.0.3-r1: a verifier alone is still not enough — the signer's
+    # AUTHORITY ROLE must be established. A signature from a key whose
+    # role cannot be checked is not independent evaluation evidence.
+    assert not verify_outcome_receipt(rp, v)["verified"]
+    # a valid signature from an UNAUTHORIZED role is not evaluation
+    # evidence either — roles are separated
+    import base64
+    from minagi.v161.authority import AuthorityRecord, AuthorityRegistry
+    plan_only = AuthorityRegistry([AuthorityRecord(
+        role="plan", key_id=s.key_id,
+        public_key_b64=base64.b64encode(s.public_bytes()).decode())])
+    assert not verify_outcome_receipt(rp, v, authority=plan_only)[
+        "verified"]
+    # signature + evaluation-role authorization verifies
+    eval_reg = AuthorityRegistry([AuthorityRecord(
+        role="evaluation", key_id=s.key_id,
+        public_key_b64=base64.b64encode(s.public_bytes()).decode())])
+    res = verify_outcome_receipt(rp, v, authority=eval_reg)
     assert res["verified"] and res["signer_key_id"] == s.key_id
-    # and a forged signature fails
+    # and a forged signature fails even under a trust root
     bad = dict(good)
     bad["signature_b64"] = Ed25519Signer.generate().sign(good).signature_b64
     rp.write_text(__import__("json").dumps(bad))
-    assert not verify_outcome_receipt(rp, v)["verified"]
+    assert not verify_outcome_receipt(rp, v, authority=eval_reg)[
+        "verified"]

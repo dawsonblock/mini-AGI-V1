@@ -17,6 +17,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src-python"))
+sys.path.insert(0, str(Path(__file__).parent))
+
+from test_independent_eval_receipt import build_run  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location(
     "analyze_v410_matrix", ROOT / "scripts" / "analyze_v410_matrix.py")
@@ -127,12 +130,10 @@ class TestPairedRegression:
 
 
 def _write_run(run_dir: Path, sec: dict | None, sec_dir: Path) -> None:
-    run_dir.mkdir(parents=True)
-    (run_dir / "METRICS.json").write_text(json.dumps({
-        "fit_gate": {"passed": True, "adapted_subset_accuracy": 1.0},
-        "within_holdout": {"frozen": 0.0, "adapted": 0.5},
-        "retention": {"destruction_rate": 0.0},
-        "training": {"train_seconds": 1}}))
+    """A real rescorable committed run (v4.0.3-r1: a METRICS-only dir is
+    INVALID and its gates are NOT_EVALUABLE, so the gate-level security
+    checks below need evidence that reaches LOCALLY_RECOMPUTED)."""
+    build_run(run_dir.parent, run_id=run_dir.name)
     if sec is not None:
         sec_dir.mkdir(parents=True, exist_ok=True)
         (sec_dir / f"{run_dir.name}.security.json").write_text(

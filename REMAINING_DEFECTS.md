@@ -1,5 +1,62 @@
 # Remaining defects
 
+## v4.0.3-r1 addendum — evidence-authority closure
+
+This lane closes the audit's central finding: a locally supplied
+experiment could be recomputed locally and then labelled
+`EVALUATION_VERIFIED` even when no evaluator with independent authority
+ever saw it. The verification stack now has four states —
+`INTEGRITY_VERIFIED` < `LOCALLY_RECOMPUTED` <
+`INDEPENDENTLY_VERIFIED` < `QUALIFIED` — and only the last two may
+enter verified controller history (V4-38…V4-42 in
+`DEFECT_REGISTER_V4.json`; adversarial coverage in
+`tests-python/v161/test_independent_eval_receipt.py`,
+`test_fabricated_run_rejection.py`, `test_matrix_false_positive.py`,
+`test_evaluator_authority.py`).
+
+What this changes concretely:
+
+- A self-authored run that strict-rescored under
+  `evidence_reconciliation.verify_run` is now `LOCALLY_RECOMPUTED` —
+  honest local reproduction, **not** evaluation. Trusted import
+  requires a signed `independent-evaluation-v1` receipt from an
+  `evaluation`-role key whose binding recomputes exactly against the
+  committed evidence. Receipts are issued by
+  `scripts/independent_evaluate.py`, which runs under evaluator
+  custody.
+- The Campaign 4A analyzer (`scripts/analyze_v410_matrix.py`) evaluates
+  gates only on evidence-closed cells and rescore-derived values;
+  missing metrics are `NOT_EVALUABLE`, not zero; a manifest-declared
+  matrix stays `INCOMPLETE` while declared cells are absent; the
+  preregistered `required_evidence_level: independently_verified` in
+  `configs/capability_acquisition/confirmation.yaml` means an
+  unreceipted dev run can never qualify the matrix.
+- Verified **negative** outcomes are admissible to history —
+  deliberately — so the controller does not learn only from successes.
+
+Limitations **still standing** after v4.0.3-r1:
+
+- **Evaluator key custody is still development-held.** The mechanism is
+  closed; the operational separation is not. On this host the
+  `evaluation` key lives beside the research agent, so
+  `INDEPENDENTLY_VERIFIED` is *authorized* here but not yet
+  *operationally independent* — a real confirmation run must hold the
+  key under a different OS identity (see
+  `SEALED_EVALUATOR_CUSTODY.md` / RD-1).
+- **No run in `results/` carries an evaluation receipt yet.** Every
+  committed run verifies at `LOCALLY_RECOMPUTED`; the Campaign 4A
+  matrix therefore cannot reach `matrix_qualified` under
+  `independently_verified` until an evaluator signs the evidence.
+  This is the intended fail-closed posture, not a defect — but it
+  means Campaign 4A qualification evidence does not exist yet.
+- **The exposed `configs/holdout/campaign4a_holdout.jsonl` is a public
+  development benchmark now,** never a fresh final-confirmation
+  surface — the research process can read its answers (see
+  `docs/research/v403r1/HOLDOUT_RECLASSIFICATION.md`).
+- **`both` (rehearsal+KL) remains unexecuted** on the dev matrix and no
+  arm holds retention inside the bound on both seeds — v4.1.1's
+  preservation work is still the open scientific problem (RD-3).
+
 ## v4.0.3 addendum — what changed and what did not
 
 The audit-found engineering defects are closed: the evidence boundary

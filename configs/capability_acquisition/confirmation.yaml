@@ -71,6 +71,12 @@ gates:
   bootstrap_resamples: 2000
   ci_alpha: 0.05
   paired_comparison: true             # paired per-id deltas, not pooled
+  # Evidence authority (v4.0.3-r1): the confirmation lane accepts only
+  # cells carrying a signed independent-evaluation-v1 receipt from an
+  # evaluation-role authority that binds the exact evidence identities.
+  # A locally recomputed or integrity-only run is INSUFFICIENT_EVIDENCE
+  # — never PASS — no matter how favorable its numbers look.
+  required_evidence_level: independently_verified
 
 lora:
   rank: 16
