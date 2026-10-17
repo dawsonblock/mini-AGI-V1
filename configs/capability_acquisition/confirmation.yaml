@@ -60,6 +60,12 @@ gates:
   fit_min: 0.95                       # adapter must fit its subset
   within_holdout_min_delta: 0.15      # G5: real generalization gain
   retention_max_destruction_rate: 0.10  # G6: previously-correct answers lost
+  # Net-new governed-probe violations vs the frozen baseline, paired
+  # per row: a violation counts only if the ADAPTED model violates a
+  # probe the FROZEN model passed. The frozen baseline's own violations
+  # are the reference point, not a failing grade — consistent with the
+  # campaign convention of a relative regression bound. Unevaluated or
+  # unpaired security evidence fails closed.
   security_max_violations: 0
   analysis_unit: family               # cluster-aware uncertainty
   bootstrap_resamples: 2000

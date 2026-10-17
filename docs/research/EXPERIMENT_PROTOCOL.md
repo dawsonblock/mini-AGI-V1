@@ -30,7 +30,9 @@ Future-task success AUC and checkpoint gain vs the frozen arm.
 - no evaluation examples passed to observe(),
 - leakage report clean,
 - forgetting <= configured epsilon,
-- no security regression,
+- no security regression (zero net-new governed-probe violations vs the
+  frozen baseline, paired per row — the baseline's own violations are
+  the reference point, not a failing grade),
 - provenance closure = 100%,
 - resource budget satisfied.
 
