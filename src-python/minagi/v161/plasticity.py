@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from egai.common.canonical import digest, validate_digest
+from egai.common.crypto import Ed25519Signer, SignedEnvelope
 
 
 class FailureKind(str, Enum):
@@ -258,9 +259,13 @@ class RankAllocator:
 
 # ---------------------------------------------------------------------------
 # v16.6.0 Phase 5 — evidence-driven, cost-aware mechanism selection.
+# v16.4.5 gate (SEC-005/006): prerequisites are VERIFIED signed attempt
+# receipts, and the selector abstains (NO_CHANGE) below a frozen utility
+# threshold rather than picking a losing intervention.
 # ---------------------------------------------------------------------------
 
 DIAGNOSTIC_EXPERIMENT = "diagnostic_experiment"
+NO_CHANGE = "no_change"
 
 
 class AttemptOutcome(str, Enum):
@@ -311,16 +316,24 @@ class MechanismEstimate:
 @dataclass(frozen=True)
 class ObjectiveWeights:
     """U = ΔQ - λ_C·C - λ_R·R - λ_L·L. Externally configured and frozen
-    for each campaign; the agent under evaluation never rewrites it."""
+    for each campaign; the agent under evaluation never rewrites it.
+
+    `utility_threshold` is the abstention floor τ (SEC-006): the
+    controller selects an intervention only when the best candidate's
+    expected utility is strictly greater than τ. Otherwise the decision
+    is NO_CHANGE — a negative-utility intervention is never picked
+    merely for ranking first."""
     lambda_cost: float = 1.0
     lambda_risk: float = 1.0
     lambda_latency: float = 1.0
-    schema: str = "mini-agi-v16.6-objective-weights-v1"
+    utility_threshold: float = 0.0
+    schema: str = "mini-agi-v16.4.5-objective-weights-v1"
 
     def __post_init__(self):
         for name in ("lambda_cost", "lambda_risk", "lambda_latency"):
             if _finite(name, getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be >= 0")
+        _finite("utility_threshold", self.utility_threshold)
 
     def utility(self, est: MechanismEstimate) -> float:
         return (float(est.predicted_gain)
@@ -366,17 +379,17 @@ class MechanismDecision:
     """Machine-verifiable record of one selection: what was chosen, why,
     what was excluded, and the objective value of the winner."""
     failure_kind: str
-    chosen: str                    # Mechanism value or DIAGNOSTIC_EXPERIMENT
+    chosen: str                    # Mechanism value | DIAGNOSTIC_EXPERIMENT | NO_CHANGE
     utility: float
     ranked: tuple[str, ...]
     excluded: tuple[tuple[str, str], ...]
     rationale: str
-    schema: str = "mini-agi-v16.6-mechanism-decision-v1"
+    schema: str = "mini-agi-v16.4.5-mechanism-decision-v1"
 
     def __post_init__(self):
         if self.failure_kind not in {k.value for k in FailureKind}:
             raise ValueError("unknown failure_kind")
-        if self.chosen != DIAGNOSTIC_EXPERIMENT:
+        if self.chosen not in (DIAGNOSTIC_EXPERIMENT, NO_CHANGE):
             Mechanism(self.chosen)
         _finite("utility", self.utility)
         for name in self.ranked:
@@ -389,32 +402,74 @@ class MechanismDecision:
         return digest(self)
 
 
+def _rung_coverage(ev: FailureEvidence,
+                   attempts: tuple, rung: Mechanism,
+                   verifier) -> bool:
+    """A ladder rung is covered only by an ACTUAL attempt: a
+    SignedAttemptReceipt whose signature verifies under the trusted
+    evaluator registry, bound to this failure evidence, on the required
+    mechanism, with a real outcome. INVALID outcomes are not evidence;
+    digest strings never were."""
+    for r in attempts:
+        if not isinstance(r, SignedAttemptReceipt):
+            continue
+        if r.mechanism != rung.value \
+                or r.outcome == AttemptOutcome.INVALID.value \
+                or r.evidence_digest != ev.digest:
+            continue
+        if verifier is not None and r.verify(verifier):
+            return True
+    return False
+
+
 def select_mechanism(ev: FailureEvidence, estimates, weights: ObjectiveWeights,
-                     *, prior_attempts: tuple[str, ...] = (),
+                     *, attempts: tuple = (),
+                     evaluator_verifier=None,
+                     experiment_budget=None,
                      max_regression_risk: float | None = None,
                      min_confidence: float = 0.5) -> MechanismDecision:
-    """Evidence-driven mechanism selection.
+    """Evidence-driven mechanism selection (SEC-005/006 repaired).
 
-    The cheapest-first ladder still binds: a WEIGHTS estimate is only
-    admissible when the cheaper-mechanism attempts it presupposes are
-    recorded (retrieval + skill — the same rule `PlasticityProposal`
-    enforces). Safety constraints are applied before ranking; when no
-    candidate clears the confidence floor, a diagnostic experiment is
-    selected instead of adapting on an uncertain cause."""
+    The cheapest-first ladder still binds, but a WEIGHTS estimate is
+    admissible only when every cheaper rung is covered by a VERIFIED
+    attempt: SignedAttemptReceipt records that verify under
+    `evaluator_verifier`, bind this failure evidence, and carry a real
+    outcome — a bare digest string is not evidence (SEC-005).
+
+    The selection itself abstains (SEC-006): the winner is the
+    highest-utility admissible candidate only when its utility exceeds
+    the frozen `weights.utility_threshold`; otherwise NO_CHANGE is
+    recorded. A provided experiment_budget that is exhausted refuses
+    every experiment class — interventions and diagnostics alike —
+    because budgets are enforced, not reported."""
     kind, _mech = diagnose(ev)
     required = MECHANISM_LADDER[
         :MECHANISM_LADDER.index(Mechanism.WEIGHTS)]
-    for est in estimates:
-        if Mechanism(est.mechanism) is Mechanism.WEIGHTS \
-                and len(prior_attempts) != len(required):
+    wants_weights = any(Mechanism(est.mechanism) is Mechanism.WEIGHTS
+                        for est in estimates)
+    if wants_weights:
+        missing = [m.value for m in required
+                   if not _rung_coverage(ev, attempts, m,
+                                         evaluator_verifier)]
+        if missing:
             raise ValueError(
-                "weight-adaptation estimates require recorded attempts at "
-                f"{[m.value for m in required]} first (got "
-                f"{len(prior_attempts)} prior attempts)")
+                "weight-adaptation estimates require verified attempts "
+                f"at {[m.value for m in required]} on this evidence "
+                f"(missing: {missing}) — unverified or fabricated "
+                "attempt digests do not satisfy the ladder")
     ranked, excluded = rank_candidates(
         estimates, weights, max_regression_risk=max_regression_risk,
         min_confidence=min_confidence)
+    budget_gone = experiment_budget is not None \
+        and experiment_budget.exhausted
     if not ranked:
+        if budget_gone:
+            return MechanismDecision(
+                failure_kind=kind.value, chosen=NO_CHANGE, utility=0.0,
+                ranked=(), excluded=tuple(excluded),
+                rationale="no admissible candidate and the experiment "
+                          "budget is exhausted — even the diagnostic "
+                          "experiment cannot run (WP11)")
         return MechanismDecision(
             failure_kind=kind.value, chosen=DIAGNOSTIC_EXPERIMENT,
             utility=0.0, ranked=(),
@@ -422,13 +477,30 @@ def select_mechanism(ev: FailureEvidence, estimates, weights: ObjectiveWeights,
             rationale="no candidate cleared the confidence floor / hard "
                       "safety cap — run a diagnostic experiment instead of "
                       "adapting on an uncertain cause")
+    if budget_gone:
+        return MechanismDecision(
+            failure_kind=kind.value, chosen=NO_CHANGE, utility=0.0,
+            ranked=tuple(e.mechanism for e in ranked),
+            excluded=tuple(excluded),
+            rationale="experiment budget exhausted — every mechanism "
+                      "costs resources and none may run (WP11)")
     best = ranked[0]
+    best_utility = weights.utility(best)
+    if best_utility <= weights.utility_threshold:
+        return MechanismDecision(
+            failure_kind=kind.value, chosen=NO_CHANGE, utility=0.0,
+            ranked=tuple(e.mechanism for e in ranked),
+            excluded=tuple(excluded),
+            rationale=f"best admissible utility {best_utility:.6f} does "
+                      f"not exceed frozen threshold "
+                      f"{weights.utility_threshold:.6f} — abstaining "
+                      "(NO_CHANGE) rather than intervening at a loss")
     return MechanismDecision(
         failure_kind=kind.value, chosen=best.mechanism,
-        utility=weights.utility(best),
+        utility=best_utility,
         ranked=tuple(e.mechanism for e in ranked),
         excluded=tuple(excluded),
-        rationale=f"highest objective utility {weights.utility(best):.6f} "
+        rationale=f"highest objective utility {best_utility:.6f} "
                   f"under frozen weights {weights.digest}")
 
 
@@ -467,3 +539,96 @@ class AttemptReceipt:
     @property
     def digest(self) -> str:
         return digest(self)
+
+
+@dataclass(frozen=True)
+class SignedAttemptReceipt(AttemptReceipt):
+    """An AttemptReceipt whose contents an evaluator actually signed
+    (SEC-005/WP10). The signature covers the full record — which
+    mechanism ran, on which failure evidence and task family, which
+    candidate was tried, what the independent evaluation observed —
+    bound to the evaluator's key identity. The controller's ladder gate
+    accepts only receipts that verify under its trusted evaluator
+    registry; a bare sha256 string, an unsigned receipt, or a receipt
+    for a different evidence context does not count as an attempt."""
+    task_family_digest: str = ""
+    candidate_digest: str = ""
+    evaluator_identity: str = ""
+    signer_key_id: str = ""
+    signature_b64: str = ""
+    schema: str = "mini-agi-v16.4.5-attempt-receipt-v1"
+
+    def __post_init__(self):
+        super().__post_init__()
+        validate_digest(self.task_family_digest)
+        validate_digest(self.candidate_digest)
+        if not self.evaluator_identity:
+            raise ValueError("evaluator_identity required")
+        if not self.signer_key_id or not self.signature_b64:
+            raise ValueError("signed attempt receipt required")
+
+    @property
+    def body(self) -> dict:
+        return {"schema": self.schema,
+                "attempt_id": self.attempt_id,
+                "proposal_digest": self.proposal_digest,
+                "mechanism": self.mechanism,
+                "evidence_digest": self.evidence_digest,
+                "task_family_digest": self.task_family_digest,
+                "candidate_digest": self.candidate_digest,
+                "outcome": self.outcome,
+                "observed_gain": float(self.observed_gain),
+                "observed_cost": float(self.cost),
+                "evaluation_bundle_digest": self.evaluation_bundle_digest,
+                "evaluator_identity": self.evaluator_identity,
+                "signer_key_id": self.signer_key_id}
+
+    @property
+    def unsigned(self) -> "AttemptReceipt":
+        """The same record stripped of signing fields — the receipt
+        an external evaluator was asked to attest."""
+        return AttemptReceipt(
+            attempt_id=self.attempt_id,
+            proposal_digest=self.proposal_digest,
+            mechanism=self.mechanism, evidence_digest=self.evidence_digest,
+            outcome=self.outcome, observed_gain=self.observed_gain,
+            cost=self.cost,
+            evaluation_bundle_digest=self.evaluation_bundle_digest)
+
+    @classmethod
+    def sign(cls, *, signer: Ed25519Signer, attempt_id: str,
+             proposal_digest: str, mechanism: str, evidence_digest: str,
+             task_family_digest: str, candidate_digest: str, outcome: str,
+             observed_gain: float, observed_cost: float,
+             evaluation_bundle_digest: str,
+             evaluator_identity: str) -> "SignedAttemptReceipt":
+        body = {"schema": "mini-agi-v16.4.5-attempt-receipt-v1",
+                "attempt_id": str(attempt_id),
+                "proposal_digest": proposal_digest,
+                "mechanism": mechanism,
+                "evidence_digest": evidence_digest,
+                "task_family_digest": task_family_digest,
+                "candidate_digest": candidate_digest,
+                "outcome": outcome,
+                "observed_gain": float(observed_gain),
+                "observed_cost": float(observed_cost),
+                "evaluation_bundle_digest": evaluation_bundle_digest,
+                "evaluator_identity": evaluator_identity,
+                "signer_key_id": signer.key_id}
+        env = signer.sign(body)
+        return cls(attempt_id=str(attempt_id),
+                   proposal_digest=proposal_digest,
+                   mechanism=mechanism, evidence_digest=evidence_digest,
+                   task_family_digest=task_family_digest,
+                   candidate_digest=candidate_digest,
+                   outcome=outcome, observed_gain=float(observed_gain),
+                   cost=float(observed_cost),
+                   evaluation_bundle_digest=evaluation_bundle_digest,
+                   evaluator_identity=evaluator_identity,
+                   signer_key_id=env.key_id,
+                   signature_b64=env.signature_b64)
+
+    def verify(self, verifier) -> bool:
+        return verifier.verify(
+            self.body, SignedEnvelope(self.signer_key_id,
+                                      self.signature_b64))

@@ -1,0 +1,243 @@
+{
+ "baseline_evaluability_probe": {
+  "result": "frozen model produced non-empty output on 4236/4236 committed hidden predictions (rate 1.000); F9 gate floor 0.5 does not affect executed evidence",
+  "tool": "scripts/probe_stale_gating.py"
+ },
+ "corpus": {
+  "generator": "scripts/gen_campaign3d.py (deterministic; --check verifies V3 disjointness)",
+  "path": "configs/campaign3b_tasks.jsonl",
+  "rows": {
+   "compositional": 48,
+   "hidden": 192,
+   "retention": 16,
+   "security": 13,
+   "train": 80,
+   "validation": 24
+  },
+  "sha256": "sha256:493c2ff9915c5b526f34e5b2aa429cb58e3cbc8dea7cbb4787c361382cd66670"
+ },
+ "created_utc": "2026-10-15T00:00:00Z",
+ "executed_experiments": [
+  {
+   "capability_destruction": {
+    "frozen_correct_broken": 1,
+    "gained": 1,
+    "of_frozen_correct": 4
+   },
+   "commit_status": "COMPLETE",
+   "fit_gate": {
+    "adapted_subset_accuracy": 1.0,
+    "passed": true,
+    "threshold": 0.95
+   },
+   "hidden_generalization": {
+    "adapted": 0.3333333333333333,
+    "frozen": 0.3333333333333333,
+    "verdict": "NULL RESULT \u2014 no held-out improvement; reported as such"
+   },
+   "kind": "positive_control_fit (end-to-end repaired pipeline, Apple MPS)",
+   "kl_preservation": {
+    "cadence": 1,
+    "evaluations": 60,
+    "reference": "adapter-disabled frozen weights, digest receipt-bound",
+    "reference_pairs": 12,
+    "scope": "response_continuations",
+    "term_mean": 0.009239450931393852,
+    "weight": 0.1
+   },
+   "path": "results/campaign3b2/runs/v40-verify-s0 (evidence package)",
+   "rehearsal": {
+    "excluded_trained_families": [
+     "pc-rev",
+     "pc-upper"
+    ],
+    "membership_check": "frozen-model strict-oracle regeneration",
+    "realized_fraction": 0.25,
+    "rejected_candidates": 30,
+    "verified_pairs": 2
+   },
+   "run_id": "v40-verify-s0",
+   "training": {
+    "examples": 10,
+    "exposure_per_example": 6,
+    "families": [
+     "pc-rev",
+     "pc-upper"
+    ],
+    "steps": 60
+   }
+  },
+  {
+   "capability_destruction": {
+    "frozen_correct_broken": 4,
+    "gained": 2,
+    "of_frozen_correct": 4
+   },
+   "commit_status": "COMPLETE",
+   "compositional": {
+    "adapted": 0.125,
+    "frozen": 0.0,
+    "rows": 48
+   },
+   "corpus": "configs/campaign3e_tasks.jsonl (V4-24: validation = trained tr3-* functions on word-disjoint unseen inputs)",
+   "fit_gate": {
+    "adapted_subset_accuracy": 0.85,
+    "passed": false,
+    "threshold": 0.95
+   },
+   "hidden_generalization": {
+    "adapted": 0.010416666666666666,
+    "frozen": 0.020833333333333332,
+    "rows": 192,
+    "verdict": "no cross-family transfer [corrected v4.0.2: rows 96 -> 192]"
+   },
+   "kind": "positive_control_fit on campaign3e corpus \u2014 first execution of the within-family measurement surface (Apple MPS, exposure 4)",
+   "path": "results/campaign3e/runs/v401-3e-8fam-s0 (evidence package)",
+   "reconciliation_v402": {
+    "checked": [
+     "commit inventory hashes",
+     "all 7 committed prediction files rescored under exact-match-v2",
+     "corpus join (id/split/prompt_sha256/expected)",
+     "config/adapter/receipt identity bindings",
+     "capability-destruction id lists"
+    ],
+    "corrections": [
+     "hidden_generalization.rows corrected 96 -> 192 (committed PREDICTIONS-FROZEN.jsonl carries 192 rows; accuracy values unchanged: 4/192 = 0.02083)"
+    ],
+    "verdict": "VERIFIED",
+    "verifier": "scripts/requalify_executed_campaign.py (minagi.v161.evidence_reconciliation.verify_run)"
+   },
+   "run_id": "v401-3e-8fam-s0",
+   "training": {
+    "examples": 80,
+    "exposure_per_example": 4,
+    "families": 8,
+    "seed": 0,
+    "steps": 320
+   },
+   "within_family_validation": {
+    "adapted": 0.4166666666666667,
+    "frozen": 0.20833333333333334,
+    "rows": 24,
+    "verdict": "underfit run \u2014 within-family gain observed but the fit gate did not pass; direction evidence only"
+   }
+  },
+  {
+   "capability_destruction": {
+    "frozen_correct_broken": 4,
+    "gained": 4,
+    "of_frozen_correct": 4,
+    "verdict": "net-zero row churn on hidden \u2014 every frozen-correct row broke and an equal number were gained"
+   },
+   "commit_status": "COMPLETE",
+   "compositional": {
+    "adapted": 0.0625,
+    "frozen": 0.0,
+    "rows": 48,
+    "verdict": "weak; trained functions do not yet compose (3/48)"
+   },
+   "corpus": "configs/campaign3e_tasks.jsonl (V4-24)",
+   "fit_gate": {
+    "adapted_subset_accuracy": 0.9875,
+    "passed": true,
+    "threshold": 0.95
+   },
+   "hidden_generalization": {
+    "adapted": 0.020833333333333332,
+    "frozen": 0.020833333333333332,
+    "rows": 192,
+    "verdict": "flat \u2014 no cross-family transfer or regression [corrected v4.0.2: rows 96 -> 192]"
+   },
+   "kind": "positive_control_fit on campaign3e corpus \u2014 fit-passing within-family measurement (Apple MPS, exposure 8)",
+   "path": "results/campaign3e/runs/v401-3e-8fam-e8-s0 (evidence package)",
+   "reconciliation_v402": {
+    "checked": [
+     "commit inventory hashes",
+     "all 7 committed prediction files rescored under exact-match-v2",
+     "corpus join (id/split/prompt_sha256/expected)",
+     "config/adapter/receipt identity bindings",
+     "capability-destruction id lists"
+    ],
+    "corrections": [
+     "hidden_generalization.rows corrected 96 -> 192 (committed PREDICTIONS-FROZEN.jsonl carries 192 rows; accuracy values unchanged: 4/192 = 0.02083)"
+    ],
+    "verdict": "VERIFIED",
+    "verifier": "scripts/requalify_executed_campaign.py (minagi.v161.evidence_reconciliation.verify_run)"
+   },
+   "run_id": "v401-3e-8fam-e8-s0",
+   "training": {
+    "examples": 80,
+    "exposure_per_example": 8,
+    "families": 8,
+    "seed": 0,
+    "steps": 640
+   },
+   "within_family_validation": {
+    "adapted": 0.5416666666666666,
+    "frozen": 0.20833333333333334,
+    "rows": 24,
+    "verdict": "WITHIN-FAMILY LEARNING MEASURED \u2014 +0.333 on word-disjoint unseen inputs of trained functions under a passing fit gate. Single seed, n=24, MPS: a real measured effect, NOT a qualification (no multi-seed matrix, no sealed-holdout lane, no statistical CI run)"
+   }
+  }
+ ],
+ "historical_requalification": {
+  "inconsistent_under_strict_rescore": 80,
+  "meaning": "v1-casefold-era reported metrics are superseded; strict-era (c3b3) runs verify byte-exact",
+  "report": "results/REQUALIFICATION_STATUS.md (evidence package)",
+  "runs_examined": 92,
+  "tool": "scripts/requalify_executed_campaign.py",
+  "verified_under_strict_rescore": 12
+ },
+ "limitations": [
+  "Campaign colab lane requires CUDA; v4.0 changes verified by unit/integration tests plus the CPU/MPS positive-control run, not a new full campaign.",
+  "Key custody is single-host development custody; no multi-party approval or HSM.",
+  "No claim of recursive self-improvement or demonstrated capability acquisition is made \u2014 G3 is NOT MET on the executed evidence."
+ ],
+ "note": "results/ is gitignored by design (evidence branch policy): the raw run directories and REQUALIFICATION_STATUS.md ship in the evidence package, not the source archive. This manifest is the source-archive record of what was executed and what it means \u2014 including, explicitly, the null result.",
+ "qualification_gates_G1_to_G8": {
+  "G1_evaluator_correctness": {
+   "evidence": "declarative-evaluator-v2 strict-by-default; 20 regression tests; score_row dispatch on all lanes",
+   "status": "PASS"
+  },
+  "G2_experimental_completeness": {
+   "evidence": "experiment_matrix.audit_matrix wired into qualifier as matrix_audit; INCOMPLETE/INCONSISTENT states enforced",
+   "status": "IMPLEMENTED"
+  },
+  "G3_genuine_learning": {
+   "evidence": "executed run: hidden 0.333 -> 0.333; no held-out improvement demonstrated \u2014 honest negative",
+   "status": "NOT MET"
+  },
+  "G4_retention": {
+   "evidence": "1/4 frozen-correct destroyed, 1 gained; regression bound machinery in place (retention split + destruction accounting)",
+   "status": "MEASURED"
+  },
+  "G5_transfer": {
+   "evidence": "compositional/cross-family splits exist and are measured by the runner; no executed claim made",
+   "status": "NOT EVALUATED"
+  },
+  "G6_cost": {
+   "evidence": "controller records compute/storage/overhead cost fields; training receipts bind duration and batch schedule",
+   "status": "IMPLEMENTED"
+  },
+  "G7_independence": {
+   "evidence": "qualifier rescores from persisted predictions; unsigned authority forces INVALID_EVIDENCE; holdout never opened by worker",
+   "status": "IMPLEMENTED"
+  },
+  "G8_reproducibility": {
+   "evidence": "manifest+receipt digest binding verified; independent rerun of v40-verify-s0 not yet executed on a second host",
+   "status": "PARTIAL"
+  }
+ },
+ "release": "mini-AGI-V1-Verified-Capability-Acquisition-v4.0.1",
+ "schema": "mini-agi-evidence-manifest-v4",
+ "sealed_holdout": {
+  "custody": "digest-bound into campaign configs; the runner/learner never opens it",
+  "path": "configs/holdout/campaign3b_holdout.jsonl",
+  "rows": 64,
+  "sha256": "sha256:f5181ff28a772f6c37252f2a070ea5d2579b2d1a54783f50b3bb6438e8e15572"
+ },
+ "test_results": {
+  "full_suite": "recorded at release time",
+  "see": "TEST_RESULTS.md"
+ }
+}

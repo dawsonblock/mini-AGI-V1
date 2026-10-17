@@ -1,0 +1,58 @@
+{
+  "confirmation": {
+    "reached": false,
+    "refused_at": "research decision 'REFUSED' is not QUALIFIED \u2014 a failed candidate is not eligible for confirmation"
+  },
+  "custody_established": false,
+  "custody_report": {
+    "controls": [
+      {
+        "control": "research_worker_env_marker",
+        "detail": "MINAGI_RESEARCH_WORKER was not set",
+        "enforced": true,
+        "kind": "cooperative (in-process, bypassable)"
+      },
+      {
+        "control": "sealed_outside_research_storage",
+        "detail": "sealed set is outside the research storage",
+        "enforced": true,
+        "kind": "structural (path relationship)"
+      },
+      {
+        "control": "sealed_file_permissions",
+        "detail": "owner-only mode, owned by the evaluating uid",
+        "enforced": true,
+        "kind": "filesystem (OS-enforced)",
+        "observed": {
+          "euid": 501,
+          "mode": "0o600",
+          "uid": 501
+        }
+      },
+      {
+        "control": "distinct_evaluator_os_identity",
+        "detail": "same-UID arrangement (uid 501 owns both sealed data and research storage) \u2014 mode 0600 does not isolate against a same-UID worker",
+        "enforced": false,
+        "kind": "OS identity separation (evaluator uid != research uid)",
+        "observed": {
+          "evaluator_uid": 501,
+          "research_uid": 501
+        }
+      }
+    ],
+    "distinct_os_identity_enforced": false,
+    "independent_isolation_established": false,
+    "permissions_enforced": true,
+    "schema": "mini-agi-campaign3b-custody-report-v1",
+    "statement": "Same-UID or unenforced file permissions: this run did NOT establish independent OS-level evaluator isolation. Mode 0600 protects against other UIDs, not against a same-UID research process. Treat the confirmation as un-isolated evidence."
+  },
+  "host_facts": {
+    "euid": 501,
+    "note": "same-UID host: the sealed set and the research tree are owned by one OS identity, so independent evaluator custody cannot be established here",
+    "sealed_owner": 501,
+    "storage_owner": 501
+  },
+  "schema": "mini-agi-campaign3b3-p5-attempt-v1",
+  "statement": "A production sealed confirmation was attempted against real campaign evidence on a same-UID host. It could not produce a qualified result: no independently held evaluator custody exists here, and the campaign's own research record is REFUSED \u2014 there is no qualified candidate to confirm. The refusal is the correct, fail-closed output. P5 remains OPEN until a candidate survives matched multi-seed evaluation AND an evaluator on a distinct OS identity verifies it against a fresh sealed benchmark.",
+  "verdict": "NOT_QUALIFIED"
+}

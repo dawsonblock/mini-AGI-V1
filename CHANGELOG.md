@@ -1,3 +1,331 @@
+# Unreleased — v4.1.0 dev-lane tooling fixes
+
+Post-release fixes to the capability-acquisition analysis lane. No
+scientific claim changes: the v4.1.0 dev-matrix verdict stands (no
+declared arm passes all gates), and all runs remain
+EVALUATION_VERIFIED / NOT_QUALIFIED.
+
+- **Security gate semantics corrected to the documented contract.**
+  `run_security_lane.py` wrote the absolute adapted mandatory-violation
+  count into `regressions` although its own contract (and
+  `EXPERIMENT_PROTOCOL.md`, `campaign_plan.py`) define a frozen-relative
+  regression bound — with `security_max_violations: 0` unreachable since
+  the frozen baseline violates 5/30 governed probes itself. The lane now
+  writes paired per-row fields and schema v2; `analyze_v410_matrix.py`
+  derives the regression itself from stored frozen+adapted outputs
+  (`_security_block`), never trusts lane rollup fields or
+  runner-asserted METRICS security blocks, and fails closed on missing,
+  malformed, or unpaired evidence. The eight existing sidecars were
+  rescored in place from their stored outputs.
+- **Screened arms are first-class and honest.** New
+  `--screened-arms`/`--screened-reason` flags (reason mandatory):
+  screened cells report `SCREENED` instead of `MISSING` but still appear
+  in `missing_cells`; `complete` stays strict while
+  `complete_for_declared_scope` reports the excused view. A screened arm
+  not declared in `--arms` is rejected.
+
+# v4.0.3 — evidence-boundary and authority repair
+
+Repairs for the verification and authorization defects the v4.0.2
+source audit identified (details in `DEFECT_REGISTER_V4.json`,
+V4-32..V4-37). Version identity bumped to 4.0.3 across VERSION,
+pyproject, `minagi.__version__`, SBOM and RELEASE_VALIDATION.
+
+- **Integrity is not qualification.** `capability_outcomes.py` no
+  longer accepts a self-authored hash-consistent run as "verified".
+  New module `src-python/minagi/v161/qualified_outcome.py` defines
+  `INTEGRITY_VERIFIED` / `EVALUATION_VERIFIED` / `QUALIFIED` and
+  `derive_qualified_outcome`, which derives every outcome number —
+  baseline/adapted accuracy, delta, retention regression, measured
+  costs — only from independently rescored evidence (strict
+  reconciliation of every committed prediction split) or from a
+  signed evaluator/qualification document verified against a trust
+  root. Signed qualification decisions (`QUALIFICATION.json`) must
+  bind run_id + evidence digest under a `qualification`-role key.
+- **The CLI cannot mint verified numbers.**
+  `scripts/capability_control.py record` refuses `--delta` /
+  `--retention-drop` / `--cost` alongside `--receipt`; verified
+  history entries carry the derived outcome digest. Manual values are
+  permitted only under explicit `--diagnostic`, which always records
+  `verified=false` and can never promote.
+- **Registry anti-rollback is durable.**
+  `authenticated_registry.py` gains `RegistryEventLog` (signed,
+  hash-chained transitions: REGISTERED/QUALIFIED/REVOKED/REQUALIFIED/
+  SUSPENDED/RESTORED, each binding adapter id, qualification
+  generation, artifact digest, model revision, previous event digest,
+  seq) and `RegistryStateAuthority` (a separately-custodied signed
+  head binding seq + state digest + event head; monotonic on write).
+  `VerifiedAdapterRouter.from_json` folds a verified event chain as
+  authoritative over mutable snapshot fields, refuses missing/broken/
+  forged chains, and under `require_authority` fails closed when the
+  attested head is absent or disagrees. Manifests carry
+  `qualification_generation`; reinstatement requires a strictly newer
+  generation, and a revoked adapter's old generation can no longer
+  re-register or activate.
+- **Filesystem containment.** `run_reservation.py` enforces a
+  filename-safe identifier grammar for run/attempt ids, refuses
+  symlinked `.claims`/`.staging` infrastructure and symlink
+  destinations, verifies resolved-parent containment, and publishes
+  via an `os.mkdir` no-replace nonce with `RUN_COMMIT.json` moved
+  last — concurrent attempts can no longer replace a committed run
+  even in the empty-directory rename corner.
+- **Evidence completeness is mandatory.**
+  `evidence_reconciliation.py` requires every reported metric that a
+  committed prediction surface makes resolvable (hidden/subset/
+  validation/compositional/within-holdout/retention accuracies, plus
+  capability-destruction counts with list/count consistency), enforces
+  finite `[0,1]` values, and treats unparseable committed JSON —
+  including a truncated RUN_COMMIT — as INVALID/INCONSISTENT instead
+  of a verifier crash.
+- **Campaign completeness.**
+  `scripts/requalify_executed_campaign.py` gains
+  `--expected-manifest` (every historical run id, including failed
+  ones, must be present with an accurate status),
+  `--strict-completeness` (unlisted dirs fail) and
+  `--require-evidence` (empty collections and zero-evidence COMPLETE
+  runs fail) with nonzero exit codes.
+- **Release integrity.** `verify_release.py` treats `dist/` as a
+  build-artifact directory (like `build/`); the source manifest,
+  signature and attestation were reissued over the final tree with
+  the existing release key.
+
+Phase-acceptance: no invented numerical gain can enter the
+controller's verified outcome history; production adapter
+authorization survives restarts while rejecting stale, missing or
+tampered authority state; invalid evidence resolves to
+INVALID/INCONSISTENT, never VERIFIED. No scientific learning
+improvement is claimed by these gates.
+
+# v4.0.1 — external-review hardening
+
+Repairs for the four defects an external architecture review confirmed
+against the v4.0.0 tree, plus the fit-runner split coverage needed to
+execute them (details in `DEFECT_REGISTER_V4.json`). Version identity
+(VERSION, pyproject, `minagi.__version__`, SBOM, RELEASE_VALIDATION)
+is bumped to 4.0.1 across all pinned surfaces.
+
+- **V4-21 revoked adapters resurrected on save/reload.**
+  `VerifiedAdapterRouter.to_json` serialized only the adapter list —
+  revocations, suspensions and health history were silently dropped, so
+  a revoked adapter became routable after `from_json`. Registry schema
+  v2 now persists all three; a v1 file cannot prove its pre-save safety
+  state, so it loads marked `state_complete = False` with a recorded
+  warning and is refused outright under `strict_state=True`.
+- **V4-22 manifests carried no verifiable authorization.**
+  `QualifiedAdapterManifest` gained an Ed25519 envelope over the full
+  unsigned body (`sign`/`verify`, schema v2). The router now takes a
+  `manifest_verifier`, an `authority` (`AuthorityRegistry` —
+  `required_role="qualification"`), and an `artifact_resolver` +
+  `artifact_digester`; unsigned, wrongly-signed, wrong-role, or
+  artifact-mismatched manifests never enter the registry and appear in
+  every decision's `refused` list. Artifact digests are re-verified at
+  every `from_json`. `scripts/sign_adapter_manifest.py` is the
+  authority-side signing tool.
+- **V4-23 routed evaluation ran under oracle family labels.**
+  `capability_matrix.py` routed every eval row with `family=` set to the
+  benchmark's gold label — an explicit hint bypasses lexical family
+  matching entirely, so routed accuracy was measured with the answer
+  handed to the router. The matrix now reports `inferred` (no hint —
+  the production-realistic measurement, designated the result of
+  record) and `hinted` (dispatch-metadata diagnostic) separately, with
+  correct/false-selection counts and real `family_terms` derived from
+  task text.
+- **V4-24 campaign3b corpus had no within-family split.** Its
+  "validation" partition carried `val3-*` families disjoint from train
+  — effectively a second cross-family set. `scripts/gen_campaign3e.py`
+  generates `configs/campaign3e_tasks.jsonl` where validation is the
+  trained `tr3-*` functions on word-disjoint unseen inputs (asserted by
+  `--check` and pinned by tests); the shipped campaign3b corpus is
+  byte-identical for executed-campaign provenance. New config
+  `configs/campaign3e.yaml` binds the new sealed holdout.
+- **V4-25 the fit runner never evaluated the new splits.**
+  `positive_control_fit.py` scored only subset + hidden, so the
+  V4-24 validation/compositional surfaces were generated but never
+  measured by this lane. The runner now evaluates both splits for the
+  frozen and adapted model, writes per-split prediction files
+  (`PREDICTIONS-{FROZEN,ADAPTED}-{VALIDATION,COMPOSITIONAL}.jsonl`),
+  and reports a within-family / untrained-family decomposition of the
+  validation rows. Empty splits add no artifacts, so run inventories
+  on legacy corpora are unchanged.
+
+# v4.0.0 — Verified Capability Acquisition (Campaign 3B repair)
+
+Independent-audit repair and upgrade release on the v16.4.10 codebase
+lineage — VERSION, pyproject, `minagi.__version__`, SBOM and
+RELEASE_VALIDATION all agree on 4.0.0 (the repo's own version-identity
+test pins the agreement). The theme is measurement truth: every defect closed below
+was one that could make an experiment report a capability result the
+evidence did not support. **No claim of recursive self-improvement is
+made; the executed verification run produced an honestly reported null
+result on held-out generalization** (details below and in
+`DEFECT_REGISTER_V4.json`).
+
+## Repaired defects (P0)
+
+- **V4-01 declarative scoring leak.** `equals`, `one_of`, and
+  `json_field_equals` routed through the casefold oracle —
+  wrong-case answers scored correct. `evaluators.py` now centralizes
+  versioned match semantics: strict by default, `match:"normalized"`
+  only when a verify spec explicitly declares it, unknown semantics
+  fail closed (`DECLARATIVE_EVALUATOR_VERSION=declarative-evaluator-v2`).
+  The legacy `exact_match` oracle is retained for provenance only.
+- **V4-02 KL constrained the wrong tokens.** `_frozen_kl` measured
+  positions predicting *prompt* tokens, not the response continuations
+  it exists to protect. Replaced by response-aware teacher-forced KL:
+  verified `{prompt,response}` pairs (or frozen-model greedy
+  continuations for bare `kl_prompts`), causal `logits[:, :-1]` vs
+  `labels[:, 1:]` alignment, response-only mask, float32 log-softmax,
+  adapter-disabled reference whose weights digest is receipt-bound.
+- **V4-03 rehearsal corpus leaked the trained capability.** The
+  default pool drew frozen-correct rows from the same families under
+  training; custom corpora skipped verification. Rehearsal candidates
+  now must be frozen-verified-correct rows from families NOT under
+  training; `--rehearsal-corpus` rows pass the identical check; an
+  empty verified pool fails the run; digests and rejection counts are
+  bound into the run record.
+- **V4-05 broken campaign configs + missing splits.** Both campaign
+  configs pointed at a corpus that did not exist (v166 plans refused
+  empty holdout digests on top of that); the validation partition was
+  bound but never evaluated; no compositional split existed.
+  `scripts/gen_campaign3d.py` generates the sealed 413-row corpus +
+  64-row holdout (`configs/campaign3b_tasks.jsonl`,
+  `configs/holdout/`); `DatasetPartitionSetV3` binds the compositional
+  split; runner + qualifier evaluate and rescore validation (split B)
+  and compositional (split E) blocks.
+
+## Repaired defects (P1)
+
+- **V4-04** run-directory collision detection moved before
+  tokenizer/model load; staging is reserved up front; publish stays
+  atomic; failed runs commit `FAILED` state.
+- **V4-06** `run_colab_campaign` and `run_sealed_confirmation` route
+  per-row scoring through `score_row` — verify specs can no longer be
+  bypassed by a direct oracle call.
+- **V4-07** `positive_control_report` recomputes under
+  `exact_match_strict` (the metric of record).
+- **V4-08** missing authority keys now force the qualification
+  decision to `INVALID_EVIDENCE` instead of leaving a `QUALIFIED`
+  verdict on an unsigned record.
+- **V4-09** `assert_disjoint` now checks every partition pair (train
+  could previously overlap retention/security silently).
+- **V4-10** the declared primary comparison (L7−L5b) is now an actual
+  gate when both arms are in the plan — mean delta plus
+  multiplicity-adjusted cluster CI, not just a reported number.
+- **V4-12** `n_comparisons_preregistered` is consumed: family-cluster
+  and primary-comparison CIs are Bonferroni-adjusted and both alphas
+  are recorded.
+- **V4-15** `experiment_matrix.py` audits completeness (seeds × arms ×
+  cells) and consistency (model/tokenizer/evaluator/dataset digests);
+  wired into the qualifier as `matrix_audit`.
+
+## New mechanisms
+
+- `capability_controller.py` + `scripts/capability_control.py`:
+  evidence-driven failure diagnosis (10 hypothesis categories),
+  cost- and history-aware intervention selection, anti-repeat refusal
+  for previously failed interventions, append-only intervention
+  history, explicit `no_intervention` and `candidate_controlled`
+  markers.
+- `verified_routing.py`: `VerifiedAdapterRouter` — qualified-adapter
+  manifests bind adapter/model/scorer/evidence digests and declared
+  families; routing enforces eligibility + OOD abstention to frozen,
+  rolling-health suspension, revocation and snapshot rollback; every
+  decision is a structured event.
+- `train_family_adapters` (parameter-isolated per-family adapters) +
+  `scripts/capability_matrix.py` executing the strategy matrix
+  {frozen, fixed, rehearsal, kl, both, routed-family, skill-memory}
+  over one verified pipeline.
+- `ExperimentProtocolV2`: binds rehearsal/KL levers, corpus digests,
+  primary comparison, comparison count, compositional minimum, and
+  baseline-evaluability minimum into the signed protocol; V1 schema
+  untouched so executed-campaign digests stay valid.
+- `scripts/requalify_executed_campaign.py` + `results/REQUALIFICATION_STATUS.md`:
+  byte-exact commit verification + strict rescore of all 92 committed
+  positive-control runs — 12 VERIFIED (strict-era c3b3), 80
+  INCONSISTENT (v1-casefold-era reported metrics, now superseded).
+- `scripts/probe_stale_gating.py`: baseline-evaluability probe (F9);
+  the frozen model produced non-empty output on 4236/4236 committed
+  hidden predictions, so the executed evidence is unaffected.
+
+## Executed verification
+
+- Real end-to-end MPS run `results/campaign3b2/runs/v40-verify-s0`
+  through the repaired pipeline: fit gate 1.000 PASS; hidden
+  frozen 0.333 → adapted 0.333 (**null result, reported as such**);
+  1 frozen-correct row destroyed, 1 gained; 60 response-scope KL
+  evaluations (mean ≈ 0.0092); rehearsal drew exactly 2 verified
+  outside-family pairs and rejected 30.
+- Full Python suite: see `TEST_RESULTS.md`.
+
+## Migration notes
+
+- Corpus schemas are additive (`DatasetPartitionSetV3`,
+  `ExperimentProtocolV2`); V1/V2 digests are unchanged and remain
+  verifiable — opt into v2 via `protocol_version: v2` in the campaign
+  config.
+- Verify specs that relied on implicit case-insensitive matching must
+  declare `"match": "normalized"` explicitly; strict is the default.
+- `train_lora` accepts `kl_examples` (verified pairs, preferred),
+  `kl_prompts` (frozen continuations derived automatically), and
+  `rehearsal_examples`; `kl_weight > 0` with no reference set fails
+  closed.
+- Historical campaign-3b2 reported accuracies predate the strict
+  oracle: treat them as superseded per
+  `results/REQUALIFICATION_STATUS.md`; c3b3-era runs are
+  strict-verified.
+
+# v16.4.10 — Containment and Authority Closure
+
+Closes the independent audit's second-round containment and broker-
+authority findings (SEC-901..906) at the source, plus the real-model
+lifecycle gaps (VAL-901/902), with adversarial regressions for every
+row. No architecture change; the supervisor/grants/router/NsJail
+design stands.
+
+- SEC-901 (P0): `cgroup_populated` is a strict `key value` parser —
+  only an explicit `populated 0` certifies EMPTY; malformed,
+  duplicated, missing or unexpected evidence is UNKNOWN, and UNKNOWN
+  is never empty. The `cgroup.procs` fallback is gone.
+- SEC-902 (P0): one shared `ContainmentState` evaluator
+  (RUNNING/EMPTY/REMOVED_VERIFIED/UNKNOWN) serves broker status,
+  executor status and teardown. `populated 1` can no longer be
+  overridden by an inactive unit or an exited client; removed-cgroup
+  acceptance is InvocationID-bound so a reused unit name cannot
+  satisfy a previous worker's teardown check.
+- SEC-903 (P1): worker ids are `w-<hex32>` generated by the broker
+  (`secrets.token_hex(16)`); `prepare()` refuses caller-supplied ids;
+  workspaces are created descriptor-relative under the pinned state
+  root, refusing stale dirs, symlink tricks and unit-name injection.
+- SEC-904 (P1): `validate_host` no longer treats `euid==0` as
+  capability evidence — CapEff/unprivileged-userns decide
+  CAPABILITY_PREFLIGHT; only a real launched probe decides
+  ENFORCEMENT_QUALIFICATION.
+- SEC-905 (P1): `AuthorizedLaunchRecord` — a runtime-authority-signed
+  envelope binding activation id, backend-manifest, runtime-manifest,
+  artifact-root, isolation-profile and execution-budget digests plus
+  expiry, policy/revocation epochs and a single-use nonce. The broker
+  verifies it independently (trusted public keys + read-only
+  approved-record resolver); the signed nonce is the atomic launch
+  reservation.
+- SEC-906 (P1): production startup runs the REAL isolation probe
+  through the executor and persists a host-bound qualification record
+  (boot id, kernel, nsjail digest, profile digest, worker uid,
+  verdict) — `validate_host()` alone can no longer open serving.
+- VAL-901: genuine mid-generation cancellation — a real GPT-2 decode
+  inside the jail is interrupted via the injected cancel event;
+  `metrics.cancelled` proves it.
+- VAL-902: full signed A->B activation through
+  ServingSupervisor+ServingRouter+NsJail executor (per-launch signed
+  authorization), inference on both, supervisor rollback to A, cold
+  restart through RecoveryManager with B's promotion revoked — B
+  cannot re-enter serving.
+
+Qualification (this branch, same privileged Linux container profile):
+62/62 v16.4.10 tests + 50 executor-isolation/G10 + full
+`run_nsjail_qualification.sh` (host check, strict preflight,
+7/7 adversarial, 2/2 real-model) — PASS. Local suite: 1067 passed /
+18 skipped. Native CPU: 28/28.
+
 # v16.4.3 — Hardened Runtime
 
 Closes all ten v16.4.2 authority/concurrency/filesystem/recovery/

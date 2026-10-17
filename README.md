@@ -53,10 +53,10 @@ every release ships a signed manifest verifiable offline.
 
 | Item | State |
 |---|---|
-| Current release | **v16.4.3 — Hardened Runtime** (`v16.4.3`, in flight) · latest published: [**v16.4.2**](https://github.com/dawsonblock/mini-AGI-V1/releases/tag/v16.4.2) |
+| Current release | **v4.0.0 — Verified Capability Acquisition** (Campaign 3B audit repair; package lineage 16.4.10 → 4.0.0) · previous: v16.4.10 |
 | Release integrity | ✅ **PASS** — `scripts/verify_release.py`: signed manifest, Ed25519 signature, attestation/version reconciliation |
 | CI | ✅ **green** — lint (ruff · Flake8 · Pylint error-gate), ubuntu + macOS validation, native CMake/CTest, tag-gated release-integrity |
-| Unified Python suite | ✅ **767 passed, 1 skipped** (`tests-python/`) |
+| Unified Python suite | ✅ **793 passed, 1 skipped** (`tests-python/`) |
 | Native CTest | ✅ 28/28 (ubuntu + macOS CPU/stub builds; CUDA paths unverified offline) |
 | Runtime admission | ✅ full chain — plan → qualification → promotion → manifest → exact bytes — with signed activation receipts and rollback |
 | Evaluator sandbox | ✅ fail-closed — usable / unavailable / misconfigured backends classified explicitly; no unsandboxed fallback |
@@ -67,7 +67,68 @@ every release ships a signed manifest verifiable offline.
 | Campaign 3A — `campaign3a` | ⏳ **PREREGISTERED + EXECUTING** — halved-optimization-pressure arm, sealed digest-bound holdout, resumable per-seed evidence banking |
 | Validated designation | **v16.2** — the v16.3+ promotion gate required Campaign 2 to qualify; it did not |
 
-## What's new in v16.4.3
+## What's new in v4.0.0 — Verified Capability Acquisition
+
+An independent source audit of the Campaign 3B experimental stack found
+(and this release repairs) a class of defects that could make an
+experiment report a capability result the evidence did not support.
+`DEFECT_REGISTER_V4.json` is the machine-readable register; the
+CHANGELOG carries the full repair list.
+
+- **Correctness scoring is honest.** Declarative `equals`/`one_of`/
+  `json_field_equals` leaked through the casefold oracle; matching is
+  now centralized, versioned (`declarative-evaluator-v2`), strict by
+  default, and fails closed on unknown semantics.
+- **KL preservation constrains the right tokens.** The old term
+  measured prompt-position distributions; the new one is response-aware
+  and teacher-forced, with the adapter-disabled frozen reference bound
+  into every receipt.
+- **Rehearsal preserves other capabilities, not the one being trained.**
+  Pool membership is frozen-verified-correct and excludes trained
+  families; rejection counts and digests are recorded.
+- **The experiment matrix refuses to lie.** Completeness/consistency
+  audits, a real L7−L5b primary-comparison gate, Bonferroni-adjusted
+  CIs, and `INVALID_EVIDENCE` for unsigned qualification records.
+- **New machinery, wired in.** `capability_controller` (diagnosis →
+  intervention → cost-aware history), `verified_routing`
+  (qualified-adapter manifests, OOD abstention to frozen, rollback),
+  per-family parameter-isolated adapters, and `scripts/capability_matrix.py`
+  for the strategy comparison surface.
+- **Honest historical accounting.** `results/REQUALIFICATION_STATUS.md`
+  byte-verifies and strict-rescores all 92 committed positive-control
+  runs: 12 VERIFIED, 80 INCONSISTENT under strict semantics
+  (v1-era reported metrics superseded).
+- **Executed end-to-end check** (`results/campaign3b2/runs/v40-verify-s0`):
+  the repaired pipeline fits its training families (gate 1.000 PASS)
+  while honestly reporting **no hidden-set improvement**
+  (0.333 → 0.333) — a null result recorded as a null result.
+
+## What's new in v16.4.4
+
+**Verified runtime closure.** The activation, rollback, routing,
+audit, budget and recovery paths are now verified end to end: durable
+commit intent precedes any routing publication; deployment generations
+CAS-guard every transition and a failed candidate restores the last
+committed live predecessor (or durably reports UNAVAILABLE); the router
+holds per-activation request leases and unloads only at zero in-flight;
+privileged operations land mandatory signed audit records before their
+side effect; inference obeys enforceable token/concurrency/deadline
+budgets; `--production` refuses to start without signed backend
+identity, measured dependency closure, operative policy epoch and fresh
+revocation evidence; and `RecoveryManager` restores a cold-started
+service through the normal verified path — fresh grant, re-measured
+artifacts, isolated load, health probes — rather than trusting a durable
+pointer as proof of life.
+
+All seven runtime findings (SEC-301..307) are closed — see
+[`RELEASE_CHANGE_MANIFEST.json`](RELEASE_CHANGE_MANIFEST.json).
+Controller correctness (SEC-005/006) remains the v16.4.5 gate; real-model
+Campaign 3 qualification the v16.5.0 gate.
+
+<details>
+<summary><b>v16.4.3 — Hardened Runtime</b></summary>
+
+**Hardened runtime.** Every guarantee the activation architecture
 
 **Hardened runtime.** Every guarantee the activation architecture
 claimed is now enforced at the source: durable single-use admission

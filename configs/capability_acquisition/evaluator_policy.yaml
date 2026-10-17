@@ -1,0 +1,56 @@
+# Evaluator policy — v4.0.3-r2 Phase 3.
+#
+# The evidence-binding and custody rules for Campaign 4A final
+# evaluations. trusted_evidence.resolve_trusted_evidence enforces the
+# machine-checkable half; the OS-level separation is deployment
+# policy (no in-process check can attest another user's permissions).
+schema: mini-agi-v4.0.3-evaluator-policy-v1
+
+# Mandatory evidence identities — every final evaluation must bind
+# each of these; null is permitted only for declared adapter-free
+# experiment types.
+required_identities:
+  - base_model          # CONFIG.model_id + model_revision
+  - tokenizer           # generation-config tokenizer binding
+  - adapter             # adapter bytes, unless declared adapter-free
+  - dataset             # corpus identity bound by the receipt
+  - scorer              # authorized scoring version
+  - protocol            # committed protocol/config identity
+  - generation_config   # prompt + output contract digests
+  - predictions         # committed prediction files
+  - security            # governed sidecar when corpus has security rows
+  - retention           # paired retention files when corpus declares them
+  - evaluation_receipt  # authorized independent-evaluation receipt
+  - execution_receipt   # authorized model-execution receipt (see below)
+
+adapter_free_experiment_types:
+  - frozen_baseline
+  - foundation_only
+
+# Evaluator-owned model execution: final confirmation requires a
+# bound model-execution-receipt-v1 proving the evaluator loaded and
+# ran the candidate artifact itself. Development analysis may set this
+# false; qualification claims may not.
+require_execution_receipt: true
+
+# Real-model confirmation only — simulated (mock-loader) receipts are
+# test fixtures and are refused.
+require_real_execution: true
+
+# Authorized scoring versions the evaluator accepts.
+scoring_versions:
+  - exact-match-v2
+
+# Required evidence level for a cell to contribute to qualification.
+required_evidence_level: independently_verified
+
+# Authority custody — deployment requirements, verified out-of-band:
+# research and evaluation run under separate OS identities with
+# separate key storage; the research agent must not hold the
+# evaluation signing key, sealed answers, or trusted-policy write
+# access.
+custody:
+  separate_os_identities: required
+  signing_key_permissions: "0600"
+  signing_key_location: "outside research workspace"
+  sealed_answer_access: evaluator_only

@@ -53,16 +53,28 @@ from minagi.platforms.colab.environment import probe_environment
 from minagi.platforms.colab.storage import ColabStorage
 from minagi.platforms.cuda.hf_runtime import HFLoadSpec, load_tokenizer, load_causal_lm
 from minagi.platforms.cuda.peft_trainer import LoraTrainSpec, train_lora
-from minagi.v161.arms import (ARMS, ARM_IDS, ZERO_DIGEST, dir_size_bytes,
-                              shuffled_label_examples,
+from minagi.v161.prompt_contract import (build_prompt_contract,
+                                         generation_diagnostics,
+                                         output_contract_from_config,
+                                         encode_generation)
+from minagi.v161.arms import (ADAPTER_REPLAY_ID, ARM_IDS,
+                              PARAMETRIC_ARM_IDS, SELF_VERIFIED_REPLAY_IDS,
+                              VERIFIED_REPLAY_ID, ARMS,
+                              OracleVerifiedReplayArm, ZERO_DIGEST,
+                              dir_size_bytes, shuffled_label_examples,
                               shuffled_label_texts)
 from minagi.v161.dataset_manifest import (DatasetMember,
                                           DatasetMembershipManifest,
-                                          DatasetPartitionSet)
+                                          DatasetPartitionSet,
+                                          DatasetPartitionSetV3)
 from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
-from minagi.v161.evaluators import (containment_match, exact_match,
+from minagi.v161.evaluators import (containment_match, exact_match_strict,
                                     retention_score, score_row,
                                     security_regression)
+from minagi.v161.safety_regression import (SAFETY_SUITE_VERSION,
+                                           category_rollup,
+                                           classify_violations,
+                                           rollup_metrics, suite_digest)
 from minagi.v161.authority import (AuthorityLedger, AuthorityRegistry)
 from minagi.v161.campaign_plan import (ColabCampaignPlanV162,
                                        ColabCampaignPlanV163,
@@ -77,7 +89,8 @@ from minagi.v161.evidence_receipt_v3 import (EvidenceReceiptV3,
                                              write_predictions)
 from minagi.v161.executed_run import (ExecutedRunReceiptV162,
                                       load_verified_seed_result)
-from minagi.v161.experiment_protocol import ExperimentProtocolV1
+from minagi.v161.experiment_protocol import (ExperimentProtocolV2,
+                                             protocol_from_config)
 from minagi.v161.stats import bootstrap_ci
 from minagi.v161.artifact_closure import tokenizer_artifact_digest
 from minagi.v161.runtime_closure3 import sha256_path
@@ -95,43 +108,83 @@ def member(row):
                          str(row.get("source", "local")), str(row.get("generator", "manual")))
 
 
-def generate(model, tokenizer, prompt, max_new_tokens):
+def generate(model, tokenizer, prompt, max_new_tokens, contract=None):
+    """Generate one answer under the shared prompt contract (SCI-301).
+
+    Every inference path — baseline, arm-augmented, adapter, replay
+    practice and security — renders through `encode_generation`,
+    the same function training uses to build its prompt prefix. Returns
+    (text, generated_tokens, eos_hit); eos_hit is the precise
+    observation that greedy decoding terminated on the tokenizer's
+    end-of-turn token.
+    """
     import torch
     with torch.inference_mode():
         device = next(model.parameters()).device
-        batch = tokenizer(prompt, return_tensors="pt")
-        batch = {k: v.to(device) for k, v in batch.items()}
+        contract = contract or build_prompt_contract(tokenizer)
+        input_ids = encode_generation(tokenizer, prompt, contract)
+        batch = {"input_ids": torch.tensor([input_ids], device=device),
+                 "attention_mask": torch.ones((1, len(input_ids)),
+                                              dtype=torch.long,
+                                              device=device)}
         out = model.generate(**batch, max_new_tokens=max_new_tokens,
                              do_sample=False, pad_token_id=tokenizer.eos_token_id)
-        new_tokens = int(out.shape[1] - batch["input_ids"].shape[1])
-        text = tokenizer.decode(out[0, batch["input_ids"].shape[1]:],
+        new_tokens = int(out.shape[1] - len(input_ids))
+        text = tokenizer.decode(out[0, len(input_ids):],
                                 skip_special_tokens=True).strip()
-        return text, new_tokens
+        eos_id = getattr(tokenizer, "eos_token_id", None)
+        eos_hit = bool(eos_id is not None and new_tokens > 0
+                       and int(out[0, -1].item()) == int(eos_id))
+        return text, new_tokens, eos_hit
+
+
+def _aggregate_diagnostics(diags):
+    """Mean rates over one arm's per-row generation diagnostics."""
+    keys = ("strict_exact_match", "correct_first_line",
+            "correct_answer_prefix", "valid_answer_format",
+            "eos_termination", "max_token_truncation")
+    n = len(diags)
+    if not n:
+        return {"n": 0}
+    out = {"n": n}
+    for k in keys:
+        out[k] = sum(float(d.get(k, 0.0)) for d in diags) / n
+    out["generated_tokens"] = sum(int(d.get("generated_tokens", 0))
+                                  for d in diags)
+    return out
 
 
 def evaluate(model, tokenizer, rows, max_new_tokens, scorer, arm=None,
-             block=None):
+             block=None, contract=None):
     """Evaluate rows; when `block` is given, also return canonical v3
     prediction records (input digest + output + status, no expected
     answers — scoring joins against the corpus at qualification time).
+    Every row also yields contract diagnostics (SCI-303), recorded
+    alongside — never instead of — the strict score.
     """
-    scores, outputs, tokens, preds = [], [], 0, []
+    scores, outputs, tokens, preds, diags = [], [], 0, [], []
     t0 = time.time()
     for row in rows:
         prompt = str(row["prompt"])
         if arm is not None:
             prompt = arm.augment(prompt, str(row.get("family", "")))
-        pred, nt = generate(model, tokenizer, prompt, max_new_tokens)
+        pred, nt, eos_hit = generate(model, tokenizer, prompt,
+                                     max_new_tokens, contract)
         tokens += nt
         score = float(score_row(row, pred, scorer))
         scores.append(score)
         outputs.append({"id": row["id"], "prediction": pred,
                         "expected": row["expected"], "score": score})
+        diags.append({"id": str(row["id"]), "block": block or "eval",
+                      **generation_diagnostics(
+                          str(row.get("expected", "")), pred,
+                          generated_tokens=nt,
+                          max_new_tokens=max_new_tokens, eos_hit=eos_hit)})
         if block is not None:
             preds.append(prediction_record(
                 str(row["id"]), block, prompt, pred, nt, max_new_tokens))
     mean = sum(scores) / len(scores) if scores else 0.0
-    return mean, outputs, tokens, time.time() - t0, preds
+    return mean, outputs, tokens, time.time() - t0, preds, diags
 
 
 def model_identity(model, spec):
@@ -228,20 +281,26 @@ def physical_identity_digests(spec: HFLoadSpec):
 
 
 def security_eval(model, tokenizer, rows, max_new_tokens, security_fn,
-                  arm=None):
-    outputs, count, tokens, preds = [], 0, 0, []
+                  arm=None, contract=None):
+    outputs, count, tokens, preds, diags = [], 0, 0, [], []
     for row in rows:
         prompt = str(row["prompt"])
         if arm is not None:
             prompt = arm.augment(prompt, str(row.get("family", "")))
-        pred, nt = generate(model, tokenizer, prompt, max_new_tokens)
+        pred, nt, eos_hit = generate(model, tokenizer, prompt,
+                                     max_new_tokens, contract)
         tokens += nt
         flag = int(score_row(row, pred, security_fn))
         count += flag
         outputs.append({"id": row["id"], "prediction": pred, "flagged": flag})
+        diags.append({"id": str(row["id"]), "block": "security",
+                      **generation_diagnostics(
+                          str(row.get("expected", "")), pred,
+                          generated_tokens=nt,
+                          max_new_tokens=max_new_tokens, eos_hit=eos_hit)})
         preds.append(prediction_record(
             str(row["id"]), "security", prompt, pred, nt, max_new_tokens))
-    return count, outputs, tokens, preds
+    return count, outputs, tokens, preds, diags
 
 
 def free_model(model):
@@ -292,26 +351,47 @@ def main() -> int:
 
     rows = load_rows(ROOT / cfg["dataset"])
     by_split = {s: [r for r in rows if r["split"] == s]
-                for s in ("train", "validation", "hidden", "retention", "security")}
+                for s in ("train", "validation", "hidden", "retention",
+                          "security", "compositional")}
     train, val, hidden = by_split["train"], by_split["validation"], by_split["hidden"]
     retention_rows, security_rows = by_split["retention"], by_split["security"]
+    # v4.0 split E: rows that combine operations the adapter trained on
+    # into novel compositions — unseen inputs, trained operation pairs.
+    compositional_rows = by_split["compositional"]
     # v164: rows with probe=delayed are the seed-end persistence probes.
     # They remain inside the retention partition digest (the qualifier
     # recomputes over the committed corpus); filtering is eval-only.
     delayed_rows = [r for r in retention_rows if r.get("probe") == "delayed"]
     retention_probe_rows = [r for r in retention_rows if r.get("probe") != "delayed"]
-    parts = DatasetPartitionSet(
-        DatasetMembershipManifest("train", tuple(member(r) for r in train)),
-        DatasetMembershipManifest("validation", tuple(member(r) for r in val)),
-        DatasetMembershipManifest("hidden", tuple(member(r) for r in hidden)),
-        DatasetMembershipManifest("retention", tuple(member(r) for r in retention_rows)),
-        DatasetMembershipManifest("security", tuple(member(r) for r in security_rows)),
-        require_family_disjoint_hidden=bool(cfg.get("require_family_disjoint_hidden", False)))
+    # 3B Step 18: the governed safety suite is present exactly when the
+    # security partition carries categorised probes.
+    governed_probes_present = any(r.get("category") for r in security_rows)
+    if compositional_rows:
+        # v4.0: a corpus carrying a compositional split uses the V3
+        # partition schema — the split's membership digest is bound into
+        # the signed plan like every other evaluation partition.
+        parts = DatasetPartitionSetV3(
+            DatasetMembershipManifest("train", tuple(member(r) for r in train)),
+            DatasetMembershipManifest("validation", tuple(member(r) for r in val)),
+            DatasetMembershipManifest("hidden", tuple(member(r) for r in hidden)),
+            DatasetMembershipManifest("retention", tuple(member(r) for r in retention_rows)),
+            DatasetMembershipManifest("security", tuple(member(r) for r in security_rows)),
+            require_family_disjoint_hidden=bool(cfg.get("require_family_disjoint_hidden", False)),
+            compositional=DatasetMembershipManifest(
+                "compositional", tuple(member(r) for r in compositional_rows)))
+    else:
+        parts = DatasetPartitionSet(
+            DatasetMembershipManifest("train", tuple(member(r) for r in train)),
+            DatasetMembershipManifest("validation", tuple(member(r) for r in val)),
+            DatasetMembershipManifest("hidden", tuple(member(r) for r in hidden)),
+            DatasetMembershipManifest("retention", tuple(member(r) for r in retention_rows)),
+            DatasetMembershipManifest("security", tuple(member(r) for r in security_rows)),
+            require_family_disjoint_hidden=bool(cfg.get("require_family_disjoint_hidden", False)))
 
     # --- Scorer calibration (v163): run the frozen labeled set and bind
     # the record digest into the retention evaluator artifact config ---
     plan_version = str(cfg.get("plan_version", "v162"))
-    protocol = (ExperimentProtocolV1.from_config(cfg)
+    protocol = (protocol_from_config(cfg)
                 if plan_version in ("v165", "v166") else None)
     if protocol is not None and protocol.require_native_servable_adapter:
         # v166 tier gate: tier 2 plans may train attention-projection
@@ -345,10 +425,43 @@ def main() -> int:
         (storage.root / "evidence" / "SCORER_CALIBRATION.json").write_text(
             json.dumps(calib, indent=2, sort_keys=True))
 
+    # v4.0 (V4-16): when the signed protocol declares rehearsal or KL
+    # preservation corpora, the runner refuses to start unless the files
+    # exist and carry at least one row — preservation data is part of
+    # the preregistered experiment surface, not an optional convenience.
+    preservation_corpora: dict[str, str] = {}
+    if isinstance(protocol, ExperimentProtocolV2):
+        for label, rel in (("rehearsal", protocol.rehearsal_corpus),
+                           ("kl", protocol.kl_corpus)):
+            if not rel:
+                if protocol.require_verified_rehearsal:
+                    raise SystemExit(
+                        f"protocol requires verified rehearsal but no "
+                        f"{label}_corpus is declared in the config")
+                continue
+            path = ROOT / rel
+            if not path.is_file():
+                raise SystemExit(f"protocol-bound {label} corpus missing: "
+                                 f"{rel}")
+            crows = [json.loads(ln) for ln in path.read_text().splitlines()
+                     if ln.strip()]
+            if not crows:
+                raise SystemExit(f"protocol-bound {label} corpus is empty: "
+                                 f"{rel}")
+            preservation_corpora[label] = digest(crows)
+        if preservation_corpora:
+            (campaign_dir := storage.root / "campaigns" /
+             cfg["campaign_id"]).mkdir(parents=True, exist_ok=True)
+            (campaign_dir / "PRESERVATION_CORPORA.json").write_text(
+                json.dumps({"schema": "mini-agi-v4.0-preservation-corpora-v1",
+                            "digests": preservation_corpora},
+                           indent=2, sort_keys=True))
+
     registry = EvaluatorRegistry(storage.root / "evidence" / "evaluators")
     ret_fn_impl = {"containment_match": containment_match,
                    "retention_score": retention_score}[retention_scorer]
-    arts = [EvaluatorArtifact.from_callable("exact-match-v1", exact_match),
+    arts = [EvaluatorArtifact.from_callable("exact-match-v2",
+                                            exact_match_strict),
             EvaluatorArtifact.from_callable(f"retention-{retention_scorer}-v1",
                                             ret_fn_impl, config=calib_cfg),
             EvaluatorArtifact.from_callable("security-v1", security_regression)]
@@ -628,9 +741,16 @@ def main() -> int:
 
     v3 = isinstance(plan, ColabCampaignPlanV165)
     if v3:
-        eval_dataset_d = digest({"hidden": parts.hidden.digest,
-                                 "retention": parts.retention.digest,
-                                 "security": parts.security.digest})
+        eval_parts = {"hidden": parts.hidden.digest,
+                      "retention": parts.retention.digest,
+                      "security": parts.security.digest}
+        if compositional_rows:
+            # v4.0 corpora (V3 partition schema) also evaluate the
+            # within-family validation split — for legacy corpora the
+            # eval-set digest must stay exactly as executed.
+            eval_parts["compositional"] = parts.compositional.digest
+            eval_parts["validation"] = parts.validation.digest
+        eval_dataset_d = digest(eval_parts)
         evaluator_set_d = digest([arts[0].digest, arts[1].digest,
                                   arts[2].digest])
 
@@ -666,6 +786,12 @@ def main() -> int:
             stale.unlink()
         random.seed(seed)
         tokenizer = load_tokenizer(spec)
+        # SCI-301: one rendering contract for training, baseline,
+        # adapter, replay and security inference. The config's
+        # output_contract freezes the answer surface; absent it, the
+        # historical default (no instruction) is preserved.
+        prompt_contract = build_prompt_contract(
+            tokenizer, output_contract_from_config(cfg, max_new))
         model = load_causal_lm(spec, purpose="research")
         if isinstance(plan, ColabCampaignPlanV164):
             model_digest, tok_digest = plan.model_digest, plan.tokenizer_digest
@@ -675,8 +801,15 @@ def main() -> int:
         seed_receipts = {}
 
         def emit(arm_id, adapter_digest, state_digest, metrics, outputs,
-                 extra=None, out_name=None, preds=None):
+                 extra=None, out_name=None, preds=None, diags=None):
             name = out_name or arm_id
+            if diags:
+                # Per-row contract diagnostics (SCI-303) — additive
+                # evidence, enumerated by COMMIT_MANIFEST like every
+                # other published file.
+                (run_dir / f"DIAGNOSTICS-{name}.jsonl").write_text(
+                    "\n".join(json.dumps(d, sort_keys=True)
+                              for d in diags) + "\n")
             if v3:
                 # Evidence receipt v3: predictions inside the signed
                 # payload — write canonical records, build the bundle,
@@ -723,34 +856,112 @@ def main() -> int:
 
         def run_eval_block(arm, arm_id):
             v3 = isinstance(plan, ColabCampaignPlanV165)
-            h_em, h_out, h_tok, h_sec, h_preds = evaluate(
+            h_em, h_out, h_tok, h_sec, h_preds, h_diags = evaluate(
                 model, tokenizer, hidden, max_new, score_fn, arm,
-                "hidden" if v3 else None)
-            ret, ret_out, r_tok, r_sec, r_preds = evaluate(
+                "hidden" if v3 else None, prompt_contract)
+            ret, ret_out, r_tok, r_sec, r_preds, r_diags = evaluate(
                 model, tokenizer, retention_eval_rows,
                 max_new, retention_fn, arm,
-                "retention" if v3 else None)
-            sec_n, sec_out, s_tok, s_preds = security_eval(
-                model, tokenizer, security_rows, max_new, security_fn, arm)
+                "retention" if v3 else None, prompt_contract)
+            sec_n, sec_out, s_tok, s_preds, s_diags = security_eval(
+                model, tokenizer, security_rows, max_new, security_fn, arm,
+                prompt_contract)
+            comp_em, comp_out, comp_tok, comp_sec, comp_preds, comp_diags = \
+                (evaluate(model, tokenizer, compositional_rows, max_new,
+                          score_fn, arm,
+                          "compositional" if v3 else None,
+                          prompt_contract)
+                 if compositional_rows else (0.0, [], 0, 0.0, [], []))
+            val_em, val_out, val_tok, val_sec, val_preds, val_diags = \
+                (evaluate(model, tokenizer, val, max_new,
+                          score_fn, arm,
+                          "validation" if v3 else None,
+                          prompt_contract)
+                 if compositional_rows else (0.0, [], 0, 0.0, [], []))
+            diags = h_diags + r_diags + s_diags + comp_diags + val_diags
+            # Campaign 3B Step 18: the governed safety/retention suite
+            # rolls the security partition up per category. The rollup is
+            # recomputed independently by the qualifier from the
+            # persisted per-row predictions — the metrics below are the
+            # runner's projection of the same evidence, never a
+            # substitute for it.
+            safety_rollup = category_rollup(
+                security_rows,
+                {str(o["id"]): str(o["prediction"]) for o in sec_out},
+                smoke_scorer=security_fn)
             metrics = {"hidden_exact_match": h_em, "retention": ret,
                        "security_regressions": sec_n,
-                       "eval_seconds": round(h_sec + r_sec, 3),
-                       "generated_tokens": h_tok + r_tok + s_tok,
+                       "compositional_exact_match": comp_em,
+                       "validation_exact_match": val_em,
+                       "eval_seconds": round(h_sec + r_sec + comp_sec +
+                                             val_sec, 3),
+                       "generated_tokens": (h_tok + r_tok + s_tok +
+                                            comp_tok + val_tok),
+                       "prompt_contract_digest": prompt_contract.digest,
+                       "output_contract_digest":
+                           prompt_contract.output_contract_digest,
+                       "generation_diagnostics":
+                           _aggregate_diagnostics(diags),
                        "arm_state_bytes": dir_size_bytes(arm_state_dirs[arm_id])
-                       if arm_id in arm_state_dirs else 0}
-            preds = (h_preds + r_preds + s_preds) if v3 else None
+                       if arm_id in arm_state_dirs else 0,
+                       **rollup_metrics(safety_rollup)}
+            preds = (h_preds + r_preds + s_preds + comp_preds +
+                     val_preds) if v3 else None
             return metrics, {"hidden": h_out, "retention": ret_out,
-                             "security": sec_out}, preds
+                             "security": sec_out,
+                             "compositional": comp_out,
+                             "validation": val_out}, preds, diags
+
+        # ---- verified replay (L5b) state, shared with the L7 eval ----
+        # SCI-302: unlike the self-verified practice arm (L5a), L5b
+        # admits every TRAIN row's established label with recorded
+        # provenance — the comparator Campaign 3A's empty buffer could
+        # never be. The same instance/state is used by L7 (adapter +
+        # verified replay), so the primary 3B comparison (L7 - L5b)
+        # varies only the neural adaptation.
+        replay_arm = None
+
+        def ensure_verified_replay():
+            nonlocal replay_arm
+            if replay_arm is None:
+                replay_arm = OracleVerifiedReplayArm(
+                    k=int(protocol.replay_k if protocol is not None
+                          else cfg.get("replay_k", 2)))
+                replay_arm.token_counter = (
+                    lambda text: len(tokenizer(
+                        text, add_special_tokens=False)["input_ids"]))
+                sdir = arms_state_root / f"seed-{seed}" / VERIFIED_REPLAY_ID
+                replay_arm.build_state(sdir, train,
+                                       split_digest=parts.train.digest)
+                replay_arm.persist()
+                replay_arm.verify_state()
+                arm_state_dirs[VERIFIED_REPLAY_ID] = sdir
+            return replay_arm
+
+        def write_replay_manifest(arm_id, since):
+            if replay_arm is None:
+                return
+            doc = {"schema": "mini-agi-v16.6-replay-manifest-v1",
+                   "seed": int(seed), "arm": arm_id,
+                   "split_digest": replay_arm.split_digest,
+                   "verifier_digest": replay_arm.verifier_digest,
+                   "k": replay_arm.k,
+                   "max_block_chars": replay_arm.max_block_chars,
+                   "records": [asdict(r) for r in replay_arm.records],
+                   "rejected": replay_arm.rejected,
+                   "retrieval": replay_arm.retrieval_stats(since)}
+            (run_dir / f"REPLAY_MANIFEST-{arm_id}.json").write_text(
+                json.dumps(doc, indent=2, sort_keys=True))
 
         # ---- non-parametric arms on one base instance ----
         for arm_id in plan.arms:
-            if arm_id in ("L6", "NC"):
+            if arm_id in PARAMETRIC_ARM_IDS:
                 continue
             arm_t0 = time.time()
             if arm_id == "L1":
                 arm = None
                 sd = ZERO_DIGEST
-            elif arm_id == "L5":
+            elif arm_id in SELF_VERIFIED_REPLAY_IDS:
                 arm = ARMS["L5"]()
                 arm.k = int(protocol.replay_k if protocol is not None
                             else cfg.get("replay_k", 2))
@@ -758,19 +969,92 @@ def main() -> int:
                 arm.build_state(sdir, train)
                 # labeled practice phase: replay only verified train traces
                 for prow in practice_rows:
-                    pred, _ = generate(model, tokenizer, str(prow["prompt"]), max_new)
+                    pred, _, _ = generate(model, tokenizer,
+                                          str(prow["prompt"]), max_new,
+                                          prompt_contract)
                     arm.add_trace(prow, pred, float(score_fn(pred, str(prow["expected"]))))
                 arm.persist()
                 arm_state_dirs["L5"] = sdir
                 sd = sha256_path(sdir)
+            elif arm_id == VERIFIED_REPLAY_ID:
+                arm = ensure_verified_replay()
+                sd = sha256_path(arm_state_dirs[VERIFIED_REPLAY_ID])
             else:
                 arm = arm_instances[arm_id]
                 sd = sha256_path(arm_state_dirs[arm_id])
-            metrics, outputs, preds = run_eval_block(arm, arm_id)
+            replay_since = (len(arm.retrieval_log)
+                            if arm_id == VERIFIED_REPLAY_ID else 0)
+            metrics, outputs, preds, diags = run_eval_block(arm, arm_id)
             metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
             metrics["train_seconds"] = 0.0
             metrics["trainable_params"] = 0
-            emit(arm_id, ZERO_DIGEST, sd, metrics, outputs, preds=preds)
+            if arm_id == VERIFIED_REPLAY_ID:
+                metrics["replay"] = replay_arm.retrieval_stats(replay_since)
+                write_replay_manifest(arm_id, replay_since)
+            emit(arm_id, ZERO_DIGEST, sd, metrics, outputs, preds=preds,
+                 diags=diags)
+
+        # ---- v4.0 preservation corpus verification (V4-03/V4-16) ----
+        # Enforced on the live frozen model BEFORE it is released: each
+        # declared corpus row is regenerated under strict scoring and
+        # admitted only when the frozen model already produces the
+        # claimed response; rows whose family is under training are
+        # rejected outright. Zero verified rows under an active lever
+        # aborts the seed — preservation cannot run on unverifiable
+        # data. Stats are committed per-seed for audit.
+        rehearsal_ex = kl_ex = None
+        _preservation_verified = False
+        if isinstance(protocol, ExperimentProtocolV2):
+            trained_fams = {str(r.get("family", "")) for r in train}
+            pstats = {}
+            for label, rel, active in (
+                    ("rehearsal", protocol.rehearsal_corpus,
+                     protocol.rehearsal_fraction > 0),
+                    ("kl", protocol.kl_corpus,
+                     protocol.kl_weight > 0)):
+                if not rel or not active:
+                    continue
+                crows = [{"prompt": str(r["prompt"]),
+                          "response": str(r.get(
+                              "response", r.get("expected", ""))),
+                          "family": str(r.get("family", ""))}
+                         for r in load_rows(ROOT / rel)]
+                verified, rejected = [], 0
+                for c in crows:
+                    if c["family"] in trained_fams:
+                        rejected += 1
+                        continue
+                    pred, _, _ = generate(model, tokenizer,
+                                          c["prompt"], max_new,
+                                          prompt_contract)
+                    if float(score_fn(pred, c["response"])) == 1.0:
+                        verified.append({"prompt": c["prompt"],
+                                         "response": c["response"]})
+                    else:
+                        rejected += 1
+                pstats[label] = {"declared": len(crows),
+                                 "verified": len(verified),
+                                 "rejected": rejected,
+                                 "method": "frozen-model strict-oracle "
+                                          "regeneration",
+                                 "excluded_trained_families":
+                                     sorted(trained_fams)}
+                if not verified:
+                    raise SystemExit(
+                        f"protocol-bound {label} corpus produced zero "
+                        f"verified rows for seed-{seed}")
+                if label == "rehearsal":
+                    rehearsal_ex = verified
+                else:
+                    kl_ex = verified
+            if pstats:
+                _preservation_verified = True
+                (run_dir / "PRESERVATION_VERIFICATION.json").write_text(
+                    json.dumps(
+                        {"schema": "mini-agi-v4.0-preservation-"
+                                   "verification-v1",
+                         "seed": int(seed), "stats": pstats},
+                        indent=2, sort_keys=True))
 
         free_model(model)
 
@@ -784,9 +1068,23 @@ def main() -> int:
         train_examples = ([{"prompt": str(r["prompt"]),
                             "response": str(r["expected"])}
                            for r in train] if v3 else None)
-        for arm_id, texts, examples in (
-                ("L6", train_texts, train_examples),
-                ("NC", shuffled_label_texts(train, seed), nc_examples)):
+        # V4-16/V4-03: protocol-bound preservation data is verified on
+        # THIS lane too — require_verified_rehearsal is meaningless if
+        # membership is never checked. Every declared row is regenerated
+        # under the frozen model (strict oracle) and must come from a
+        # family not under training — the same contract
+        # positive_control_fit enforces. The lists were produced in the
+        # frozen-model section above, before free_model released it.
+        if isinstance(protocol, ExperimentProtocolV2) and \
+                (protocol.rehearsal_fraction > 0 or
+                 protocol.kl_weight > 0) and not _preservation_verified:
+            raise SystemExit(
+                "protocol declares preservation levers but no verified "
+                "preservation corpus was produced this seed")
+        for arm_id, texts, examples, uses_replay in (
+                ("L6", train_texts, train_examples, False),
+                ("NC", shuffled_label_texts(train, seed), nc_examples, False),
+                (ADAPTER_REPLAY_ID, train_texts, train_examples, True)):
             if arm_id not in plan.arms:
                 continue
             arm_t0 = time.time()
@@ -798,7 +1096,10 @@ def main() -> int:
             model, train_receipt = train_lora(model=model, tokenizer=tokenizer,
                                               texts=(None if v3 else texts),
                                               examples=examples,
-                                              output_dir=adir, spec=ts)
+                                              output_dir=adir, spec=ts,
+                                              prompt_contract=prompt_contract,
+                                              rehearsal_examples=rehearsal_ex,
+                                              kl_examples=kl_ex)
             adapter_digest = sha256_path(adir)
             adapter_dirs[arm_id] = adir
             train_secs = round(
@@ -810,13 +1111,26 @@ def main() -> int:
             free_model(model)
             model = load_causal_lm(spec, adapter_path=str(adir),
                                    purpose="research")
-            metrics, outputs, preds = run_eval_block(None, arm_id)
+            # L7 evaluates the same adapter under the verified-replay
+            # context L5b uses; L6/NC evaluate with no augmentation.
+            eval_arm = None
+            replay_since = 0
+            state_digest = ZERO_DIGEST
+            if uses_replay:
+                eval_arm = ensure_verified_replay()
+                replay_since = len(eval_arm.retrieval_log)
+                state_digest = sha256_path(
+                    arm_state_dirs[VERIFIED_REPLAY_ID])
+            metrics, outputs, preds, diags = run_eval_block(eval_arm, arm_id)
             metrics["arm_state_bytes"] = dir_size_bytes(adir)
             metrics["wall_seconds"] = round(time.time() - arm_t0, 3)
             metrics["train_seconds"] = train_secs
             metrics["trainable_params"] = trainable
-            emit(arm_id, adapter_digest, ZERO_DIGEST, metrics, outputs,
-                 {"training": train_receipt}, preds=preds)
+            if uses_replay:
+                metrics["replay"] = eval_arm.retrieval_stats(replay_since)
+                write_replay_manifest(arm_id, replay_since)
+            emit(arm_id, adapter_digest, state_digest, metrics, outputs,
+                 {"training": train_receipt}, preds=preds, diags=diags)
             free_model(model)
 
         # ---- v164 delayed-retention probes (persistence check) ----
@@ -829,28 +1143,28 @@ def main() -> int:
             v3 = isinstance(plan, ColabCampaignPlanV165)
             dblock = "retention_delayed" if v3 else None
             model = load_causal_lm(spec, purpose="research")
-            d1, d1_out, _, _, d1_preds = evaluate(
+            d1, d1_out, _, _, d1_preds, d1_diags = evaluate(
                 model, tokenizer, delayed_rows, max_new, retention_fn,
-                block=dblock)
+                block=dblock, contract=prompt_contract)
             free_model(model)
             delayed_metrics["L1"] = d1
             emit("L1", ZERO_DIGEST, ZERO_DIGEST,
                  {"retention_delayed": d1}, {"retention_delayed": d1_out},
                  {"probe_kind": "delayed"}, out_name="L1_delayed",
-                 preds=d1_preds)
+                 preds=d1_preds, diags=d1_diags)
             if "L6" in adapter_dirs:
                 model = load_causal_lm(spec,
                                        adapter_path=str(adapter_dirs["L6"]),
                                        purpose="research")
-                d6, d6_out, _, _, d6_preds = evaluate(
+                d6, d6_out, _, _, d6_preds, d6_diags = evaluate(
                     model, tokenizer, delayed_rows, max_new, retention_fn,
-                    block=dblock)
+                    block=dblock, contract=prompt_contract)
                 free_model(model)
                 delayed_metrics["L6"] = d6
                 emit("L6", sha256_path(adapter_dirs["L6"]), ZERO_DIGEST,
                      {"retention_delayed": d6}, {"retention_delayed": d6_out},
                      {"probe_kind": "delayed"}, out_name="L6_delayed",
-                     preds=d6_preds)
+                     preds=d6_preds, diags=d6_diags)
 
         # ---- seed summary ----
         def _reported_metrics(arm):
@@ -911,8 +1225,79 @@ def main() -> int:
     n_sec = max(1, len(security_rows))
     arm_sec_rate = {a: 1.0 - arm_mean(a, "security_regressions") / n_sec
                     for a in plan.arms}
+
+    # ---- governed safety suite rollup (3B Step 18) ----
+    # Per-arm: how many mandatory security-partition categories produced
+    # no scorable evidence, and how many violations were recorded. The
+    # suite digest is bound per arm; arms that disagree were evaluated
+    # under different probe sets and the matrix is not comparable.
+    def arm_metric_sum(arm_id, metric):
+        total = 0.0
+        for s in all_seeds:
+            p = campaign_dir / f"seed-{s['seed']}" / f"{arm_id}.json"
+            if p.is_file():
+                total += float(_cell_metrics(p).get(metric, 0.0))
+        return total
+
+    arm_safety_undefined = {a: int(arm_metric_sum(a, "safety_undefined_mandatory"))
+                            for a in plan.arms}
+    arm_safety_violations = {}
+    #: per arm -> per category -> violation count, so the runner can
+    #: report the same absolute-vs-adaptation-induced split the qualifier
+    #: does. RD-14: the runner previously reported only a single count,
+    #: which cannot distinguish "the base model is unsafe here" from
+    #: "the adapter made safety worse".
+    arm_safety_by_category: dict = {}
+    safety_digests = set()
+    for a in plan.arms:
+        for s in all_seeds:
+            p = campaign_dir / f"seed-{s['seed']}" / f"{a}.json"
+            if not p.is_file():
+                continue
+            m = _cell_metrics(p)
+            d = m.get("safety_suite_digest")
+            if d:
+                safety_digests.add(str(d))
+            for key, val in m.items():
+                if key.startswith("safety_violation_"):
+                    cat = key[len("safety_violation_"):]
+                    arm_safety_violations[a] = (arm_safety_violations.get(a, 0)
+                                                + int(val))
+                    arm_safety_by_category.setdefault(a, {})[cat] = \
+                        arm_safety_by_category.get(a, {}).get(cat, 0) + int(val)
+    #: absolute failures are present in the frozen baseline and are not
+    #: excused by that; induced ones are regressions the adaptation
+    #: introduced. Both block; the split is causal information.
+    arm_safety_classes = {
+        a: classify_violations(
+            {"categories": {c: {"n_violation": v} for c, v
+                            in arm_safety_by_category.get("L1", {}).items()}},
+            {"categories": {c: {"n_violation": v} for c, v
+                            in arm_safety_by_category.get(a, {}).items()}})
+        for a in plan.arms}
     ft = {a: arm_hidden[a] - arm_hidden["L1"] for a in plan.arms if a != "L1"}
-    delta_neural = arm_hidden["L6"] - arm_hidden["L5"]
+    # Historical primary comparison (L6 - L5) when both arms exist; the
+    # 3B primary comparison is adapter+verified-replay vs verified
+    # replay (L7 - L5b) — the same context mechanism, neural adaptation
+    # varied.
+    delta_neural = (arm_hidden["L6"] - arm_hidden["L5"]
+                    if "L6" in arm_hidden and "L5" in arm_hidden else None)
+    delta_adapter_replay = (
+        arm_hidden[ADAPTER_REPLAY_ID] - arm_hidden[VERIFIED_REPLAY_ID]
+        if ADAPTER_REPLAY_ID in arm_hidden
+        and VERIFIED_REPLAY_ID in arm_hidden else None)
+
+    # Descriptive cost per correct result (worker-reported; never a
+    # qualification input): generated tokens and wall+train seconds per
+    # correct hidden answer, per arm.
+    cost_per_correct = {}
+    for a in plan.arms:
+        acc = float(arm_hidden.get(a, 0.0))
+        toks = arm_mean(a, "generated_tokens")
+        secs = arm_mean(a, "train_seconds") + arm_mean(a, "wall_seconds")
+        cost_per_correct[a] = {
+            "generated_tokens_per_correct": (toks / acc) if acc > 0 else None,
+            "seconds_per_correct": (secs / acc) if acc > 0 else None}
     nc_ft = ft.get("NC", 0.0)
     nc_violation = nc_ft > plan.negative_control_max_ft
 
@@ -956,7 +1341,7 @@ def main() -> int:
 
     reasons = []
     if isinstance(plan, ColabCampaignPlanV164):
-        if delta_neural < plan.minimum_neural_incremental_ft:
+        if delta_neural is not None and delta_neural < plan.minimum_neural_incremental_ft:
             reasons.append(f"mean delta_ft_neural {delta_neural:.4f} < "
                            f"{plan.minimum_neural_incremental_ft}")
         if n_positive < plan.min_seeds_positive_ft:
@@ -977,6 +1362,31 @@ def main() -> int:
             if d_drop > plan.delayed_retention_max_drop:
                 reasons.append(f"L6 delayed-retention drop {d_drop:.4f} > "
                                f"{plan.delayed_retention_max_drop}")
+        # 3B Step 18: the governed safety suite must have produced
+        # scorable evidence for every arm, and the adapted arms must not
+        # violate a mandatory security-partition category. A mandatory
+        # category with no evidence is BLOCKED, never a pass.
+        #
+        # The gate applies when the corpus actually carries governed
+        # probes (rows with a `category`). Corpora that predate the
+        # suite keep their historical smoke surface — the corpus digest
+        # is bound in the evidence, so dropping probes is visible, and
+        # the qualification record reports the suite as NOT_APPLICABLE
+        # rather than as a safety pass.
+        if governed_probes_present:
+            if len(safety_digests) > 1:
+                reasons.append("safety suite digest disagreement across arms: "
+                               f"{sorted(safety_digests)}")
+            for a in plan.arms:
+                if arm_safety_undefined.get(a, 0) > 0:
+                    reasons.append(
+                        f"{a} has {arm_safety_undefined[a]} mandatory safety "
+                        "categories with no scorable evidence (UNDEFINED)")
+            for a in ("L6", "L7"):
+                if arm_safety_violations.get(a, 0) > 0:
+                    reasons.append(
+                        f"{a} recorded {arm_safety_violations[a]} governed "
+                        "safety-suite violations")
         if arm_sec_rate["L6"] < plan.security_min_pass_rate:
             reasons.append(f"L6 security pass rate {arm_sec_rate['L6']:.3f} < "
                            f"{plan.security_min_pass_rate}")
@@ -988,7 +1398,7 @@ def main() -> int:
             reasons.append(f"negative control FT {nc_ft:.4f} exceeded bound "
                            f"{plan.negative_control_max_ft} — pipeline suspect")
     elif isinstance(plan, ColabCampaignPlanV163):
-        if delta_neural < plan.minimum_neural_incremental_ft:
+        if delta_neural is not None and delta_neural < plan.minimum_neural_incremental_ft:
             reasons.append(f"mean delta_ft_neural {delta_neural:.4f} < "
                            f"{plan.minimum_neural_incremental_ft}")
         if n_positive < plan.min_seeds_positive_ft:
@@ -1010,7 +1420,7 @@ def main() -> int:
             reasons.append(f"negative control FT {nc_ft:.4f} exceeded bound "
                            f"{plan.negative_control_max_ft} — pipeline suspect")
     else:
-        if delta_neural < plan.minimum_neural_incremental_ft:
+        if delta_neural is not None and delta_neural < plan.minimum_neural_incremental_ft:
             reasons.append(f"neural incremental FT {delta_neural:.4f} < "
                            f"{plan.minimum_neural_incremental_ft}")
         if arm_ret["L6"] < plan.minimum_retention:
@@ -1065,10 +1475,18 @@ def main() -> int:
                "arm_hidden_exact_match": arm_hidden,
                "arm_retention": arm_ret,
                "arm_security_pass_rate": arm_sec_rate,
+               "safety_suite_version": SAFETY_SUITE_VERSION,
+               "safety_suite_digest": suite_digest(),
+               "safety_suite_digests_seen": sorted(safety_digests),
+               "arm_safety_undefined_mandatory": arm_safety_undefined,
+               "arm_safety_violations": arm_safety_violations,
+               "arm_safety_classes": arm_safety_classes,
                "per_seed_delta_ft_neural": per_seed_delta,
                "n_seeds_positive_ft": n_positive,
                "forward_transfer_vs_L1": ft,
                "delta_ft_neural_L6_minus_L5": delta_neural,
+               "delta_ft_neural_L7_minus_L5b": delta_adapter_replay,
+               "cost_per_correct": cost_per_correct,
                "negative_control_ft": nc_ft,
                "negative_control_violation": nc_violation,
                "decision": decision,
@@ -1086,7 +1504,8 @@ def main() -> int:
         l6_train_h = efficiency["L6"]["train_seconds_mean"] / 3600 or None
         summary["efficiency"] = efficiency
         summary["delta_ft_per_train_hour"] = (
-            round(delta_neural / l6_train_h, 4) if l6_train_h else None)
+            round(delta_neural / l6_train_h, 4)
+            if (l6_train_h and delta_neural is not None) else None)
         tp = efficiency["L6"]["trainable_params"]
         summary["delta_ft_per_10k_trainable_params"] = (
             round(delta_neural / (tp / 1e4), 6) if tp else None)

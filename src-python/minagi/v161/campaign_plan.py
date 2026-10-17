@@ -39,6 +39,12 @@ class ColabCampaignPlanV161:
 
 ALLOWED_ARMS_V162 = ("L1", "L2", "L3", "L4", "L5", "L6", "NC")
 
+#: v16.6 vocabulary additions (SCI-302 / 3B Step 10): the self-verified
+#: replay alias, the independently verified replay baseline and the
+#: adapter-plus-verified-replay arm. Validation-only — the V162 default
+#: tuple above is unchanged, so historical plan digests are untouched.
+ALLOWED_ARMS_V166 = ALLOWED_ARMS_V162 + ("L5a", "L5b", "L7")
+
 
 @dataclass(frozen=True)
 class ColabCampaignPlanV162:
@@ -88,11 +94,14 @@ class ColabCampaignPlanV162:
         if len(set(self.seeds)) != len(self.seeds):
             raise ValueError("duplicate campaign seeds")
         arms = tuple(self.arms)
-        unknown = [a for a in arms if a not in ALLOWED_ARMS_V162]
+        unknown = [a for a in arms if a not in ALLOWED_ARMS_V166]
         if unknown:
             raise ValueError(f"unknown arms: {unknown}")
         for required in ("L1", "L5", "L6", "NC"):
-            if required not in arms:
+            # L5a is the v16.6 spelling of the self-verified replay arm
+            # and satisfies the L5 requirement.
+            if required not in arms and not (required == "L5"
+                                             and "L5a" in arms):
                 raise ValueError(f"required arm {required} missing from plan")
         if self.negative_control_arm not in arms:
             raise ValueError("negative control arm not in plan arms")

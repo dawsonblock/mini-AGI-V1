@@ -79,8 +79,18 @@ class DatasetPartitionSet:
                 fam = part.family_ids & self.hidden.family_ids
                 if fam:
                     raise PermissionError(f"hidden task-family leakage from {name}: {sorted(fam)[:5]}")
-        if self.train.sample_ids & self.validation.sample_ids:
-            raise PermissionError("train/validation sample overlap")
+        # V4-09: every evaluation partition must also be sample-disjoint
+        # from every other non-hidden partition — a retention/security
+        # row leaking into train (or a validation row used for tuning)
+        # silently inflates the corresponding measurement.
+        others = [(n, p) for n, p in named if n != "hidden"]
+        for i, (n1, p1) in enumerate(others):
+            for n2, p2 in others[i + 1:]:
+                overlap = p1.sample_ids & p2.sample_ids
+                if overlap:
+                    raise PermissionError(
+                        f"partition sample leakage {n1}/{n2}: "
+                        f"{sorted(overlap)[:5]}")
 
     def proof(self) -> dict:
         self.assert_disjoint()
@@ -134,4 +144,146 @@ class DatasetPartitionSetV2(DatasetPartitionSet):
         p["schema"] = "mini-agi-v16.6-disjointness-proof-v1"
         p["final_holdout_digest"] = (self.final_holdout.digest
                                     if self.final_holdout else None)
+        return p
+
+
+@dataclass(frozen=True)
+class DatasetPartitionSetV3(DatasetPartitionSetV2):
+    """v4.0 partition set — adds the COMPOSITIONAL holdout (split E).
+
+    Compositional rows combine operations learned from TRAINED families
+    on unseen inputs, so they may share families with train/validation
+    but must be sample-disjoint from every other partition and
+    family-disjoint from hidden/final_holdout (the same independence
+    guarantee hidden carries).
+
+    NEW schema — V1/V2 partition digests used by executed campaigns stay
+    byte-stable.
+    """
+    compositional: DatasetMembershipManifest | None = None
+    schema: str = "mini-agi-v4.0-dataset-partition-set-v1"
+
+    def assert_disjoint(self) -> None:
+        super().assert_disjoint()
+        if self.compositional is None:
+            return
+        for name, part in (("train", self.train),
+                           ("validation", self.validation),
+                           ("hidden", self.hidden),
+                           ("retention", self.retention),
+                           ("security", self.security),
+                           ("final_holdout", self.final_holdout)):
+            if part is None:
+                continue
+            if part.sample_ids & self.compositional.sample_ids:
+                raise PermissionError(
+                    f"compositional sample leakage from {name}")
+        for name, part in (("hidden", self.hidden),
+                           ("final_holdout", self.final_holdout)):
+            if part is None:
+                continue
+            if part.family_ids & self.compositional.family_ids:
+                raise PermissionError(
+                    f"compositional family leakage from {name}")
+
+    def proof(self) -> dict:
+        p = super().proof()
+        p["schema"] = "mini-agi-v4.0-disjointness-proof-v1"
+        p["compositional_digest"] = (self.compositional.digest
+                                    if self.compositional else None)
+        return p
+
+
+@dataclass(frozen=True)
+class DatasetPartitionSetV4(DatasetPartitionSetV3):
+    """v4.1 partition set — adds the WITHIN-FAMILY CONFIRMATION holdout.
+
+    ``within_holdout`` carries TRAINED families on unseen inputs (like
+    validation) but is reserved for independent confirmation: the
+    development process may tune on ``validation`` yet must never use
+    ``within_holdout`` for model or intervention selection. Its
+    families are required to be a subset of the train families — a
+    'within-family' holdout over untrained families measures transfer,
+    not generalization (the campaign3b defect).
+
+    Constraints: sample-disjoint from every partition; family-disjoint
+    from hidden/compositional/final_holdout; family subset of train.
+
+    ``rehearsal`` (optional) is a TRAIN-SIDE partition: verified-correct
+    pairs of capabilities other than the acquisition target that a
+    rehearsal arm may interleave during training. Its families must be
+    disjoint from train, validation, within_holdout, hidden,
+    compositional and final_holdout — rehearsing a measured family (or
+    the target itself) would contaminate the measurement.
+
+    NEW schema — V1/V2/V3 partition digests used by executed campaigns
+    stay byte-stable.
+    """
+    within_holdout: DatasetMembershipManifest | None = None
+    rehearsal: DatasetMembershipManifest | None = None
+    schema: str = "mini-agi-v4.1-dataset-partition-set-v1"
+
+    def assert_disjoint(self) -> None:
+        super().assert_disjoint()
+        if self.rehearsal is not None:
+            for name, part in (
+                    ("train", self.train),
+                    ("validation", self.validation),
+                    ("hidden", self.hidden),
+                    ("retention", self.retention),
+                    ("security", self.security),
+                    ("compositional", self.compositional),
+                    ("final_holdout", self.final_holdout),
+                    ("within_holdout", self.within_holdout)):
+                if part is None:
+                    continue
+                if part.sample_ids & self.rehearsal.sample_ids:
+                    raise PermissionError(
+                        f"rehearsal sample leakage into {name}")
+            measured = [self.train, self.validation, self.hidden,
+                        self.compositional, self.final_holdout,
+                        self.within_holdout]
+            fam_overlap = self.rehearsal.family_ids & frozenset().union(
+                *(p.family_ids for p in measured if p is not None))
+            if fam_overlap:
+                raise PermissionError(
+                    f"rehearsal family leakage into measured surfaces: "
+                    f"{sorted(fam_overlap)[:5]} — rehearsing a measured "
+                    "capability contaminates the measurement")
+        if self.within_holdout is None:
+            return
+        for name, part in (("train", self.train),
+                           ("validation", self.validation),
+                           ("hidden", self.hidden),
+                           ("retention", self.retention),
+                           ("security", self.security),
+                           ("compositional", self.compositional),
+                           ("final_holdout", self.final_holdout)):
+            if part is None:
+                continue
+            if part.sample_ids & self.within_holdout.sample_ids:
+                raise PermissionError(
+                    f"within_holdout sample leakage into {name}")
+        for name, part in (("hidden", self.hidden),
+                           ("compositional", self.compositional),
+                           ("final_holdout", self.final_holdout)):
+            if part is None:
+                continue
+            if part.family_ids & self.within_holdout.family_ids:
+                raise PermissionError(
+                    f"within_holdout family leakage into {name}")
+        not_within = self.within_holdout.family_ids - self.train.family_ids
+        if not_within:
+            raise PermissionError(
+                f"within_holdout carries untrained families "
+                f"{sorted(not_within)[:5]} — that is transfer, not a "
+                "within-family confirmation")
+
+    def proof(self) -> dict:
+        p = super().proof()
+        p["schema"] = "mini-agi-v4.1-disjointness-proof-v1"
+        p["within_holdout_digest"] = (self.within_holdout.digest
+                                      if self.within_holdout else None)
+        p["rehearsal_digest"] = (self.rehearsal.digest
+                                 if self.rehearsal else None)
         return p

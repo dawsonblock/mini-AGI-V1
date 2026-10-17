@@ -41,6 +41,10 @@ class ExecutedRunReceiptV161:
 
 
 ARMS_V162 = frozenset({"L1", "L2", "L3", "L4", "L5", "L6", "NC"})
+#: v16.6 vocabulary additions (SCI-302 / 3B Step 10) — validation-only:
+#: receipt digests bind the arm string itself, so historical receipts
+#: verify identically.
+ARMS_V166 = ARMS_V162 | {"L5a", "L5b", "L7"}
 
 
 @dataclass(frozen=True)
@@ -70,7 +74,7 @@ class ExecutedRunReceiptV162:
     schema: str = "mini-agi-v16.2-executed-run-receipt-v1"
     def __post_init__(self):
         for x in (self.campaign_digest,self.environment_digest,self.model_digest,self.tokenizer_digest,self.adapter_digest,self.state_digest,self.dataset_digest,self.evaluator_digest): validate_digest(x)
-        if self.arm not in ARMS_V162: raise ValueError(f"arm must be one of {sorted(ARMS_V162)}")
+        if self.arm not in ARMS_V166: raise ValueError(f"arm must be one of {sorted(ARMS_V166)}")
         if int(self.seed)<0 or not self.signer_key_id or not self.signature_b64: raise ValueError("invalid signed run receipt")
         object.__setattr__(self,"metrics",dict(self.metrics))
     @property

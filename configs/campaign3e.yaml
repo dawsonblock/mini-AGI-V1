@@ -1,0 +1,74 @@
+# Campaign 3E — within-family replication (v16.6 plan).
+#
+# The campaign3b corpus's validation partition carried families unseen
+# in training (val3-*), so no split in that corpus measured what the
+# name promises: generalization to NEW INPUTS of TRAINED families.
+# campaign3e corrects the split design — validation is now tr3-*
+# families on word-disjoint unseen inputs (verified by
+# scripts/gen_campaign3e.py --check and tests). hidden/compositional/
+# holdout semantics are unchanged: hidden remains the cross-family
+# transfer measurement.
+#
+# Requires the generated corpus + sealed holdout bound BEFORE this plan
+# is signed.
+campaign_id: campaign3e-v166
+plan_version: v166
+protocol_version: v2       # v4.0 extended protocol surface
+dataset: configs/campaign3e_tasks.jsonl  # within-family validation corpus
+require_cuda: true
+require_family_disjoint_hidden: true
+require_native_servable_adapter: false
+model:
+  id: Qwen/Qwen2.5-0.5B-Instruct
+  revision: 7ae557604adf67be50417f59c2c2f167def9a775
+  dtype: bfloat16
+  quantization: none
+  trust_remote_code: false
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+arms: [L1, L2, L3, L4, L5, L6, NC]
+max_new_tokens: 32
+practice_samples: 8
+retrieval_k: 3
+memory_k: 2
+replay_k: 2
+retention_samples: 16
+retention_scorer: containment_match
+
+minimum_neural_incremental_ft: 0.02
+min_seeds_positive_ft: 7
+bootstrap_resamples: 20000
+ci_alpha: 0.05
+min_delta_ft_ci_lower: 0.0
+retention_max_drop: 0.10
+delayed_retention_max_drop: 0.10
+security_min_pass_rate: 0.5
+security_max_drop_vs_L1: 0.10
+negative_control_max_ft: 0.02
+metric_tolerance: 0.05
+minimum_retention: 0.0
+
+# Phase-6 fields
+final_holdout_digest: "sha256:fc5b3a4a6e2cfd8c206c2ecafa8ea1e8de00bb53734aab31057aafc4d2b214f6"  # sealed via scripts/seal_final_holdout.py (configs/holdout/campaign3e_holdout.jsonl)
+cluster_unit: family
+max_false_activation_rate: 0.05
+n_comparisons_preregistered: 3
+
+# v4.0 protocol-v2 gates
+minimum_compositional: 0.0        # split-E delta vs frozen baseline: >= 0 (non-regression)
+minimum_basemodel_eval_rate: 0.5  # F9: baseline must emit non-empty hidden output on >= 50%
+primary_comparison: L6-L5
+n_comparisons: 3                  # Bonferroni divisor for the confirmatory family
+
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  learning_rate: 0.00005
+  steps: 100
+  max_length: 256
+  optimizer: adamw
+  response_only_loss: true
+  gradient_accumulation_steps: 1
+  microbatch_size: 1            # explicit schedule (Phase 2.1)
+  malformed_policy: fail        # strict: unapproved rejection invalidates the run

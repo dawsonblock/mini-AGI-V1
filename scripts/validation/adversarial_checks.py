@@ -64,7 +64,8 @@ def main() -> int:
         DatasetPartitionSet,
     )
     from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
-    from minagi.v161.evaluators import exact_match, retention_score
+    from minagi.v161.evaluators import (exact_match_strict,
+                                        retention_score)
     from minagi.v161.runtime_closure3 import RuntimeArtifactSpec, sha256_path
 
     checks: list[dict] = []
@@ -156,7 +157,7 @@ def main() -> int:
 
     registry_dir = tmp / "evaluators"
     registry = EvaluatorRegistry(registry_dir)
-    art_scorer = EvaluatorArtifact.from_callable("exact-match-v1", exact_match)
+    art_scorer = EvaluatorArtifact.from_callable("exact-match-v2", exact_match_strict)
     art_substitute = EvaluatorArtifact.from_callable("retention-v1", retention_score)
     registry.register(art_scorer)
 

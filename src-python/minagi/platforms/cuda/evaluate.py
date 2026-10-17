@@ -10,4 +10,5 @@ def generate_text(model, tokenizer, prompt: str, *, max_new_tokens: int = 16) ->
     return tokenizer.decode(new,skip_special_tokens=True).strip()
 
 def exact_match(prediction: str, expected: str) -> float:
-    return float(prediction.strip().casefold()==expected.strip().casefold())
+    # RD-18: strict comparison — case is part of a transformation answer.
+    return float(prediction.strip()==expected.strip())

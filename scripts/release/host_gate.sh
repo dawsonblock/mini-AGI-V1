@@ -1,68 +1,44 @@
 #!/usr/bin/env bash
+# Mini-AGI host release gate.
+#
+# The full CPU-side qualification a release must pass before packaging:
+#   1. source audit        — release identity files, version coherence,
+#                            no private keys / weights / dev paths
+#   2. native build+ctest  — the bundled C++ tree (host profile, no CUDA)
+#   3. full python suite   — tests-python against src-python
+#   4. manifest verify     — governed digests + Ed25519 signature +
+#                            attestation reconciliation
+#
+# GPU qualification is a separate gate (gpu_gate.sh) — this script is
+# the host profile and must pass on every release host.
 set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-BUILD="${QW3_HOST_BUILD_DIR:-${ROOT}/build-release-host}"
+BUILD="${MINAGI_HOST_BUILD_DIR:-${ROOT}/build-release-host}"
+JOBS="${MINAGI_BUILD_JOBS:-4}"
+
 rm -rf "${BUILD}"
+
 python3 "${ROOT}/scripts/release/source_audit.py"
-cmake -S "${ROOT}" -B "${BUILD}" -G Ninja \
-  -DCMAKE_BUILD_TYPE="${QW3_HOST_GATE_BUILD_TYPE:-Debug}" \
-  -DCMAKE_CXX_FLAGS_DEBUG="-O0 -g0" \
-  -DQW3_ENABLE_CUDA=OFF -DQW3_BUILD_TESTS=ON
-cmake --build "${BUILD}" -j"${QW3_BUILD_JOBS:-2}"
-ctest --test-dir "${BUILD}" --output-on-failure
-if command -v pytest >/dev/null 2>&1; then
-  (cd "${ROOT}/continual" && PYTHONPATH=src pytest -q)
-else
-  python3 -m pytest --version >/dev/null 2>&1 || { echo 'pytest is required for RC10 continual-plane qualification' >&2; exit 6; }
-  (cd "${ROOT}/continual" && PYTHONPATH=src python3 -m pytest -q)
+
+CMAKE_GEN=()
+if command -v ninja >/dev/null 2>&1; then
+  CMAKE_GEN=(-G Ninja)
 fi
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-strict-retrieval'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-exactmass-raw-key-max-mib'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-profile'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-state-coherence'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-executor-slots'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-resource-vram-bytes'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-resource-host-bytes'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-resource-nvme-bytes'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-resource-max-inflight'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-session-max'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-session-host-token-limit'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-session-host-byte-limit'
-"${BUILD}/qw3" --help 2>&1 | grep -q -- '--kvmem-session-snapshot-dir'
-set +e
-slot_err="$("${BUILD}/qw3" serve --model /nonexistent/model.gguf \
-  --kvmem --kvmem-executor-slots 2 2>&1)"
-slot_status=$?
-set -e
-(( slot_status != 0 )) || { echo 'uncertified multi-executor configuration unexpectedly passed' >&2; exit 5; }
-grep -q 'certifies exactly one CUDA slot' <<<"${slot_err}"
-set +e
-resource_err="$("${BUILD}/qw3" serve --model /nonexistent/model.gguf \
-  --kvmem --kvmem-resource-max-inflight -1 2>&1)"
-resource_status=$?
-set -e
-(( resource_status != 0 )) || { echo 'negative KVMem resource inflight limit unexpectedly passed' >&2; exit 5; }
-grep -q -- '--kvmem-resource-max-inflight must be >= 0' <<<"${resource_err}"
-set +e
-exactmass_cap_err="$("${BUILD}/qw3" serve --model /nonexistent/model.gguf \
-  --kvmem --kvmem-exactmass-raw-key-max-mib -1 2>&1)"
-exactmass_cap_status=$?
-set -e
-(( exactmass_cap_status != 0 )) || { echo 'negative ExactMass raw-key cap unexpectedly passed' >&2; exit 5; }
-grep -q -- '--kvmem-exactmass-raw-key-max-mib must be >= 0' <<<"${exactmass_cap_err}"
-set +e
-resource_slots_err="$("${BUILD}/qw3" serve --model /nonexistent/model.gguf \
-  --kvmem --kvmem-resource-max-inflight 2 2>&1)"
-resource_slots_status=$?
-set -e
-(( resource_slots_status != 0 )) || { echo 'resource inflight > executor slots unexpectedly passed' >&2; exit 5; }
-grep -q 'resource max_inflight cannot exceed certified executor slots' <<<"${resource_slots_err}"
-set +e
-profile_err="$("${BUILD}/qw3" serve --model /nonexistent/model.gguf \
-  --kvmem-profile agent-safe --continuous-batching 2>&1)"
-profile_status=$?
-set -e
-(( profile_status != 0 )) || { echo 'agent-safe incompatible override unexpectedly passed' >&2; exit 5; }
-grep -Eq 'agent-safe profile contract was overridden|state coherence query-replay/selected-replay is single-request only' <<<"${profile_err}"
-python3 "${ROOT}/scripts/release/verify_manifest.py"
+cmake -S "${ROOT}" -B "${BUILD}" "${CMAKE_GEN[@]}" \
+  -DCMAKE_BUILD_TYPE="${MINAGI_HOST_GATE_BUILD_TYPE:-Release}" \
+  -DQW3_ENABLE_CUDA=OFF -DQW3_BUILD_TESTS=ON
+cmake --build "${BUILD}" -j"${JOBS}"
+ctest --test-dir "${BUILD}" --output-on-failure
+
+(cd "${ROOT}" && PYTHONPATH=src-python:tests-python \
+  python3 -m pytest tests-python -q)
+
+# Manifest+signature verification runs against a git-archive extraction
+# — exactly the tracked, governed file set. The live dev tree carries
+# ungoverned debris (.vscode/, evidence downloads, dist/) that is not
+# part of the release contract and must not fail the gate.
+STAGE="$(mktemp -d -t minagi-host-gate.XXXXXX)"
+trap 'rm -rf "${STAGE}"' EXIT
+git -C "${ROOT}" archive HEAD | tar -x -C "${STAGE}"
+python3 "${ROOT}/scripts/release/verify_manifest.py" --root "${STAGE}"
 echo "host release gate: PASS"

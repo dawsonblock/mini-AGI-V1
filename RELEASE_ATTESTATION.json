@@ -28,6 +28,11 @@
   "tests": "tests-python/security/{test_grant_ledger,test_path_containment,test_backend_identity}.py; tests-python/runtime/{test_journal_integrity,test_serving_router,test_activation_supervisor,test_supervised_service}.py; tests-python/integration/test_full_admission_chain.py",
   "threat_model": "docs/research/THREAT_MODEL_V1643.md"
  },
+ "campaign3b1_release": "mini-AGI-V1-Campaign3B1-Interference-Repair",
+ "campaign3b2_release": "mini-AGI-V1-Campaign3B2-Full-Scientific-Hardening",
+ "campaign3b_base_runtime": "16.4.10-containment-and-authority-closure",
+ "campaign3b_release": "mini-AGI-V1-Campaign3B-Full-Scientific-Hardening",
+ "campaign3b_scientific_hardening": "Campaign 3B (v16.4.10+campaign3b): prompt parity proved per example; strict exact match primary with format/termination diagnostics recorded separately; verified replay operates (30/30 records, 20/20 retrieval hits) where 3A admitted zero traces; false-activation and retention undefined metrics are NOT_ESTIMABLE and block; governed safety suite enforced with 0 undefined mandatory categories. Positive control EXECUTED and REFUSED (6/7 readiness gates): LoRA learns within-family (0.222 -> 0.444 vs frozen 0.222) but misses the 95% fit gate (0.767) and degrades held-out families (0.167 vs 0.417). Runtime security surface unchanged. Sealed confirmation NOT RUN (no independent evaluator custody).",
  "campaign_qualification": {
   "campaign_id": "campaign1b-v163",
   "decision": "QUALIFIED",
@@ -36,6 +41,12 @@
   "results_branch": "results/v16.1-colab-campaign-1",
   "results_tip": "2f75ffb82df9ab1c914747814bda93c4b72116d7",
   "seeds_positive": "5/5"
+ },
+ "colab_t4_qualification": {
+  "files_verified": 1517,
+  "python_tests": "891 passed, 20 skipped (platform-unavailable), 0 failed",
+  "real_model_e2e": "PASS on T4 via PeftServingBackend",
+  "status": "PASS"
  },
  "colab_validation": {
   "cuda": "13.0",
@@ -46,12 +57,41 @@
   "runtime": "Google Colab T4",
   "torch": "2.11.0+cu130"
  },
+ "containment_authority_v16410": {
+  "defects_closed": [
+   "SEC-901 strict cgroup.events parser, procs fallback removed",
+   "SEC-902 shared ContainmentState evaluator; InvocationID-bound teardown",
+   "SEC-903 broker-generated w-<hex32> ids + root-constrained workspaces",
+   "SEC-904 euid==0 privilege shortcut removed",
+   "SEC-905 AuthorizedLaunchRecord: signed, expiry/epoch/nonce-bound",
+   "SEC-906 mandatory startup preflight + host-bound qualification record",
+   "VAL-901 mid-generation cancellation inside the jail",
+   "VAL-902 signed A->B activation/rollback/cold-recovery/revocation"
+  ],
+  "issue_register": "docs/security/ISSUE_REGISTER_V1648.md",
+  "qualification": "docs/security/LINUX_HOST_QUALIFICATION.md",
+  "tests": "tests-python/runtime/test_v16410_*.py (62)"
+ },
  "created_utc": "2026-10-06T08:50:02.699595+00:00",
  "gpu_smoke": "EXECUTED_PASS (tiny-gpt2 + Qwen2.5-0.5B real LoRA on Tesla T4; see results/v16.1-colab-campaign-1)",
- "manifest_sha256": "d16978825b2cd74c7de71b1d8a84312c5620412cdb98ace2a707a4ce954cf634",
+ "linux_isolation_v1648": {
+  "defects_closed": [
+   "SEC-701",
+   "SEC-702",
+   "SEC-703",
+   "SEC-704",
+   "SEC-705",
+   "SEC-706"
+  ],
+  "detail": "docs/security/V16_4_8_REPAIR_REPORT.md",
+  "issue_register": "docs/security/ISSUE_REGISTER_V1648.md",
+  "qualification": "macOS suite green; Linux boundary run pending",
+  "tests": "tests-python/runtime/test_v1648_executor_isolation.py (42); tests-python/runtime/test_v1648_linux_nsjail.py (7, Linux-gated)"
+ },
+ "manifest_sha256": "4a9957e551910b54a2767243b027369d5e5e6e5da7f95b56fd7af7985513c48b",
  "operator_promotion_authority": false,
  "public_key_sha256": "a8cd5cb2273df7d5ba4cb9898f88fa5a13585d14e7ec4339a371fe97fe0b0136",
- "python_validation": "767/767 PASS + 1 skipped (local, pre-commit; Linux-only RLIMIT_AS test on macOS host)",
+ "python_validation": "1067 passed, 18 skipped, 0 failed (macOS); container: 62/62 v16.4.10 + 50/50 executor-isolation + 2/2 G10",
  "reissue": {
   "new_key_location": "outside repository (~/.config/miniagi/release-ed25519.pem on the release machine)",
   "original_assembly_manifest_sha256": "560dc59a035de9d52fb219be4c07e478cfcf49711138faefdc5ed54ba6058384",
@@ -210,9 +250,298 @@
    "manifest_sha256": "d16978825b2cd74c7de71b1d8a84312c5620412cdb98ace2a707a4ce954cf634",
    "reason": "v16.4.3 hardened runtime: authority store, op authorization, path authority, verified journal + migration, crash-safe recovery, backend manifest, bounded service I/O, serving router (SEC-201..207, OPS-001..003 closed). (manifest regenerated after VERSION/SBOM bump + router callable() fix)",
    "utc": "2026-10-09T09:05:44.277747Z"
+  },
+  {
+   "commit": "85f6461",
+   "manifest_sha256": "94dc9a436d1ea430bf6b1373cfe5299091b912b0f33e254623f0e5af8d443233",
+   "reason": "v16.4.4 verified runtime closure: durable commit intent before routing, generation-checked reconcile/rollback, per-activation leases with drain/cancel/safe-unload, mandatory durable admin audit with emergency-stop exception, inference budgets, production backend-identity admission, automatic cold-start restoration (SEC-301..307 closed).",
+   "utc": "2026-10-09T22:01:27.480977Z"
+  },
+  {
+   "commit": "HEAD",
+   "manifest_sha256": "5d5863d4635d3d2ae7f0b25541f6e9ea425200ba15438f8ad53417c582b2e07c",
+   "reason": "v16.4.4 closure: added real-model e2e evidence, RUNTIME_CLOSURE_V1644.md + REMAINING_DEFECTS_V1644.md docs, __init__/SBOM version reconciliation; manifest regenerated over the committed tree.",
+   "utc": "2026-10-09T22:06:28.583589Z"
+  },
+  {
+   "manifest_sha256": "fc5d861b28a84d0cc238cbd61ef10846d3568f3622cf91fdea7040edf282d1e2",
+   "reason": "v16.4.4 post-release lint cleanup: unused import/variable removed in test_v1644_runtime_closure.py; code behavior unchanged.",
+   "utc": "2026-10-09T22:08:24.074039Z"
+  },
+  {
+   "manifest_sha256": "2b0f190411391acb32afaa8c18f9e1fb193ea4e594426e1253b63e9f2dbe6845",
+   "reason": "v16.4.5 security and evidence closure: framed worker IPC, worker isolation, revoke-aware restoration (SEC-401/402), release integrity repair with source/evidence separation (SEC-403), test portability (SEC-404); 909 passed, 1 skipped.",
+   "utc": "2026-10-10T22:51:43.328839Z"
+  },
+  {
+   "manifest_sha256": "f07dcb0dbb9bbb4dc592889b84504509af21ac5e96fc48af815bc94236e037aa",
+   "reason": "re-manifest after verify_final_package.py evidence-manifest prefix fix",
+   "utc": "2026-10-10T22:53:25.425603Z"
+  },
+  {
+   "manifest_sha256": "adfa48b1c9994602477f022347f7982f35a0d3c9277f7afae42420a1e6590aab",
+   "reason": "untrack dist-v1645 build outputs from governed set",
+   "utc": "2026-10-10T22:54:55.330465Z"
+  },
+  {
+   "manifest_sha256": "570e6f1f7a59219ae8891f1b86de6dc002ff893622fa8e409f7f9fb96b129889",
+   "reason": "SEC-005/006 recorded closed in change manifest/validation; only SEC-007 remains open",
+   "utc": "2026-10-10T23:26:29.475151Z"
+  },
+  {
+   "manifest_sha256": "93c844c5127b054167dfe7e21765ef4cf081326665e7aa96c555fb1802e64bdf",
+   "reason": "package __version__/SBOM bumped to 16.4.5 (version-identity test caught post-bump drift on Colab)",
+   "utc": "2026-10-11T00:06:12.294105Z"
+  },
+  {
+   "manifest_sha256": "9153d0f3f24988a1c7473e28385604c5899d7d4e086f2ed3ce8554bdcd6b78d7",
+   "reason": "Colab T4 qualification recorded (release verify PASS; 891/20/0; real-model e2e PASS)",
+   "utc": "2026-10-11T00:22:41.749960Z"
+  },
+  {
+   "manifest_sha256": "f9c93ae91b0247f39bbb2c903de7374fde638edbb8ed935677d575aba454599b",
+   "reason": "v16.4.6 worker isolation and process closure: separate worker OS identity enforced for production, verified process-tree termination, bounded worker error codes (no dynamic exception classes), descriptor-pinned overflow reads, production startup wiring with manifest backend_id. 946 passed, 4 skipped.",
+   "utc": "2026-10-11T02:57:02.314311Z"
+  },
+  {
+   "manifest_sha256": "ad371f84b95f04302f732946671ec261147d0d96c99f3677c1fc9809e804fadf",
+   "reason": "v16.4.6 manifest re-issued after build-script rename (verify_final_package names the v16.4.6 artifact)",
+   "utc": "2026-10-11T02:57:56.931992Z"
+  },
+  {
+   "manifest_sha256": "e325f0f47c9ff7b5c18907bb1c3bd0b5fccb951240a921e6ecc193fcfe748201",
+   "reason": "v16.4.6 manifest re-issued after untracking swept build zips (dist-v1646 ignored)",
+   "utc": "2026-10-11T03:00:52.675055Z"
+  },
+  {
+   "manifest_sha256": "0c0ae48b81773ddeafe8b9cffab00a24fd70c61c2b77244356903f534919b969",
+   "reason": "final v16.4.6 re-issue after TEST_RESULTS hash update",
+   "utc": "2026-10-11T03:03:00.382723Z"
+  },
+  {
+   "manifest_sha256": "55ce5e326a2703035ed8e05a1221c3dfd3c45daa9579dfe3e34bdb29c9251625",
+   "reason": "v16.4.6 re-issue after Linux-qualification test fixes",
+   "utc": "2026-10-11T03:19:04.574207Z"
+  },
+  {
+   "manifest_sha256": "66c53a773de1a7ade4c06c510a6619ee006f751a2a3be842055b6ff23e705abf",
+   "reason": "v16.4.6 re-issue after status-alignment + demotion test fixes",
+   "utc": "2026-10-11T03:43:32.047146Z"
+  },
+  {
+   "manifest_sha256": "1699545b8952aa241742f94815b0440dce1098e43de889801d06d8d4efce634f",
+   "reason": "v16.4.6 final re-issue: Colab T4 (931/20/0, demotion tests PASS) + native 28/28 qualification recorded",
+   "utc": "2026-10-11T03:50:03.236741Z"
+  },
+  {
+   "manifest_sha256": "40268d2bf128bf661f253994cc6abe41b16275a1ed757c21374deaf207b87516",
+   "reason": "v16.4.6 final manifest \u2014 results doc records report pointer, not its own artifact hash",
+   "utc": "2026-10-11T03:51:02.213554Z"
+  },
+  {
+   "manifest_sha256": "de651a9386eff07b5f891b72e2148171c65722170873f07cfe4339dfbf91a396",
+   "reason": "v16.4.6 follow-on \u2014 kqueue tracker + seatbelt containment + real release gates",
+   "utc": "2026-10-11T04:13:59.878619Z"
+  },
+  {
+   "commit": "HEAD",
+   "manifest_sha256": "4ed9daf1208cc4578fd3f0609f3a724a0cf704c12a89282b8adbf7ef2a9d858e",
+   "reason": "v16.4.7 runtime isolation enforcement \u2014 independent-audit repairs: production inprocess refusal (CLI+construction), external launcher replaces preexec_fn, cgroup v2 containment, applied netns/mountns, zombie-aware verification, unload descendant sweep, honest capability validation; 957 passed, 7 skipped on macOS",
+   "utc": "2026-10-11T07:46:20.850241+00:00"
+  },
+  {
+   "commit": "HEAD",
+   "manifest_sha256": "3f5d5323f17377e0628455c078fc15849bc81046db1d5f30ecfb2dbbfad7d73e",
+   "reason": "v16.4.8 linux isolation and security closure: executor architecture \u2014 restricted launch broker + pinned NsJail inside managed systemd cgroup-v2 units; CapEff-honest capability checks; frozen digest-bound isolation profile; Darwin-gated seatbelt; production requires the nsjail executor. 998 passed, 7 skipped; Linux boundary qualification pending (no host).",
+   "utc": "2026-10-11T08:56:47.350285+00:00"
+  },
+  {
+   "manifest_sha256": "2618b2dac366c82790b026e34dac094917c7000c4845186307eba9a7c527ed15",
+   "reason": "v16.4.8 qualification fixes: containered-Linux boundary PASS (7/7); closure/mount/cgroup/probe defects repaired",
+   "utc": "2026-10-11T09:37:03Z"
+  },
+  {
+   "manifest_sha256": "a4facee7ccb15f35dc4c80ca1eb690d126b81fbaec799ab397a1cb9b61689be6",
+   "reason": "v16.4.9 independent-audit repairs SEC-801..805 + strict-preflight qualification rerun PASS (distinct worker uid 65534, 7/7 adversarial)",
+   "utc": "2026-10-12T20:01:49Z"
+  },
+  {
+   "manifest_sha256": "41e16a041f8f137d9dbe22e854118f4f9c4448637b2d76ed90e1d697dfcc1f4e",
+   "reason": "v16.4.9 final: G10 real-model lifecycle qualified inside the jail + rlimit_as resource-boundary fix",
+   "utc": "2026-10-12T20:47:30Z"
+  },
+  {
+   "manifest_sha256": "dc89f32cca5ec1bcaf6a73039032dd7eda3b37db8271a71f314391552b6ee8d3",
+   "reason": "v16.4.10 containment and authority closure: SEC-901..906 + VAL-901/902 repaired; qualified in privileged Linux container (62/62 + 7/7 adversarial + 2/2 G10); local 1067/18/0; native 28/28",
+   "utc": "2026-10-12T21:43:52Z"
+  },
+  {
+   "manifest_sha256": "6261fcf2f5cf83fb7fd44074db62034f332f4596970037397a77472cfc388373",
+   "reason": "v16.4.10 re-issue: unused-import lint cleanup post-envelope",
+   "utc": "2026-10-12T21:45:42Z"
+  },
+  {
+   "manifest_sha256": "76356dd02e6ebc21e836ca16adf889d962ff0a1c24fb714e069dc9084a0baa7c",
+   "reason": "Campaign 3B scientific hardening: shared prompt/tokenization contract, answer-only output contract with strict scoring, oracle-verified replay baseline (L5b), family-aware statistics with NOT_ESTIMABLE undefined metrics, governed eight-category safety & retention suite, and the evaluator-sealed confirmation executor. Executed positive control REFUSED; real sealed confirmation NOT RUN.",
+   "utc": "2026-10-13T08:09:13Z"
+  },
+  {
+   "manifest_sha256": "ad01f59275cec0be039d01341ce0d7b7f21528afe465b8738d7201fdd9c34508",
+   "reason": "Campaign 3B deliverable reports + release change manifest; envelope reissue over the final tree",
+   "utc": "2026-10-13T08:11:01Z"
+  },
+  {
+   "manifest_sha256": "1faa4d318d508dbdeaf588c6f55ba547349d580204d07a3cf5b56d72a476356d",
+   "reason": "Campaign 3B release identity bound into the envelope (release name + final tree)",
+   "utc": "2026-10-13T08:11:10Z"
+  },
+  {
+   "manifest_sha256": "07a678e3853cb2b4b44c36a2a83480788b473469b3b1cfb490c99b30c430f1e2",
+   "reason": "Campaign 3B: clean-extraction verification + G1-G12 gate record",
+   "utc": "2026-10-13T08:13:20Z"
+  },
+  {
+   "manifest_sha256": "1bc8331edeacd498cb8d77c4c049f373bfb5864c35167e2b65cecbaf2e0bb421",
+   "reason": "Campaign 3B.1: interference diagnosis, qualifier L5b/L7 repair, enforceable custody control, violation classification",
+   "utc": "2026-10-13T08:41:49Z"
+  },
+  {
+   "manifest_sha256": "3f5a27c9163a593c48b6956e1ed55fb09dad0ded3e9a66dfde890fd8bf299c3f",
+   "reason": "Campaign 3B.1 Step 4: fit experiment + breadth-vs-steps ablation",
+   "utc": "2026-10-13T09:30:25Z"
+  },
+  {
+   "manifest_sha256": "a153af22d26ef5973c2c56a07f26acaee49cc6c472482beaa6b96a6be571a1cf",
+   "reason": "Campaign 3B.2 Stages 1-3: immutable run artifacts, contrast controls, interference and counterfactual analysis, generated experiment/artifact manifests",
+   "utc": "2026-10-13T23:59:54Z"
+  },
+  {
+   "manifest_sha256": "07e6feb52ea1a22142bdcf43090404fee919b461bc671d205319ba3e38a83ca2",
+   "reason": "Campaign 3B.2: manifest over the final tree incl. the generated manifests",
+   "utc": "2026-10-14T00:00:03Z"
+  },
+  {
+   "manifest_sha256": "7d9b01c6232f8461a9b35ac27c29c813144171a6ae00eb5460215b854777268e",
+   "reason": "Campaign 3B.2: include FAMILY_COMPOSITION_CORRECTION.md and the withdrawal notice, so the packaged source does not ship a withdrawn claim uncorrected",
+   "utc": "2026-10-14T01:12:48Z"
+  },
+  {
+   "manifest_sha256": "95a272b0ba84134774334db82d3c319709268406707958e1173ab8c4efad5490",
+   "reason": "Campaign 3B.2: manifests reindexed to all 41 runs so the source archive and the evidence package agree",
+   "utc": "2026-10-14T01:14:59Z"
+  },
+  {
+   "manifest_sha256": "07ed2fcdefee889b7d62d35ff79f832e93127e1194449ecab1654c193941f34c",
+   "reason": "Campaign 3B.2 final: rank ladder, single-family diagnostic, v2 benchmark, enforced-lint and reporting fixes",
+   "utc": "2026-10-14T08:30:34Z"
+  },
+  {
+   "manifest_sha256": "2ff6d0e08c358e6b906ad8c285e6f4efe6ae59fe0aab37c540cf1d818001de0d",
+   "reason": "Campaign 3B.2 final: benchmark-grouped manifest roll-ups",
+   "utc": "2026-10-14T08:31:00Z"
+  },
+  {
+   "manifest_sha256": "7687a104256d62d8574b5060e7395f129abc587d8de6e7109e08bd5f5a5fff78",
+   "reason": "Campaign 3B.3 Priority 1: signed control-plane manifest, superseded implementations marked, deployment path declared",
+   "utc": "2026-10-14T21:28:31Z"
+  },
+  {
+   "manifest_sha256": "ed16388cdc57e28a56a89d7c2d90e4d0de7b769b031787dc55a8156428d2405d",
+   "reason": "Campaign 3B.3: ship the control-plane public key so the signed manifest verifies from the archive",
+   "utc": "2026-10-14T21:28:53Z"
+  },
+  {
+   "manifest_sha256": "bd666f55d4bb23b604280284a29e5af75ef0dc4fa9197757a9d32357f8b3c0f8",
+   "reason": "Campaign 3B.3 Priorities 2-3: capability baselines and evidence-driven intervention selection",
+   "utc": "2026-10-14T21:39:18Z"
+  },
+  {
+   "manifest_sha256": "0bb7455dc8c8de22c0232cd274ee99d3fb944ef76f6747eaf781d669354a4237",
+   "reason": "Campaign 3B.3 final: tree lint-clean, selector completeness reporting",
+   "utc": "2026-10-14T21:45:26Z"
+  },
+  {
+   "manifest_sha256": "42d5af519e864fc8931dc504a7c03ace0264e55d8ee67d9fe22e5d112a03381f",
+   "reason": "Campaign 3B.3 P0-P5: strict exact-match-v2 oracle + full rescore overlays; uncertainty-aware selector (E5 CONFOUNDED); rehearsal+KL preservation machinery; matched 4x3 sweep (no winner); fail-closed production confirmation attempt",
+   "utc": "2026-10-15T03:40:01Z"
+  },
+  {
+   "manifest_sha256": "36298ce0a2eac5b56f22b36cd84acef9702109093d64288de1e36d6791831e8f",
+   "reason": "Campaign 3B.3 manifest: 3B.3 reports, preservation+rescore+selector scripts, custody/fail-closed tests, release manifest update; build_zip prunes results/",
+   "utc": "2026-10-15T03:43:03Z"
+  },
+  {
+   "manifest_sha256": "4e1a05e5ea9fa115d5218a4cddcc8b51841254863d17527098262d57aeb338a4",
+   "reason": "final 3B.3: report results table finalized",
+   "utc": "2026-10-15T03:45:28Z"
+  },
+  {
+   "manifest_sha256": "253d52e2a770d1e82d1193ff6f5672c47e947e72ff6b4e848201de5970cedd27",
+   "reason": "IDE-lint hardening: init-hook prefers analyzed file's own src-python; .vscode/settings pins extraPaths+pylint.cwd; RD-20",
+   "utc": "2026-10-15T04:04:18Z"
+  },
+  {
+   "manifest_sha256": "492587da772ca89ef84a9ee8c65326ae78c0771fa1a38e054568626cb83d2e05",
+   "reason": "durable lint isolation: worktree .venv pins src-python; settings pin interpreter+extraPaths; .venv gitignored; RD-20",
+   "utc": "2026-10-15T04:19:06Z"
+  },
+  {
+   "manifest_sha256": "0e6a19b34b2525d429f3b69d23d4401c55465ff44adf62fcbbb59c77ebae63aa",
+   "reason": "build_zip + verify_release exclude .venv/venv (local interpreter dirs are not release content); RD-20",
+   "utc": "2026-10-15T04:19:49Z"
+  },
+  {
+   "manifest_sha256": "ab9dd2b16a7217326af52668a3b463c2786c3fe89df8bd9b364c13a89ab3f81f",
+   "reason": "verify_release skips results/ + .venv/ on dev trees (gitignored generated dirs are not manifest content)",
+   "utc": "2026-10-15T04:20:54Z"
+  },
+  {
+   "commit": "HEAD",
+   "manifest_sha256": "c5f708f9c6d7a9e20c16af2583abc59587192caa639808b0ed093dfd2e99fe87",
+   "reason": "v4.0.0 verified capability acquisition: 19-defect audit repair (strict scoring, response-aware KL, verified rehearsal, matrix/compositional/governance gates, controller, verified routing, family adapters); fresh sealed corpus; 1334 passed/21 skipped; executed run v40-verify-s0 reports an honest null on hidden generalization",
+   "utc": "2026-10-15T07:29:30Z"
+  },
+  {
+   "manifest_sha256": "178e1ade459d97a967902b3296a07e26a7f88e04d348b90786de5f5f3e68c8de",
+   "reason": "v4.0.0 re-issue: lint closure \u2014 F821 frozen-reference made explicit-parameter, unused imports removed; no behavior change",
+   "utc": "2026-10-15T07:33:00Z"
+  },
+  {
+   "manifest_sha256": "69a2ca07db9428b4b0b289427584a6240b9fa2effa9e43333cef689cb21904a2",
+   "reason": "v4.0.0 re-issue: gen_campaign3d family-transform dicts annotated (Callable contract); digests unchanged; no behavior change",
+   "utc": "2026-10-15T07:34:21Z"
+  },
+  {
+   "manifest_sha256": "51b3471089f3c7285bc3d9068a52011fbddc898a71e9ac7cce38a5c16128d66c",
+   "reason": "v4.0.0 deep-review hardening: rollback-persistent revocation, matrix-consistency gate enforced, campaign-lane frozen-verified preservation, eval_seconds compositional timing, kl_prompts_digest hygiene, version identity unified at 4.0.0",
+   "utc": "2026-10-15T07:59:22Z"
+  },
+  {
+   "commit": "30b8072",
+   "manifest_sha256": "12c337c05f526ab285cb1b45bbde2f9e7f9f08369707540a4e7ee6e976670894",
+   "reason": "v4.0.1 external-review hardening: router state persistence, signed adapter manifests + artifact verification, unhinted routing as result-of-record, campaign3e within-family corpus + fit-runner split eval; version identity unified at 4.0.1; 1351 passed/21 skipped; executed MPS runs v401-3e-8fam-s0 (fit FAIL) and v401-3e-8fam-e8-s0 (fit PASS, within-family 0.208->0.542, single seed, unqualified)",
+   "utc": "2026-10-16T02:24:11.093139+00:00"
+  },
+  {
+   "commit": "HEAD",
+   "manifest_sha256": "5e22f9823a4e686f813456f777c046e4d0f5197ad25842aee0f27a8a56e7d579",
+   "reason": "v4.0.2 integrity closure: atomic ownership-bound run lifecycle, full-split independent requalification (95 runs; campaign3e VERIFIED, legacy INCONSISTENT), authenticated registry + activation recheck + untrusted family hints, matrix identity completeness, verified outcome receipts; manifest hidden rows corrected 96->192; defects V4-26..V4-31 closed; 696 passed/4 skipped in tests-python/v161",
+   "utc": "2026-10-16T07:01:37.069993+00:00"
+  },
+  {
+   "commit": "a03633e",
+   "manifest_sha256": "da9b22ed465fafe342678e85d0744af8eb9bb59dfca08e96646a6976bef3f302",
+   "reason": "v4.0.3 evidence-integrity release: outcome verification split into INTEGRITY_VERIFIED/EVALUATION_VERIFIED/QUALIFIED (qualified_outcome.py); fabricated/caller-supplied deltas can no longer enter verified controller history; signed hash-chained registry event ledger + separately-custodied monotonic state authority; generation-bound reinstatement; filename-safe run ids, symlink containment, no-replace publish nonce; mandatory evidence metric schema; campaign completeness gates; defects V4-32..V4-37 closed; 787 passed/4 skipped in tests-python/v161",
+   "utc": "2026-10-16T22:41:34.062032+00:00"
+  },
+  {
+   "commit": "363d679",
+   "manifest_sha256": "4a9957e551910b54a2767243b027369d5e5e6e5da7f95b56fd7af7985513c48b",
+   "reason": "v4.0.3-r2 qualification & execution-provenance closure: separate matrix/candidate semantics (V4-43), evaluator-owned model executor + model-execution-receipt-v1 (V4-44), mandatory evidence identities + trusted resolver + custody (V4-45), versioned statistical policy with CI gates (V4-46), sealed evaluator holdout (V4-47); 1584 passed/21 skipped",
+   "utc": "2026-10-17T09:43:44.288569+00:00"
   }
  ],
- "reissued_utc": "2026-10-09T09:05:44.277747Z",
+ "reissued_utc": "2026-10-17T09:43:44.288569+00:00",
  "reissues": [
   {
    "manifest_sha256": "5a258c12aded3b0b0d08924f9b570ca5a133663342d97a4110535ecef5562b53",
@@ -230,9 +559,34 @@
    "manifest_sha256": "90a17489195b8394df66550e0ea95c35b145908668e166ffa04566b2d15a6c15",
    "reissued_utc": "2026-10-09T06:45:19.386443+00:00",
    "release": "mini-AGI-v16.4.2-Authority-and-Activation-Closure"
+  },
+  {
+   "manifest_sha256": "f9c93ae91b0247f39bbb2c903de7374fde638edbb8ed935677d575aba454599b",
+   "reason": "v16.4.6 worker isolation and process closure: separate worker OS identity enforced for production, verified process-tree termination, bounded worker error codes (no dynamic exception classes), descriptor-pinned overflow reads, production startup wiring with manifest backend_id. 946 passed, 4 skipped.",
+   "reissued_utc": "2026-10-11T02:55:51.100167+00:00",
+   "release": "mini-AGI-V1-v16.4.6-Worker-Isolation-and-Process-Closure"
+  },
+  {
+   "manifest_sha256": "3f5d5323f17377e0628455c078fc15849bc81046db1d5f30ecfb2dbbfad7d73e",
+   "reason": "v16.4.8 linux isolation and security closure: executor architecture \u2014 restricted launch broker + pinned NsJail inside managed systemd cgroup-v2 units; CapEff-honest capability checks; frozen digest-bound isolation profile; Darwin-gated seatbelt; production requires the nsjail executor. 998 passed, 7 skipped; Linux boundary qualification pending (no host).",
+   "reissued_utc": "2026-10-11T08:56:47.350285+00:00",
+   "release": "mini-AGI-V1-v16.4.8-Linux-Isolation-and-Security-Closure"
   }
  ],
- "release": "mini-AGI-v16.4.3-Hardened-Runtime",
+ "release": "mini-AGI-V1-v4.0.3-r2-Qualification-Closure",
+ "runtime_closure_v1644": {
+  "change_manifest": "RELEASE_CHANGE_MANIFEST.json",
+  "defects_closed": [
+   "SEC-301 model published before signed pre-routing authorization",
+   "SEC-302 activation failure cleared the durable pointer instead of restoring the predecessor",
+   "SEC-303 global in-flight counter; unload before routing stop; drain timeout treated as unload permission",
+   "SEC-304 production startup did not enforce backend manifest/policy epoch/revocation freshness",
+   "SEC-305 administrative audit could silently fail",
+   "SEC-306 unbounded inference parameters and missing concurrency/deadline limits",
+   "SEC-307 cold-start recovery stopped at pointer reconciliation without reloading the model"
+  ],
+  "tests": "tests-python/runtime/test_v1644_runtime_closure.py (15 rows), tests-python/runtime/test_serving_router.py, tests-python/runtime/test_activation_supervisor.py, tests-python/runtime/test_supervised_service.py"
+ },
  "runtime_security_closure": {
   "audit_defects_closed": [
    "SEC-001 admission mandatory",
@@ -247,6 +601,45 @@
   "tests": "tests-python/v161/test_v1641_artifact_closure.py, test_v1641_trusted_launcher.py, test_v1641_strict_schema.py, test_v1641_cli.py"
  },
  "schema": "mini-agi-v16.1-release-attestation-v1",
+ "security_and_evidence_closure_v1645": {
+  "defects_closed": [
+   "SEC-401 supervisor deserializes worker-controlled pickle",
+   "SEC-402 cold restoration reactivates revoked promotion",
+   "SEC-403 governed-file mismatches and unmanifested evidence",
+   "SEC-404 multiprocessing test not importable under spawn",
+   "SEC-005 controller accepts unsupported prerequisite evidence",
+   "SEC-006 controller recommends negative-utility intervention"
+  ],
+  "detail": "docs/research/V16_4_5_REPAIR_REPORT.md",
+  "evidence_artifact": "mini-AGI-Campaign3A-Evidence.zip",
+  "open_defects": [
+   "SEC-007 real-model platform qualification (v16.4.6 target)"
+  ],
+  "threat_model": "docs/research/THREAT_MODEL_V1645.md"
+ },
  "signature_algorithm": "Ed25519",
- "status": "PASS_HARDENED_RUNTIME_GPU_SMOKE_PENDING"
+ "status": "v4.0.3 evidence-integrity release \u2014 the v4.0.2 audit's trust-boundary defect closed: outcome verification split into INTEGRITY_VERIFIED / EVALUATION_VERIFIED / QUALIFIED (qualified_outcome.py); a self-authored hash-consistent commit is integrity-only and cannot enter verified controller history; capability_control.py derives verified records from evidence and manual numbers live only on the explicit --diagnostic path; registry gained a signed hash-chained event ledger (ADAPTER_REGISTERED/QUALIFIED/REVOKED/REQUALIFIED/SUSPENDED/RESTORED) plus a separately-custodied monotonic state authority \u2014 stale signed snapshots and truncated ledgers fail closed under require_authority, and reinstatement is generation-bound; run_reservation enforces a filename-safe identifier grammar, symlink containment and a true no-replace publish nonce; evidence_reconciliation requires the full metric schema when a prediction surface exists; requalify_executed_campaign gained --expected-manifest/--strict-completeness/--require-evidence; counterfactual CLI validates args before importing the training stack. QUALIFICATION: tests 787 passed/4 skipped in tests-python/v161. No scientific learning claim is made.",
+ "v4_capability_acquisition": {
+  "closure_report": "docs/research/V402_INTEGRITY_CLOSURE.md",
+  "codebase_lineage": "minagi 16.4.10 (unchanged __version__)",
+  "defect_register": "DEFECT_REGISTER_V4.json (31 defects, all CLOSED/CLOSED-E)",
+  "evidence_manifest": "EVIDENCE_MANIFEST_V4.json",
+  "executed_run": "results/campaign3e/runs/v401-3e-8fam-e8-s0 re-qualified VERIFIED under the independent reconciler (7/7 prediction files rescore, corpus join, identity bindings); within-family 0.208->0.542 is a verified MEASUREMENT, single seed, not a qualification",
+  "historical_rescore": "95 runs requalified: 2 VERIFIED (campaign3e), 93 INCONSISTENT (legacy v1 casefold scoring; recorded, not rewritten). Manifest hidden rows corrected 96->192",
+  "python_tests": "tests-python/v161: 696 passed, 4 skipped",
+  "release_version": "4.0.2",
+  "reproduction_tool": "scripts/reproduce_campaign3e.py"
+ },
+ "worker_isolation_v1646": {
+  "defects_closed": [
+   "SEC-501",
+   "SEC-502",
+   "SEC-503",
+   "SEC-504",
+   "VAL-501"
+  ],
+  "detail": "docs/research/WORKER_ISOLATION_SPEC_V1646.md, docs/research/V16_4_6_REPAIR_REPORT.md",
+  "qualification": "946 passed / 4 skipped macOS; Linux root demotion qualified on Colab",
+  "tests": "tests-python/runtime/test_v1646_worker_isolation.py (36) + worker suites"
+ }
 }

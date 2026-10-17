@@ -208,9 +208,21 @@ class PeftServingBackend:
     v16.4.2: loading and probing are distinct supervised steps — a
     loaded model is PREPARED (not serving); `health_probe` moves it to
     READY; `unload` releases a handle on demand so a failed activation
-    cannot leave a resident model behind."""
+    cannot leave a resident model behind.
+
+    v16.4.4 (WP-E/SEC-306): `infer` enforces an
+    `InferenceBudgetPolicyV1` — the prompt is tokenized and its ACTUAL
+    token count checked, requested ``max_new_tokens`` is clamped to the
+    authorized bound, generation runs under a cooperative deadline and
+    a route-level cancellation event (a network timeout is never
+    mistaken for cancellation of GPU computation)."""
 
     backend_id = "hf-peft"
+
+    def __init__(self, *, budget=None):
+        from minagi.runtime.inference_policy import \
+            InferenceBudgetPolicyV1
+        self.budget = budget or InferenceBudgetPolicyV1()
 
     def load(self, snapshot: MeasuredSnapshot):
         if not isinstance(snapshot, MeasuredSnapshot):
@@ -244,21 +256,101 @@ class PeftServingBackend:
             raise RuntimeError("health probe produced no logits")
 
     def infer(self, handle, request) -> dict:
-        """v16.4.3 routed inference (WP8/OPS-003): the serving router
-        dispatches requests only to the live handle of the committed,
-        healthy activation — the backend is never handed a raw path."""
-        import torch
+        """Bounded routed inference (WP8/OPS-003 + v16.4.4 WP-E): the
+        serving router dispatches requests only to the live handle of
+        the committed, healthy activation — the backend is never handed
+        a raw path — and every request executes inside the authorized
+        `InferenceBudgetPolicyV1` envelope."""
+        import contextlib
+        try:
+            import torch
+            inference_ctx = torch.inference_mode
+        except ImportError:  # tests drive mock models without torch
+            inference_ctx = contextlib.nullcontext
         model, tokenizer = handle["model"], handle["tokenizer"]
         req = dict(request or {})
         prompt = str(req.get("prompt", ""))
-        max_new = int(req.get("max_new_tokens", 8))
-        with torch.inference_mode():
+        request_id = str(req.get("request_id", ""))
+        cancel_event = req.get("_cancel_event")
+        with inference_ctx():
             ids = tokenizer(prompt, return_tensors="pt")
-            out = model.generate(**ids, max_new_tokens=max_new)
-        return {"completion": tokenizer.decode(out[0],
-                                               skip_special_tokens=True),
+            prompt_tokens = self._token_count(ids)
+            self.budget.check_prompt_tokens(prompt_tokens)
+            requested = int(req.get("max_new_tokens", 8))
+            applied = self.budget.clamp_max_new_tokens(requested)
+            gen_kwargs = {"max_new_tokens": applied}
+            deadline_applied = False
+            if self.budget.execution_deadline_seconds:
+                gen_kwargs["max_time"] = float(
+                    self.budget.execution_deadline_seconds)
+                deadline_applied = True
+            stopping = self._stopping_criteria(cancel_event)
+            if stopping:
+                gen_kwargs["stopping_criteria"] = stopping
+            try:
+                out = model.generate(**ids, **gen_kwargs)
+            except TypeError:
+                # older generate() without max_time/stopping_criteria —
+                # the token bound still holds; record the gap
+                gen_kwargs.pop("max_time", None)
+                gen_kwargs.pop("stopping_criteria", None)
+                deadline_applied = False
+                out = model.generate(**ids, **gen_kwargs)
+        return {"completion": tokenizer.decode(
+                    out[0], skip_special_tokens=True),
                 "manifest_digest": handle.get(
-                    "snapshot_manifest_digest", "")}
+                    "snapshot_manifest_digest", ""),
+                "metrics": {
+                    "request_id": request_id,
+                    "prompt_tokens": int(prompt_tokens),
+                    "max_new_tokens_requested": int(requested),
+                    "max_new_tokens_applied": int(applied),
+                    "deadline_seconds": float(
+                        self.budget.execution_deadline_seconds),
+                    "deadline_enforced": bool(deadline_applied),
+                    "cancelled": bool(
+                        cancel_event is not None and
+                        cancel_event.is_set())}}
+
+    @staticmethod
+    def _token_count(ids) -> int:
+        tensor = ids.get("input_ids") if hasattr(ids, "get") else None
+        shape = getattr(tensor, "shape", None)
+        if shape is not None and len(shape) >= 2:
+            return int(shape[-1])
+        try:
+            return len(ids["input_ids"][0])
+        except Exception:  # noqa: BLE001
+            return len(ids["input_ids"])
+
+    @staticmethod
+    def _stopping_criteria(cancel_event):
+        """A cooperative StoppingCriteria that halts generation when
+        the route's cancellation event is set — without corrupting the
+        backend by killing the process."""
+        if cancel_event is None:
+            return None
+        try:
+            from transformers import StoppingCriteria, \
+                StoppingCriteriaList
+        except ImportError:
+            return None
+
+        class _RouteCancellation(StoppingCriteria):
+            def __call__(self, input_ids, scores, **kwargs):
+                return bool(cancel_event.is_set())
+
+        return StoppingCriteriaList([_RouteCancellation()])
+
+    def cancel(self, handle) -> None:
+        """Cooperative cancellation hook used by the router's
+        `cancel_requests`: signals in-flight generation to stop at the
+        next produced token. GPU work is not force-killed — the flag is
+        checked cooperatively."""
+        event = handle.get("_cancel_event") if hasattr(
+            handle, "get") else None
+        if event is not None:
+            event.set()
 
     def unload(self, handle) -> None:
         """Release a loaded model. Idempotent — a supervisor may call

@@ -10,6 +10,7 @@
 # evaluation authority BEFORE this plan is signed.
 campaign_id: campaign3b-v166
 plan_version: v166
+protocol_version: v2       # v4.0 extended protocol surface
 dataset: configs/campaign3b_tasks.jsonl  # NEW corpus — fresh families
 require_cuda: true
 require_family_disjoint_hidden: true
@@ -46,10 +47,16 @@ metric_tolerance: 0.05
 minimum_retention: 0.0
 
 # Phase-6 fields
-final_holdout_digest: ""        # REQUIRED — seal via scripts/seal_final_holdout.py
+final_holdout_digest: "sha256:5571a1e53c48d9a9f61a837a7c0fd15b00ea9a01d16fa52cf84607d246734d1e"  # sealed via scripts/seal_final_holdout.py (configs/holdout/campaign3b_holdout.jsonl)
 cluster_unit: family
 max_false_activation_rate: 0.05
 n_comparisons_preregistered: 3
+
+# v4.0 protocol-v2 gates
+minimum_compositional: 0.0        # split-E delta vs frozen baseline: >= 0 (non-regression)
+minimum_basemodel_eval_rate: 0.5  # F9: baseline must emit non-empty hidden output on >= 50%
+primary_comparison: L6-L5
+n_comparisons: 3                  # Bonferroni divisor for the confirmatory family
 
 lora:
   rank: 16

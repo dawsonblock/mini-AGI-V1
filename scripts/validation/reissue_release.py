@@ -52,6 +52,19 @@ def main() -> int:
     ap.add_argument("--release", default="mini-AGI-v16.1-Colab-Converged-Full-Upgraded")
     ap.add_argument("--key", default=str(Path.home() / ".config/miniagi/release-ed25519.pem"))
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--generate-key", action="store_true",
+                    help="explicitly mint a NEW development signing key when "
+                         "the configured key is absent. Never used for a "
+                         "release — a fresh key cannot satisfy the pinned "
+                         "release fingerprint and must not silently become "
+                         "release authority.")
+    ap.add_argument("--no-sign", action="store_true",
+                    help="regenerate the manifest inventory WITHOUT signing. "
+                         "Use when no approved signing identity is available: "
+                         "the package is then an explicitly unsigned "
+                         "development artifact, verifiable by SHA-256 "
+                         "inventory only. Never re-signs, never touches "
+                         "RELEASE_SIGNATURE.bin / RELEASE_PUBLIC_KEY.pem.")
     args = ap.parse_args()
 
     from cryptography.hazmat.primitives import serialization
@@ -69,10 +82,28 @@ def main() -> int:
            "release": args.release, "files": files}
     body = canonical(doc)
 
+    if args.no_sign:
+        # Unsigned development artifact: the inventory is regenerated, the
+        # signature envelope is deliberately left untouched. No key is
+        # loaded, none is minted, and no authority is claimed.
+        import hashlib
+        print(json.dumps({
+            "files": len(files),
+            "manifest_sha256": hashlib.sha256(body).hexdigest(),
+            "signing_status": "unsigned-development-artifact",
+            "dry_run": args.dry_run,
+        }, indent=2, sort_keys=True))
+        if not args.dry_run:
+            (ROOT / "SOURCE_MANIFEST.json").write_text(
+                json.dumps(doc, indent=2, sort_keys=True) + "\n")
+            print("wrote SOURCE_MANIFEST.json (unsigned; signature "
+                  "envelope untouched)")
+        return 0
+
     key_path = Path(args.key)
     if key_path.is_file():
         priv = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
-    else:
+    elif args.generate_key:
         priv = Ed25519PrivateKey.generate()
         if not args.dry_run:
             key_path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,6 +112,12 @@ def main() -> int:
                 serialization.PrivateFormat.PKCS8,
                 serialization.NoEncryption()))
             key_path.chmod(0o600)
+    else:
+        raise SystemExit(
+            f"release key not found at {key_path}. Refusing to generate a "
+            "new one silently — a fresh key cannot satisfy the pinned "
+            "release fingerprint and must not become release authority. "
+            "Pass --generate-key explicitly for development signing.")
     assert isinstance(priv, Ed25519PrivateKey)
 
     import hashlib

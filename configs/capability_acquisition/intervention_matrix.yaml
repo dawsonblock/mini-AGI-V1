@@ -1,0 +1,71 @@
+# Intervention matrix — controlled capability-acquisition arms (v4.1.0).
+#
+# Minimum useful comparison from the plan; each arm maps to a
+# positive_control_fit.py invocation profile. All arms share the
+# frozen model identity, the corpus, and comparable compute budgets —
+# differences between arms are differences in INTERVENTION, nothing
+# else. preservation_overhead fields exist so the marginal cost of
+# rehearsal/KL is measured, not assumed.
+schema: mini-agi-v4.1-intervention-matrix-v1
+
+matrix:
+  arm_A_frozen:
+    description: "Frozen base model — what can the model already do?"
+    runner: scripts/positive_control_fit.py
+    flags: {}                        # no adaptation arm: baseline eval only
+    role: baseline
+  arm_B_fixed_lora:
+    description: "Fixed-rank LoRA — does weight adaptation improve unseen-input accuracy?"
+    flags:
+      steps: 640                     # exposure 8 x 80 examples
+      rank: 16
+      learning_rate: 0.0002
+    role: intervention
+  arm_C_lora_rehearsal:
+    description: "LoRA + verified-pair rehearsal — does rehearsal reduce forgetting?"
+    flags:
+      steps: 640
+      rank: 16
+      learning_rate: 0.0002
+      rehearsal_fraction: 0.25       # P2 optimization-time interleave
+    role: intervention
+  arm_D_lora_kl:
+    description: "LoRA + response-aware frozen-reference KL — does regularization preserve behavior?"
+    flags:
+      steps: 640
+      rank: 16
+      learning_rate: 0.0002
+      kl_weight: 0.1
+      kl_every: 1
+    role: intervention
+  arm_E_lora_rehearsal_kl:
+    description: "Both preservation mechanisms — do they complement?"
+    flags:
+      steps: 640
+      rank: 16
+      learning_rate: 0.0002
+      rehearsal_fraction: 0.25
+      kl_weight: 0.1
+      kl_every: 1
+    role: intervention
+  arm_F_shuffled_control:
+    description: "Shuffled-label negative control — a gain here is not learning."
+    flags:
+      steps: 640
+      rank: 16
+      learning_rate: 0.0002
+      shuffle_labels: true
+    role: negative_control
+
+# Deferred until the fixed-adapter result is qualified: routed LoRA and
+# verified-skill-memory arms are declared downstream of a positive
+# within-holdout replication.
+deferred:
+  - routed_lora
+  - verified_skill_memory
+
+invariants:
+  same_model_identity: true
+  comparable_compute_budget: true
+  negative_control_required: true
+  report_preservation_overhead: true

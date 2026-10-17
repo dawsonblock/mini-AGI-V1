@@ -20,12 +20,25 @@ v16.4.3 closes what was still process-local or caller-controlled:
     retained, committed predecessor — durable intent and completion
     events bracket the pointer move (SEC-205 routing half).
 
-Ordering guarantees (unchanged in spirit, now transactional):
+Ordering guarantees (v16.4.4 — two-stage activation, WP-A/SEC-301..303):
 
   * the authorization event is committed before staging;
-  * commit intent + pointer swap are one database transaction;
-  * the signed completion event lands after;
-  * any post-load failure unloads the candidate;
+  * durable activation intent commits at the next deployment
+    generation BEFORE the candidate can accept any traffic —
+    authorization is not activation;
+  * the router publishes exactly the authorized generation, then the
+    supervisor records the observed routing outcome — a truthful,
+    signed, post-traffic record;
+  * a failed transition reconciles the durable intent to a live
+    committed predecessor or a durably UNAVAILABLE state — the
+    predecessor pointer is never silently cleared while a model
+    serves from memory only;
+  * model resources are released only after routing is withdrawn and
+    the activation's own request leases have drained — a drain
+    timeout retains the backend, it is not unload permission;
+  * when the backend runs in a worker process, a drain timeout +
+    cancel grace escalates to terminate() — a wedged model is killed
+    without stopping the supervisor (RUN-401);
   * a pointer never names a model that is not resident.
 """
 from __future__ import annotations
@@ -48,7 +61,7 @@ from .access_policy import opaque_id
 from .activation_state import (ActivationState, IllegalTransition,
                                check_transition)
 from .authority_store import (AuthorityStore, AuthorityStoreError,
-                              GrantConsumed)
+                              GenerationConflict, GrantConsumed)
 
 
 class ServingState(str, Enum):
@@ -110,6 +123,7 @@ class ServingSupervisor:
                  registry, runtime_identity: str = "local-supervisor",
                  min_policy_epoch: int = 0,
                  revocation_epoch_provider=None,
+                 revocation_snapshot_provider=None,
                  backend_manifest_doc=None, backend_modules=(),
                  backend_deps=(),
                  now: datetime | None = None):
@@ -123,6 +137,7 @@ class ServingSupervisor:
         self.runtime_identity = str(runtime_identity)
         self.min_policy_epoch = int(min_policy_epoch)
         self._revocation_epoch_provider = revocation_epoch_provider
+        self._revocation_snapshot_provider = revocation_snapshot_provider
         self.backend_manifest_doc = backend_manifest_doc
         self.backend_modules = tuple(backend_modules)
         self.backend_deps = tuple(backend_deps)
@@ -133,6 +148,7 @@ class ServingSupervisor:
         self._active_id: str | None = None
         self._retained: str | None = None
         self._serving_state = ServingState.UNAVAILABLE
+        self._deferred_unloads: set[str] = set()
         self.router = None  # set by the service (WP8)
         # Boot state: the pointer is history, not liveness. A durable
         # committed pointer yields RECOVERY_REQUIRED; nothing is SERVING
@@ -150,6 +166,50 @@ class ServingSupervisor:
     # --- plumbing ---------------------------------------------------
     def _at(self) -> int:
         return int(as_utc(self._now).timestamp())
+
+    def _operative_revocation(self):
+        """The operative revocation evidence, if a provider is
+        configured: ``(snapshot_or_none, epoch_floor)``. A snapshot
+        provider's callable must return a verified
+        ``RevocationSnapshotV2`` — signature/freshness/monotonicity are
+        checked by the provider (`RevocationStore.latest_valid`); a
+        refusal or exception there fails closed here. Returns
+        ``(None, None)`` when no provider is configured (the epoch
+        floor is simply not enforced)."""
+        snapshot = None
+        floor = None
+        if self._revocation_snapshot_provider is not None:
+            try:
+                snap = self._revocation_snapshot_provider()
+            except Exception as exc:  # noqa: BLE001 - fail closed
+                raise ActivationRefused(
+                    f"operative revocation evidence could not be "
+                    f"established: {exc}") from exc
+            if snap is not None:
+                snapshot = snap
+                floor = int(snap.epoch)
+        elif self._revocation_epoch_provider is not None:
+            epoch = self._revocation_epoch_provider()
+            if epoch is not None:
+                floor = int(epoch)
+        return snapshot, floor
+
+    def _check_decision_live(self, snapshot, *, grant=None,
+                             decision_digest: str | None = None,
+                             what: str = "activation") -> None:
+        """When an operative snapshot exists, the promotion decision a
+        grant binds must not be revoked, and the grant's own signing
+        key must not be revoked. Checked at authorize AND at commit —
+        revocation may advance between the two."""
+        if snapshot is None:
+            return
+        digest_to_check = decision_digest or (
+            str(grant.promotion_decision_digest) if grant else "")
+        if digest_to_check and snapshot.contains(digest_to_check):
+            raise ActivationRefused(
+                f"{what} binds promotion decision {digest_to_check}, "
+                "which is REVOKED by the operative revocation "
+                "snapshot — refused")
 
     def _get(self, activation_id: str) -> _Activation:
         act = self._activations.get(activation_id)
@@ -170,6 +230,19 @@ class ServingSupervisor:
             at=self._at(), detail=detail,
             signer=self.signer if sign else None)
         act.state = dst
+
+    def _durable_state(self, activation_id: str,
+                       default: str = "") -> str:
+        """The activation's last DURABLE to_state — the authoritative
+        from_state for the next journal event. In-memory activation
+        state can legally diverge from durable history when reconcile
+        events move the deployment record; the journal chain binds the
+        durable sequence, not memory."""
+        try:
+            events = self.store.events(activation_id)
+        except AuthorityStoreError:
+            return default
+        return str(events[-1]["to_state"]) if events else default
 
     @property
     def serving_state(self) -> ServingState:
@@ -212,19 +285,39 @@ class ServingSupervisor:
             self._activations[activation_id] = act
             return act
 
-    def authorize(self, activation_id: str, grant_doc) -> _Activation:
+    def authorize(self, activation_id: str, grant_doc, *,
+                  authority_docs: dict | None = None) -> _Activation:
         """AUTHORIZED — the supervisor verifies the grant itself and
         reserves it in the transactional store: id, nonce, digest, and
         activation id are unique across restarts and concurrent
-        callers (SEC-201/SEC-207)."""
+        callers (SEC-201/SEC-207). The grant must satisfy the operative
+        revocation epoch AND its promotion decision must not already be
+        revoked — a grant for a revoked decision is dead on arrival
+        (SEC-403). ``authority_docs`` retains the signed authority
+        documents (decision/qualification/plan/runtime_manifest) with
+        the reservation so cold-start restoration can re-verify the
+        original chain."""
         act = self._get(activation_id)
+        snapshot, floor = self._operative_revocation()
         try:
             grant = verify_grant(
                 grant_doc, self.registry, now=self._now,
-                audience_runtime_identity=self.runtime_identity)
+                audience_runtime_identity=self.runtime_identity,
+                min_revocation_epoch=floor or 0)
         except GrantRefused as exc:
             self.abort(activation_id, reason=f"grant refused: {exc}")
             raise ActivationRefused(f"grant refused: {exc}") from exc
+        try:
+            self._check_decision_live(snapshot, grant=grant,
+                                      what="grant")
+            if snapshot is not None and snapshot.revokes_key(
+                    str((grant_doc or {}).get("signer_key_id") or "")):
+                raise ActivationRefused(
+                    "the key that signed this grant has been revoked "
+                    "by the operative snapshot")
+        except ActivationRefused as exc:
+            self.abort(activation_id, reason=str(exc))
+            raise
         if grant.policy_epoch < self.min_policy_epoch:
             self.abort(activation_id,
                        reason="grant policy epoch superseded")
@@ -232,6 +325,8 @@ class ServingSupervisor:
                 f"grant policy epoch {grant.policy_epoch} is older than "
                 f"the operative epoch {self.min_policy_epoch} — "
                 "superseded authorization refused")
+        docs = dict(authority_docs or {})
+        from egai.common.canonical import digest as _doc_digest
         with self._lock:
             try:
                 self.store.reserve_grant(
@@ -240,7 +335,18 @@ class ServingSupervisor:
                     detail={"grant_id": grant.grant_id,
                             "manifest": grant.runtime_manifest_digest,
                             "backend": grant.backend_id,
-                            "policy_epoch": grant.policy_epoch})
+                            "policy_epoch": grant.policy_epoch,
+                            "decision_digest":
+                                grant.promotion_decision_digest,
+                            "qualification_digest":
+                                grant.qualification_digest,
+                            "artifact_root_digest":
+                                grant.artifact_root_digest,
+                            "backend_binary_digest":
+                                grant.backend_binary_digest,
+                            "doc_digests": {k: _doc_digest(v)
+                                            for k, v in docs.items()}},
+                    documents=docs)
             except GrantConsumed as exc:
                 self.abort(activation_id, reason="grant replay")
                 raise ActivationRefused(
@@ -318,6 +424,19 @@ class ServingSupervisor:
         act.backend = backend
         act.handle = handle
         self._live_handles[activation_id] = (backend, handle)
+        if self.router is not None:
+            # Register the route entry WITHOUT opening traffic — the
+            # router owns (backend, handle) lifetime from here; only an
+            # authorized deployment generation may publish it.
+            try:
+                self.router.prepare_route(activation_id, backend,
+                                          handle, at=self._at())
+            except Exception as exc:  # noqa: BLE001 - fail closed
+                self.abort(activation_id,
+                           reason=f"route prepare: {exc}")
+                raise ActivationError(
+                    f"could not register the prepared route: {exc}") \
+                    from exc
         self._transition(act, ActivationState.PREPARED,
                          detail={"backend_id": backend.backend_id})
         return act
@@ -362,13 +481,28 @@ class ServingSupervisor:
         return act
 
     def commit_activation(self, activation_id: str,
-                          *, expected_previous: str | None = None
+                          *, expected_previous: str | None = None,
+                          expected_generation: int | None = None
                           ) -> _Activation:
-        """COMMITTED -> ACTIVE. The commit intent event and the serving
-        pointer move in ONE database transaction — a crash cannot leave
-        a routed pointer without its commit record. The signed
-        completion event lands after; a completion-write failure rolls
-        the pointer back."""
+        """COMMITTED -> ACTIVE via the recoverable two-stage protocol
+        (v16.4.4 WP-A):
+
+          1. ``commit_activation_intent`` — durable authorization at
+             the NEXT deployment generation (compare-and-swap on
+             ``expected_generation``), BEFORE the candidate can accept
+             a single request. The commit event, serving pointer, and
+             deployment row commit in ONE transaction.
+          2. ``router.publish_route`` — open traffic for exactly the
+             authorized generation; a stale generation is refused.
+          3. ``record_routing_observation`` — the signed, post-traffic
+             evidence that routing actually happened. It is truthful
+             because it exists only after routing, and it is never
+             presented as pre-traffic authorization.
+
+        A failure between stages reconciles the durable deployment
+        intent to a live committed predecessor — or to a durably
+        UNAVAILABLE state — instead of leaving the pointer cleared
+        while a model serves from memory only."""
         act = self._get(activation_id)
         if expected_previous is not None \
                 and self._active_id != expected_previous:
@@ -382,13 +516,54 @@ class ServingSupervisor:
         with self._lock:
             check_transition(act.state, ActivationState.COMMITTED)
             previous = self._active_id
+            dep = self.store.deployment()
+            current_gen = int(dep["deployment_generation"]) \
+                if dep is not None else 0
+            if expected_generation is not None and \
+                    int(expected_generation) != current_gen:
+                self.abort(activation_id,
+                           reason="stale deployment generation")
+                raise ActivationRefused(
+                    f"expected deployment generation "
+                    f"{expected_generation} but the durable generation "
+                    f"is {current_gen} — refusing to activate onto a "
+                    "superseded transition")
+            # Re-read the operative revocation evidence immediately
+            # before authorizing traffic — revocation may have advanced
+            # while the candidate staged/prepared (SEC-403 race). A
+            # grant bound to a stale epoch or a revoked decision is
+            # refused here, never routed.
+            snapshot, floor = self._operative_revocation()
+            if act.grant is not None and floor is not None and \
+                    int(act.grant.revocation_epoch) < int(floor):
+                self.abort(activation_id,
+                           reason="revocation epoch advanced during "
+                                  "preparation")
+                raise ActivationRefused(
+                    f"grant was issued against revocation epoch "
+                    f"{act.grant.revocation_epoch}; the operative "
+                    f"epoch is now {floor} — the candidate must be "
+                    "re-authorized under current revocation evidence")
             try:
-                self.store.commit_with_pointer(
-                    activation_id=activation_id, at=self._at(),
+                self._check_decision_live(snapshot, grant=act.grant,
+                                          what="activation")
+            except ActivationRefused as exc:
+                self.abort(activation_id, reason=str(exc))
+                raise
+            # stage 1 — durable authorization BEFORE traffic
+            try:
+                commit = self.store.commit_activation_intent(
+                    candidate_id=activation_id,
+                    expected_generation=current_gen, at=self._at(),
                     artifact_root_digest=(
                         digest_root(act.snapshot) if act.snapshot else ""),
                     backend_id=(act.grant.backend_id if act.grant else ""),
+                    policy_epoch=self.min_policy_epoch,
                     detail={"kind": "activation_intent"})
+            except GenerationConflict as exc:
+                self.abort(activation_id,
+                           reason=f"stale transition: {exc}")
+                raise ActivationRefused(str(exc)) from exc
             except AuthorityStoreError as exc:
                 self.abort(activation_id,
                            reason=f"commit transaction failed: {exc}")
@@ -397,48 +572,56 @@ class ServingSupervisor:
                     from exc
             act.state = ActivationState.COMMITTED
             self._active_id = activation_id
+            generation = int(commit["generation"])
+            transition_id = str(commit["transition_id"])
+            # stage 2 — publish ONLY the already-authorized generation
+            try:
+                if self.router is not None and act.handle is not None:
+                    self.router.publish_route(
+                        activation_id, generation=generation,
+                        at=self._at())
+            except Exception as exc:  # noqa: BLE001 - fail closed
+                self._reconcile_deployment(
+                    act=act, previous=previous, generation=generation,
+                    because=f"route publish failed: {exc}",
+                    context="publish")
+                self.abort(
+                    activation_id,
+                    reason=f"routing publication failed: {exc}")
+                raise ActivationError(
+                    f"routing publication of generation {generation} "
+                    f"failed — the deployment was reconciled: {exc}") \
+                    from exc
             act.state = ActivationState.ACTIVE
             self._serving_state = ServingState.SERVING
-            if self.router is not None and act.handle is not None:
-                self.router.activate(activation_id, act.backend,
-                                     act.handle)
-
-            # signed completion evidence — if it cannot be written the
-            # candidate is rolled back, not left active without evidence
+            # stage 3 — the signed OBSERVED routing outcome
             try:
-                self.store.append_event(
-                    activation_id=activation_id,
-                    event_type="activation_completion",
-                    from_state="COMMITTED", to_state="ACTIVE",
-                    at=self._at(),
-                    detail={"kind": "activation_completion",
+                self.store.record_routing_observation(
+                    activation_id=activation_id, generation=generation,
+                    transition_id=transition_id, at=self._at(),
+                    detail={"kind": "routing_observed",
                             "grant_id": (act.grant.grant_id
                                          if act.grant else ""),
                             "previous": previous or ""},
                     signer=self.signer)
             except AuthorityStoreError as exc:
-                self._active_id = previous
-                self._serving_state = (ServingState.SERVING if previous
-                                       else ServingState.UNAVAILABLE)
+                # B was published and may already have served traffic:
+                # withdraw it, drain it, and reconcile durable intent —
+                # never leave it serving without evidence.
                 if self.router is not None:
-                    if previous is not None and previous in \
-                            self._live_handles:
-                        pb, ph = self._live_handles[previous]
-                        self.router.activate(previous, pb, ph)
-                    else:
-                        self.router.deactivate(activation_id)
-                try:
-                    self.store.clear_pointer(
-                        at=self._at(),
-                        because="completion event failed")
-                except AuthorityStoreError:
-                    pass
-                self.abort(activation_id,
-                           reason=f"completion record failed: {exc}")
+                    self.router.stop_accepting(activation_id)
+                self._reconcile_deployment(
+                    act=act, previous=previous, generation=generation,
+                    because=f"routing observation failed: {exc}",
+                    context="observation")
+                self.abort(
+                    activation_id,
+                    reason=f"routing observation record failed: {exc}")
                 raise ActivationError(
-                    "the signed activation-completion record could not "
-                    "be persisted — the candidate was rolled back rather "
-                    "than left serving without evidence") from exc
+                    "the signed routing-observation record could not "
+                    "be persisted — the candidate was withdrawn and "
+                    "the deployment reconciled rather than left "
+                    "serving without evidence") from exc
 
             if act.grant is not None:
                 self.store.set_grant_state(act.grant.grant_id,
@@ -449,10 +632,11 @@ class ServingSupervisor:
                     old = self._retained
                     if old in self._live_handles:
                         b, h = self._live_handles.pop(old)
-                        try:
-                            b.unload(h)
-                        except Exception:  # noqa: BLE001 - best effort
-                            pass
+                        old_act = self._activations.get(old)
+                        self._retire_backend(
+                            old_act if old_act is not None
+                            else _Activation(old, ActivationState.ABORTED),
+                            (b, h))
                     old_act = self._activations.get(old)
                     if old_act is not None and not old_act.state.terminal:
                         self.store.append_event(
@@ -465,11 +649,165 @@ class ServingSupervisor:
                 self._retained = previous
             return act
 
+    def _reconcile_deployment(self, *, act: _Activation,
+                              previous: str | None, generation: int,
+                              because: str, context: str) -> None:
+        """After a failed transition stage: CAS the durable deployment
+        intent to the live committed predecessor (RESTORED) or to a
+        durably UNAVAILABLE state at a NEW generation. The in-memory
+        router is then aligned to the durable outcome — the two never
+        diverge silently."""
+        if self.router is not None:
+            self.router.stop_accepting(act.activation_id)
+        try:
+            if previous and previous in self._live_handles:
+                pact = self._activations.get(previous)
+                prev_state = self._durable_state(previous, "ACTIVE")
+                rec = self.store.reconcile_deployment(
+                    expected_generation=generation,
+                    desired_id=previous, phase="RESTORED",
+                    at=self._at(),
+                    event_activation_id=previous,
+                    event_type="deployment_restored",
+                    event_from_state=prev_state,
+                    event_to_state=prev_state,
+                    because=f"{context} failure on "
+                            f"{act.activation_id}: {because}",
+                    artifact_root_digest=(
+                        digest_root(pact.snapshot)
+                        if pact is not None and pact.snapshot else ""),
+                    backend_id=(pact.grant.backend_id
+                                if pact is not None and pact.grant
+                                else ""),
+                    signer=self.signer)
+                self._active_id = previous
+                self._serving_state = ServingState.SERVING
+                if self.router is not None:
+                    try:
+                        self.router.publish_route(
+                            previous,
+                            generation=int(rec["generation"]),
+                            at=self._at())
+                    except Exception:  # noqa: BLE001
+                        self.router.stop_accepting(previous)
+                        self._active_id = None
+                        self._serving_state = ServingState.UNAVAILABLE
+            else:
+                cand_state = self._durable_state(
+                    act.activation_id, "COMMITTED")
+                self.store.reconcile_deployment(
+                    expected_generation=generation, desired_id="",
+                    phase="UNAVAILABLE", at=self._at(),
+                    event_activation_id=act.activation_id,
+                    event_type="deployment_unavailable",
+                    event_from_state=cand_state,
+                    event_to_state="QUARANTINED",
+                    because=f"{context} failure on "
+                            f"{act.activation_id}: {because}",
+                    signer=self.signer)
+                self._active_id = None
+                self._serving_state = ServingState.UNAVAILABLE
+        except AuthorityStoreError:
+            # Reconciliation itself failed: the durable intent still
+            # names the candidate at `generation`. Serve nothing in
+            # memory — restart recovery reconciles the durable record.
+            self._active_id = None
+            self._serving_state = ServingState.UNAVAILABLE
+
+    def _retire_backend(self, act: _Activation, pair) -> dict:
+        """SEC-303 ordering for releasing a model: withdraw routing
+        FIRST, drain the activation's own leases, cancel cooperatively
+        on timeout, and unload only when its in-flight count is zero.
+        Resources are retained (and the unload deferred) while leases
+        remain — a timeout is never unload permission."""
+        activation_id = act.activation_id
+        outcome = None
+        if self.router is not None:
+            if self.router.route_entry(activation_id) is not None:
+                outcome = self.router.retire(activation_id)
+            else:
+                self.router.stop_accepting(activation_id)
+        if outcome is None:
+            if pair is not None:
+                try:
+                    pair[0].unload(pair[1])
+                except Exception:  # noqa: BLE001 - best-effort cleanup
+                    pass
+            return {"unloaded": True, "inflight": 0, "terminated": False}
+        if outcome.get("terminated"):
+            # A wedged model was force-killed — that is a significant
+            # operational fact and belongs in the durable journal, not
+            # only in the retire outcome dict.
+            try:
+                durable = self._durable_state(
+                    activation_id, act.state.value)
+                self.store.append_event(
+                    activation_id=activation_id,
+                    event_type="backend_terminated",
+                    from_state=durable, to_state=durable,
+                    at=self._at(),
+                    detail={"reason": "request leases outlived the "
+                                      "cancel grace — backend worker "
+                                      "terminated (RUN-401)",
+                            "unloaded": bool(outcome.get("unloaded"))})
+            except AuthorityStoreError:
+                pass
+        if not outcome["unloaded"]:
+            self._deferred_unloads.add(activation_id)
+            try:
+                durable = self._durable_state(
+                    activation_id, act.state.value)
+                self.store.append_event(
+                    activation_id=activation_id,
+                    event_type="unload_deferred",
+                    from_state=durable, to_state=durable,
+                    at=self._at(),
+                    detail={"reason": "in-flight leases retain the "
+                                      "backend — unload deferred",
+                            "inflight": int(outcome.get("inflight", 0))})
+            except AuthorityStoreError:
+                pass
+        else:
+            self._deferred_unloads.discard(activation_id)
+        return outcome
+
+    def reap(self) -> list[str]:
+        """Retry deferred unloads — called opportunistically and at
+        shutdown. A model is released only once its leases are gone."""
+        still: list[str] = []
+        for aid in list(self._deferred_unloads):
+            outcome = (self.router.retire(aid)
+                       if self.router is not None else
+                       {"unloaded": True})
+            if not outcome.get("unloaded"):
+                still.append(aid)
+            else:
+                self._deferred_unloads.discard(aid)
+        return still
+
+    def shutdown(self, *, timeout: float | None = None) -> dict:
+        """Service shutdown: stop all routes, drain, and unload what
+        is actually idle. Returns what could not be released."""
+        remaining: dict[str, int] = {}
+        if self.router is not None:
+            for state in self.router.lease_states():
+                self.router.stop_accepting(state.activation_id)
+            for state in self.router.lease_states():
+                out = self.router.retire(state.activation_id,
+                                         timeout=timeout)
+                if not out["unloaded"]:
+                    remaining[state.activation_id] = int(out["inflight"])
+            self._deferred_unloads.difference_update(
+                set(self._deferred_unloads) - set(remaining))
+        return {"unreleased": remaining}
+
     # --- failure / rollback paths ------------------------------------
     def abort(self, activation_id: str, *, reason: str = "") -> None:
-        """Abort a candidate: unload whatever is loaded and record the
-        terminal state. Idempotent — safe to call twice or on a
-        candidate that never loaded."""
+        """Abort a candidate: STOP ROUTING FIRST, drain the
+        activation's own request leases, then release model resources
+        only when nothing in flight references them (SEC-303).
+        Idempotent — safe to call twice or on a candidate that never
+        loaded."""
         with self._lock:
             act = self._activations.get(activation_id)
             if act is None:
@@ -477,50 +815,65 @@ class ServingSupervisor:
             if act.state.terminal:
                 return
             pair = self._live_handles.pop(activation_id, None)
-            if pair is not None:
-                backend, handle = pair
-                try:
-                    backend.unload(handle)
-                except Exception:  # noqa: BLE001 - best-effort cleanup
-                    pass
-            if self.router is not None:
-                self.router.deactivate(activation_id)
+            self._retire_backend(act, pair)
             if act.grant is not None:
                 self.store.set_grant_state(act.grant.grant_id, "aborted")
+            durable = self._durable_state(activation_id,
+                                          act.state.value)
             if self._active_id == activation_id:
-                self._quarantine_pointer(activation_id, reason)
-                try:
-                    check_transition(act.state, ActivationState.QUARANTINED)
-                    self.store.append_event(
-                        activation_id=activation_id,
-                        event_type="quarantined",
-                        from_state=act.state.value,
-                        to_state="QUARANTINED", at=self._at(),
-                        detail={"reason": reason}, signer=self.signer)
+                if durable == "QUARANTINED":
                     act.state = ActivationState.QUARANTINED
-                except IllegalTransition:
-                    # COMMITTED -> QUARANTINED is legal; REQUESTED ->
-                    # QUARANTINED (active id set but transition grammar
-                    # forbids) collapses to ABORTED + pointer repair.
-                    self.store.append_event(
-                        activation_id=activation_id,
-                        event_type="aborted", from_state=act.state.value,
-                        to_state="ABORTED", at=self._at(),
-                        detail={"reason": reason})
+                elif durable == "ABORTED":
                     act.state = ActivationState.ABORTED
+                else:
+                    try:
+                        check_transition(
+                            ActivationState(durable),
+                            ActivationState.QUARANTINED)
+                        self.store.append_event(
+                            activation_id=activation_id,
+                            event_type="quarantined",
+                            from_state=durable,
+                            to_state="QUARANTINED", at=self._at(),
+                            detail={"reason": reason},
+                            signer=self.signer)
+                        act.state = ActivationState.QUARANTINED
+                    except IllegalTransition:
+                        # e.g. durable COMMITTED grammar forbids
+                        # REQUESTED -> QUARANTINED — collapse to
+                        # ABORTED + pointer repair.
+                        self.store.append_event(
+                            activation_id=activation_id,
+                            event_type="aborted", from_state=durable,
+                            to_state="ABORTED", at=self._at(),
+                            detail={"reason": reason})
+                        act.state = ActivationState.ABORTED
                 if act.grant is not None:
                     self.store.set_grant_state(act.grant.grant_id,
                                                "quarantined")
                 self._serving_state = ServingState.QUARANTINED
+                # Reconcile the durable intent AFTER the activation's
+                # own terminal event — the per-activation journal chain
+                # requires each event's from_state to be the recorded
+                # previous to_state.
+                self._quarantine_pointer(activation_id, reason,
+                                         from_state=act.state.value)
                 return
-            try:
-                check_transition(act.state, ActivationState.ABORTED)
-                self.store.append_event(
-                    activation_id=activation_id, event_type="aborted",
-                    from_state=act.state.value, to_state="ABORTED",
-                    at=self._at(), detail={"reason": reason})
+            if durable == "QUARANTINED":
+                act.state = ActivationState.QUARANTINED
+            elif durable == "ABORTED":
                 act.state = ActivationState.ABORTED
-            except IllegalTransition:
+            else:
+                try:
+                    check_transition(ActivationState(durable),
+                                     ActivationState.ABORTED)
+                    self.store.append_event(
+                        activation_id=activation_id,
+                        event_type="aborted",
+                        from_state=durable, to_state="ABORTED",
+                        at=self._at(), detail={"reason": reason})
+                except IllegalTransition:
+                    pass
                 act.state = ActivationState.ABORTED
 
     def quarantine_active(self, *, reason: str) -> None:
@@ -530,6 +883,67 @@ class ServingSupervisor:
         if self._active_id is None:
             return
         self.abort(self._active_id, reason=reason or "quarantined")
+
+    def apply_revocation_snapshot(self, snapshot) -> dict:
+        """Revocation response for already-serving models (SEC-403):
+        a newly operative snapshot may withdraw a live activation's
+        authority. Any resident activation whose grant binds a revoked
+        promotion decision is withdrawn — the active one is quarantined
+        (which reconciles the durable pointer and republishes a
+        predecessor whose own authorization is still live), a retained
+        one is retired. Returns the actions taken for the journal."""
+        actions = {"quarantined": [], "retired": []}
+        if snapshot is None:
+            return actions
+        with self._lock:
+            # Non-active residents first: a revoked predecessor must be
+            # gone before the active quarantine picks a rollback
+            # fallback among "still resident" completions.
+            order = [a for a in self._live_handles
+                     if a != self._active_id]
+            if self._active_id:
+                order.append(self._active_id)
+            for aid in order:
+                act = self._activations.get(aid)
+                grant = act.grant if act is not None else None
+                if grant is None:
+                    continue
+                if not snapshot.contains(
+                        str(grant.promotion_decision_digest)):
+                    continue
+                if aid == self._active_id:
+                    # quarantine_active's fallback restores only a
+                    # still-resident predecessor; one whose own decision
+                    # is revoked is filtered below by checking first.
+                    self.abort(
+                        aid,
+                        reason="promotion decision revoked by the "
+                               "operative snapshot")
+                    actions["quarantined"].append(aid)
+                else:
+                    pair = self._live_handles.pop(aid, None)
+                    self._retire_backend(
+                        act if act is not None else
+                        _Activation(aid, ActivationState.ABORTED), pair)
+                    if aid == self._retained:
+                        self._retained = None
+                    if act is not None and not act.state.terminal:
+                        try:
+                            durable = self._durable_state(
+                                aid, act.state.value)
+                            self.store.append_event(
+                                activation_id=aid,
+                                event_type="retired",
+                                from_state=durable,
+                                to_state="ABORTED", at=self._at(),
+                                detail={"reason": "promotion decision "
+                                                  "revoked by the "
+                                                  "operative snapshot"})
+                        except AuthorityStoreError:
+                            pass
+                        act.state = ActivationState.ABORTED
+                    actions["retired"].append(aid)
+        return actions
 
     def rollback(self, activation_id: str | None = None,
                  *, min_revocation_epoch: int | None = None) -> str | None:
@@ -549,10 +963,12 @@ class ServingSupervisor:
                     "not improvise")
             tgt_act = self._activations.get(target)
             # Rollback does not bypass security: the predecessor's grant
-            # must still satisfy the operative revocation epoch.
+            # must still satisfy the operative revocation epoch, and its
+            # promotion decision must not itself be revoked.
+            snapshot, prov_floor = self._operative_revocation()
             floor = min_revocation_epoch
-            if floor is None and self._revocation_epoch_provider is not None:
-                floor = int(self._revocation_epoch_provider())
+            if floor is None:
+                floor = prov_floor
             if floor is not None and tgt_act is not None and \
                     tgt_act.grant is not None and \
                     int(tgt_act.grant.revocation_epoch) < int(floor):
@@ -561,6 +977,9 @@ class ServingSupervisor:
                     f"revocation epoch {tgt_act.grant.revocation_epoch}; "
                     f"the operative epoch is {floor} — stale "
                     "authorization refused")
+            self._check_decision_live(
+                snapshot, grant=(tgt_act.grant if tgt_act else None),
+                what="rollback target")
             b, h = self._live_handles[target]
             try:
                 b.health_probe(h)
@@ -575,8 +994,12 @@ class ServingSupervisor:
                 from_state="ACTIVE", to_state="ACTIVE", at=self._at(),
                 detail={"kind": "rollback_intent",
                         "from": old or ""})
-            self.store.commit_with_pointer(
-                activation_id=target, at=self._at(),
+            dep = self.store.deployment()
+            current_gen = int(dep["deployment_generation"]) \
+                if dep is not None else 0
+            commit = self.store.commit_activation_intent(
+                candidate_id=target, expected_generation=current_gen,
+                at=self._at(),
                 artifact_root_digest=(
                     digest_root(tgt_act.snapshot)
                     if tgt_act is not None and tgt_act.snapshot else ""),
@@ -588,13 +1011,35 @@ class ServingSupervisor:
                 detail={"kind": "rollback", "from": old or ""})
             self._active_id = target
             self._serving_state = ServingState.SERVING
+            generation = int(commit["generation"])
             if self.router is not None:
-                self.router.activate(target, b, h)
-            self.store.append_event(
-                activation_id=target, event_type="rollback_completion",
-                from_state="ACTIVE", to_state="ACTIVE", at=self._at(),
-                detail={"kind": "rollback_completion",
-                        "from": old or ""}, signer=self.signer)
+                try:
+                    self.router.publish_route(
+                        target, generation=generation, at=self._at())
+                except Exception as exc:  # noqa: BLE001 - fail closed
+                    self._reconcile_deployment(
+                        act=tgt_act, previous=old, generation=generation,
+                        because=f"rollback route publish failed: {exc}",
+                        context="rollback-publish")
+                    raise ActivationError(
+                        f"rollback routing publication failed: {exc}") \
+                        from exc
+            try:
+                self.store.record_routing_observation(
+                    activation_id=target, generation=generation,
+                    transition_id=str(commit["transition_id"]),
+                    at=self._at(), event_type="rollback_completion",
+                    from_state="ACTIVE", to_state="ACTIVE",
+                    detail={"kind": "rollback_completion",
+                            "from": old or ""}, signer=self.signer)
+            except Exception as exc:  # noqa: BLE001 - fail closed
+                self._reconcile_deployment(
+                    act=tgt_act, previous=old, generation=generation,
+                    because=f"rollback completion failed: {exc}",
+                    context="rollback-observation")
+                raise ActivationError(
+                    f"rollback completion could not be persisted: {exc}") \
+                    from exc
             return target
 
     def _last_completed_excluding(self, exclude: str | None,
@@ -607,7 +1052,10 @@ class ServingSupervisor:
         completed: list[str] = []
         for e in self.store.events():
             if e["to_state"] == "ACTIVE" and \
-                    e["event_type"] == "activation_completion" and \
+                    e["event_type"] in ("activation_completion",
+                                        "routing_observed",
+                                        "rollback_completion",
+                                        "deployment_restored") and \
                     e["activation_id"] != exclude:
                 completed.append(e["activation_id"])
         for aid in reversed(completed):
@@ -615,35 +1063,59 @@ class ServingSupervisor:
                 return aid
         return None
 
-    def _quarantine_pointer(self, activation_id: str, reason: str) -> None:
-        """Move the serving pointer off a quarantined candidate: restore
-        the last committed predecessor *that is still resident*, else
-        clear it — a pointer never routes to an unloaded model."""
+    def _quarantine_pointer(self, activation_id: str, reason: str,
+                            *, from_state: str = "QUARANTINED"
+                            ) -> None:
+        """Move the durable deployment intent off a quarantined
+        candidate: generation-checked reconcile to the last committed
+        predecessor *that is still resident* (RESTORED), else durably
+        UNAVAILABLE — a pointer never routes to an unloaded model and
+        durable state is never silently emptied while a model serves
+        from memory."""
         fallback = self._last_completed_excluding(
             activation_id, require_live=True)
+        dep = self.store.deployment()
+        gen = int(dep["deployment_generation"]) if dep is not None else 0
         try:
             if fallback is not None:
                 fb = self._activations.get(fallback)
-                self.store.commit_with_pointer(
-                    activation_id=fallback, at=self._at(),
+                fb_state = self._durable_state(fallback, "ACTIVE")
+                rec = self.store.reconcile_deployment(
+                    expected_generation=gen, desired_id=fallback,
+                    phase="RESTORED", at=self._at(),
+                    event_activation_id=fallback,
+                    event_type="deployment_restored",
+                    event_from_state=fb_state, event_to_state=fb_state,
+                    because=f"quarantine {activation_id}: {reason}",
                     artifact_root_digest=(
                         digest_root(fb.snapshot)
                         if fb is not None and fb.snapshot else ""),
                     backend_id=(fb.grant.backend_id
                                 if fb is not None and fb.grant else ""),
-                    detail={"kind": "quarantine_restore",
-                            "because": f"quarantine {activation_id}: "
-                                       f"{reason}"})
+                    signer=self.signer)
                 self._active_id = fallback
                 self._serving_state = ServingState.SERVING
                 if self.router is not None and fallback in \
                         self._live_handles:
                     rb, rh = self._live_handles[fallback]
-                    self.router.activate(fallback, rb, rh)
+                    try:
+                        self.router.publish_route(
+                            fallback,
+                            generation=int(rec["generation"]),
+                            at=self._at())
+                    except Exception:  # noqa: BLE001
+                        self.router.activate(fallback, rb, rh,
+                                             at=self._at())
             else:
-                self.store.clear_pointer(
-                    at=self._at(),
-                    because=f"quarantine {activation_id}: {reason}")
+                self.store.reconcile_deployment(
+                    expected_generation=gen, desired_id="",
+                    phase="UNAVAILABLE", at=self._at(),
+                    event_activation_id=activation_id,
+                    event_type="deployment_unavailable",
+                    event_from_state=from_state,
+                    event_to_state=from_state,
+                    because=f"quarantine {activation_id}: {reason}",
+                    signer=self.signer)
                 self._active_id = None
                 self._serving_state = ServingState.UNAVAILABLE
         except AuthorityStoreError:
@@ -672,9 +1144,21 @@ class ServingSupervisor:
                       "cleared_pointer": False, "serving_state": None,
                       "requires_restoration": None}
             from .journal_v2 import verify_event_log
+            self.store.verify_admin_chain(self.registry, now=self._now)
             events = verify_event_log(self.store, self.registry,
                                       now=self._now)
             pointer = self.store.read_pointer()
+            dep = self.store.deployment()
+            if dep is not None:
+                desired = str(dep["desired_activation_id"])
+                pointed = str((pointer or {}).get("activation_id")
+                              or "")
+                if desired != pointed:
+                    raise AuthorityStoreError(
+                        "deployment intent names "
+                        f"{desired!r} but the serving pointer names "
+                        f"{pointed!r} — the durable record is "
+                        "inconsistent and cannot be trusted")
             by_id: dict[str, list] = {}
             for e in events:
                 by_id.setdefault(e["activation_id"], []).append(e)
@@ -683,7 +1167,7 @@ class ServingSupervisor:
                 return by_id[aid][-1]["to_state"] if by_id.get(aid) else ""
 
             for aid in list(by_id):
-                if aid == "__migration__":
+                if aid in ("__migration__", "__deployment__"):
                     continue
                 state = last_state(aid)
                 if state in ("ABORTED", "QUARANTINED", "ACTIVE"):
@@ -718,6 +1202,34 @@ class ServingSupervisor:
         with self._lock:
             self._serving_state = ServingState.SERVING
             self._pending_restore_id = None
+
+    def declare_unavailable(self, *, reason: str) -> None:
+        """Recovery determined no eligible model can be restored:
+        reconcile the durable intent to a durably UNAVAILABLE state at
+        a new generation — never leave a phantom active pointer."""
+        with self._lock:
+            dep = self.store.deployment()
+            gen = int(dep["deployment_generation"]) \
+                if dep is not None else 0
+            failed = str(dep["desired_activation_id"]) \
+                if dep is not None else ""
+            durable = self._durable_state(failed) if failed else ""
+            to = durable if durable in ("ABORTED", "QUARANTINED") \
+                else "QUARANTINED"
+            try:
+                self.store.reconcile_deployment(
+                    expected_generation=gen, desired_id="",
+                    phase="UNAVAILABLE", at=self._at(),
+                    event_activation_id=failed or "__deployment__",
+                    event_type="deployment_unavailable",
+                    event_from_state=durable or "",
+                    event_to_state=to,
+                    because=reason, signer=self.signer)
+            except AuthorityStoreError:
+                pass
+            self._active_id = None
+            self._pending_restore_id = None
+            self._serving_state = ServingState.UNAVAILABLE
 
 
 # Backward-compatible alias: tests and callers imported

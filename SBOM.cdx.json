@@ -60,9 +60,9 @@
   ],
   "metadata": {
     "component": {
-      "name": "mini-AGI Colab Converged",
+      "name": "mini-AGI-V1-v4.0.3-integrity",
       "type": "application",
-      "version": "16.4.3"
+      "version": "4.0.3"
     }
   },
   "specVersion": "1.5",

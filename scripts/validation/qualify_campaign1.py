@@ -31,6 +31,16 @@ from _bootstrap import detect_root, ensure_path
 
 ZERO = "sha256:" + "0" * 64
 
+#: arm -> the directory name its non-parametric state lives under.
+#: L7 is the adapter evaluated under the SAME verified-replay context
+#: L5b uses (the runner binds state_digest to the L5b directory), so the
+#: two arms share one state directory by design — that identity is what
+#: makes Score(L7) - Score(L5b) vary only the neural adaptation. The
+#: lexical retrieval arms (L2/L3/L4) stay campaign-level and are absent.
+#: Kept as a literal because the minagi import resolves lazily against
+#: --root; test_v165_qualifier_chain keeps it in sync with arms.py.
+PER_SEED_STATE_DIR = {"L5": "L5", "L5a": "L5", "L5b": "L5b", "L7": "L5b"}
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -120,14 +130,19 @@ def main() -> int:
     # v165: the signed experiment protocol must be present and digest-bound
     proto = None
     if isinstance(plan, ColabCampaignPlanV165):
-        from minagi.v161.experiment_protocol import ExperimentProtocolV1
+        from minagi.v161.experiment_protocol import (ExperimentProtocolV1,
+                                                     ExperimentProtocolV2)
         proto_path = campaign_dir / "EXPERIMENT_PROTOCOL.json"
         if not proto_path.is_file():
             fail("protocol", "EXPERIMENT_PROTOCOL.json missing for v165 plan")
         else:
             try:
                 pdoc = json.loads(proto_path.read_text())
-                proto = ExperimentProtocolV1(**pdoc["value"])
+                proto_cls = (ExperimentProtocolV2
+                             if (pdoc["value"].get("schema") ==
+                                 "mini-agi-v4.0-experiment-protocol-v2")
+                             else ExperimentProtocolV1)
+                proto = proto_cls(**pdoc["value"])
                 if pdoc.get("digest") != proto.digest:
                     fail("protocol", "EXPERIMENT_PROTOCOL.json digest field "
                                      "does not match recomputed digest")
@@ -158,7 +173,8 @@ def main() -> int:
         fam_disjoint = bool(campaign_cfg.get("require_family_disjoint_hidden", True))
     from minagi.v161.dataset_manifest import (DatasetMember,
                                               DatasetMembershipManifest,
-                                              DatasetPartitionSet)
+                                              DatasetPartitionSet,
+                                              DatasetPartitionSetV3)
     from egai.common.canonical import sha256_bytes
     rows = [json.loads(line) for line in dataset_cfg.read_text().splitlines()
             if line.strip()]
@@ -172,14 +188,29 @@ def main() -> int:
                              str(row.get("generator", "manual")))
 
     by_split = {s: [r for r in rows if r["split"] == s]
-                for s in ("train", "validation", "hidden", "retention", "security")}
-    parts = DatasetPartitionSet(
-        DatasetMembershipManifest("train", tuple(_member(r) for r in by_split["train"])),
-        DatasetMembershipManifest("validation", tuple(_member(r) for r in by_split["validation"])),
-        DatasetMembershipManifest("hidden", tuple(_member(r) for r in by_split["hidden"])),
-        DatasetMembershipManifest("retention", tuple(_member(r) for r in by_split["retention"])),
-        DatasetMembershipManifest("security", tuple(_member(r) for r in by_split["security"])),
-        require_family_disjoint_hidden=fam_disjoint)
+                for s in ("train", "validation", "hidden", "retention",
+                          "security", "compositional")}
+    if by_split["compositional"]:
+        # v4.0 corpora declare a compositional split; the partition set
+        # must be rebuilt under the same V3 schema the runner used.
+        parts = DatasetPartitionSetV3(
+            DatasetMembershipManifest("train", tuple(_member(r) for r in by_split["train"])),
+            DatasetMembershipManifest("validation", tuple(_member(r) for r in by_split["validation"])),
+            DatasetMembershipManifest("hidden", tuple(_member(r) for r in by_split["hidden"])),
+            DatasetMembershipManifest("retention", tuple(_member(r) for r in by_split["retention"])),
+            DatasetMembershipManifest("security", tuple(_member(r) for r in by_split["security"])),
+            require_family_disjoint_hidden=fam_disjoint,
+            compositional=DatasetMembershipManifest(
+                "compositional",
+                tuple(_member(r) for r in by_split["compositional"])))
+    else:
+        parts = DatasetPartitionSet(
+            DatasetMembershipManifest("train", tuple(_member(r) for r in by_split["train"])),
+            DatasetMembershipManifest("validation", tuple(_member(r) for r in by_split["validation"])),
+            DatasetMembershipManifest("hidden", tuple(_member(r) for r in by_split["hidden"])),
+            DatasetMembershipManifest("retention", tuple(_member(r) for r in by_split["retention"])),
+            DatasetMembershipManifest("security", tuple(_member(r) for r in by_split["security"])),
+            require_family_disjoint_hidden=fam_disjoint)
     if parts.digest != plan.dataset_partition_digest:
         fail("dataset", "recomputed partition digest != plan digest")
     if parts.hidden.digest != hidden_digest:
@@ -218,6 +249,13 @@ def main() -> int:
             self._receipt = receipt
             self.metrics = metrics
 
+        @property
+        def dataset_digest(self):
+            # The v3 receipt names the bound evaluation dataset
+            # ``evaluation_dataset_digest``; the experiment matrix binds
+            # cells on ``dataset_digest`` — same identity, two names.
+            return self._receipt.evaluation_dataset_digest
+
         def __getattr__(self, name):
             return getattr(self._receipt, name)
 
@@ -227,19 +265,28 @@ def main() -> int:
     recomputed_all: dict[tuple[int, str], dict] = {}
     hidden_outputs: dict = {}
     per_id_hidden: dict = {}
+    #: (seed, arm) -> {row_id: prediction} over the security partition,
+    #: kept raw so the governed safety rollup is recomputed here rather
+    #: than trusted from the worker's own reported metrics.
+    security_outputs: dict = {}
 
     if isinstance(plan, ColabCampaignPlanV165):
         # Independent rescore plumbing (v3): prediction records join the
         # committed corpus by task id; expected answers never enter the
         # evidence artifacts.
-        from minagi.v161.evaluators import (containment_match, exact_match,
+        from minagi.v161.evaluators import (containment_match,
+                                            exact_match_strict,
                                             retention_score, score_row,
                                             security_regression)
         from minagi.v161.evidence_receipt_v3 import (
             EvidenceReceiptV3, input_manifest_digest, predictions_digest_of,
             read_predictions)
         from minagi.v161.stats import (cluster_bootstrap_ci,
+                                       family_delta_analysis,
                                        false_activation_rate)
+        from minagi.v161.safety_regression import (
+            category_rollup, classify_violations, prior_correct_regression,
+            retention_metric_status, safety_gate)
         from egai.common.canonical import digest as _digest, sha256_bytes as _sha
         ret_impl = {"containment_match": containment_match,
                     "retention_score": retention_score}
@@ -247,16 +294,23 @@ def main() -> int:
                                   "retention_score")]
         sec_rows_by_id = {str(r["id"]): r for r in by_split["security"]}
         hid_rows_by_id = {str(r["id"]): r for r in by_split["hidden"]}
+        comp_rows_by_id = {str(r["id"]): r
+                           for r in by_split["compositional"]}
+        val_rows_by_id = {str(r["id"]): r
+                          for r in by_split["validation"]}
         ret_probe = [r for r in by_split["retention"]
                      if r.get("probe") != "delayed"]
         ret_delayed = [r for r in by_split["retention"]
                        if r.get("probe") == "delayed"]
         ret_rows_by_id = {str(r["id"]): r for r in ret_probe}
         delayed_rows_by_id = {str(r["id"]): r for r in ret_delayed}
-        eval_set_expected = _digest(
-            {"hidden": parts.hidden.digest,
-             "retention": parts.retention.digest,
-             "security": parts.security.digest})
+        eval_parts_exp = {"hidden": parts.hidden.digest,
+                          "retention": parts.retention.digest,
+                          "security": parts.security.digest}
+        if by_split["compositional"]:
+            eval_parts_exp["compositional"] = parts.compositional.digest
+            eval_parts_exp["validation"] = parts.validation.digest
+        eval_set_expected = _digest(eval_parts_exp)
         evaluator_set_expected = _digest(
             [plan.scorer_artifact_digest, plan.retention_artifact_digest,
              plan.security_artifact_digest])
@@ -281,14 +335,22 @@ def main() -> int:
                     r3.evaluation_bundle_digest:
                 fail(where, "evaluation bundle digest mismatch vs receipt")
                 return None
-            block_index = {"hidden": (hid_rows_by_id, exact_match,
+            block_index = {"hidden": (hid_rows_by_id, exact_match_strict,
                                       "hidden_exact_match", "mean"),
                            "retention": (ret_rows_by_id, ret_fn,
                                          "retention", "mean"),
                            "retention_delayed": (delayed_rows_by_id, ret_fn,
                                                  "retention_delayed", "mean"),
                            "security": (sec_rows_by_id, security_regression,
-                                        "security_regressions", "count")}
+                                        "security_regressions", "count"),
+                           "compositional": (comp_rows_by_id,
+                                             exact_match_strict,
+                                             "compositional_exact_match",
+                                             "mean"),
+                           "validation": (val_rows_by_id,
+                                          exact_match_strict,
+                                          "validation_exact_match",
+                                          "mean")}
             metrics = {}
             for rec in preds:
                 blk = rec.get("block")
@@ -318,6 +380,13 @@ def main() -> int:
                             str(rec["id"])] = str(rec["output"])
                         per_id_hidden.setdefault((seed, arm), {})[
                             str(rec["id"])] = float(score)
+                    elif blk == "security":
+                        # 3B Step 18: the qualifier keeps the raw
+                        # security predictions so the governed category
+                        # rollup is recomputed here, independently of
+                        # whatever the runner reported.
+                        security_outputs.setdefault((seed, arm), {})[
+                            str(rec["id"])] = str(rec["output"])
                 metrics[metric] = (sum(vals) if how == "count"
                                    else (sum(vals) / len(vals) if vals else 0.0))
             # worker-reported metrics become checkable claims
@@ -495,8 +564,15 @@ def main() -> int:
             elif sha256_path(adir) != receipt.adapter_digest:
                 fail(f"seed-{seed}/{arm}", "adapter digest mismatch vs disk")
         if receipt.state_digest != ZERO:
+            # Arms carrying per-seed replay state live under seed-N/; the
+            # lexical retrieval arms (L2/L3/L4) are built once per campaign
+            # from the train split. The historical rule hardcoded L5 as the
+            # only per-seed arm, so an L5b/L7 campaign — the Campaign 3B
+            # primary comparison — could never be qualified. The rule now
+            # follows the arm vocabulary instead.
+            sub = PER_SEED_STATE_DIR.get(str(arm))
             sdir = storage / "arms" / args.campaign_id / (
-                f"seed-{seed}/{arm}" if arm == "L5" else arm)
+                f"seed-{seed}/{sub}" if sub else str(arm))
             if not sdir.is_dir():
                 fail(f"seed-{seed}/{arm}", f"arm state dir missing: {sdir}")
             elif sha256_path(sdir) != receipt.state_digest:
@@ -553,7 +629,40 @@ def main() -> int:
         if toks and toks != {plan.tokenizer_digest}:
             fail("tokenizer", "receipt tokenizer_digest != plan tokenizer_digest")
 
+    # --- V4-15: declarative completeness audit -----------------------
+    # The arm x seed x cell matrix plus cross-cell identity agreement,
+    # reported as an explicit audit record — INCOMPLETE/INCONSISTENT
+    # matrices may not be presented as finished comparisons.
+    from minagi.v161.experiment_matrix import (CellIdentity, MatrixSpec,
+                                               audit_matrix)
+    mx_cells: dict = {(s, a): r for (s, a), r in receipts.items()}
+    if isinstance(plan, ColabCampaignPlanV164):
+        for (s, nm), r in (locals().get("delayed_receipts") or {}).items():
+            mx_cells[(s, nm)] = r
+    matrix_audit = audit_matrix(
+        MatrixSpec(
+            campaign_id=str(plan.campaign_id),
+            seeds=tuple(int(s) for s in plan.seeds),
+            arms=tuple(plan.arms),
+            per_arm_cells=(
+                {"L1": ("L1_delayed",), "L6": ("L6_delayed",)}
+                if isinstance(plan, ColabCampaignPlanV164) else {}),
+            expected_identity=CellIdentity(
+                model_digest=getattr(plan, "model_digest", ""),
+                tokenizer_digest=getattr(plan, "tokenizer_digest", ""))),
+        mx_cells)
+    if matrix_audit.get("status") == "INCONSISTENT":
+        # V4-15: identity disagreement between committed cells (e.g. a
+        # cell trained against a different model digest) is invalid
+        # evidence — a fail, not a gate reason. INCOMPLETE matrices are
+        # already covered by the per-seed completeness check below.
+        v = matrix_audit.get("identity_violations") or []
+        fail("matrix",
+             f"identity violations across cells — first: {v[0]}"
+             if v else "identity violations across cells")
+
     # --- Reconstruct outcomes ---
+    has_comp = bool(by_split["compositional"])
     per_seed = []
     for seed in plan.seeds:
         cell = {a: receipts.get((seed, a)) for a in plan.arms}
@@ -563,17 +672,28 @@ def main() -> int:
         n_sec = len(parts.security.members) if parts.security is not None else 1
         sec_rate = {a: 1.0 - float(cell[a].metrics.get("security_regressions", 0)) / max(1, n_sec)
                     for a in plan.arms}
-        per_seed.append({
+        row = {
             "seed": seed,
             "hidden_exact_match": h,
             "ft_vs_L1": {a: h[a] - h["L1"] for a in plan.arms if a != "L1"},
             "delta_ft_neural": h["L6"] - h["L5"],
+            # V4-10: the declared primary comparison when both arms are
+            # in the plan — adapter+verified-replay vs verified-replay
+            # alone isolates the neural adaptation on identical memory.
+            "delta_ft_primary": (h["L7"] - h["L5b"]
+                                 if "L7" in plan.arms
+                                 and "L5b" in plan.arms else None),
             "l6_retention": float(cell["L6"].metrics.get("retention", 0.0)),
             "l1_retention": float(cell["L1"].metrics.get("retention", 0.0)),
             "security_pass_rate": sec_rate,
             "security_regressions": int(sum(cell[a].metrics.get("security_regressions", 0)
                                           for a in plan.arms)),
-        })
+        }
+        if has_comp:
+            row["compositional_exact_match"] = {
+                a: float(cell[a].metrics.get("compositional_exact_match", 0.0))
+                for a in plan.arms}
+        per_seed.append(row)
 
     complete = not failures and len(per_seed) == len(plan.seeds)
     reasons: list[str] = []
@@ -588,6 +708,36 @@ def main() -> int:
         nc_mean = statistics.fmean(nc_fts)
         if statistics.fmean(deltas) < plan.minimum_neural_incremental_ft:
             reasons.append("mean neural incremental FT (L6-L5) below preregistered minimum")
+        # V4-10: gate the declared primary comparison (L7-L5b) with the
+        # same thresholds when the plan carries both arms — qualifying
+        # on a different comparison than the declared primary is not
+        # allowed.
+        p_deltas = [x["delta_ft_primary"] for x in per_seed
+                    if x["delta_ft_primary"] is not None]
+        if p_deltas:
+            stats["primary_comparison"] = {
+                "name": "L7-L5b",
+                "n": len(p_deltas),
+                "mean": statistics.fmean(p_deltas),
+                "stdev": (statistics.stdev(p_deltas)
+                          if len(p_deltas) > 1 else 0.0)}
+            if statistics.fmean(p_deltas) < \
+                    plan.minimum_neural_incremental_ft:
+                reasons.append(
+                    "mean primary comparison (L7-L5b) below "
+                    "preregistered minimum")
+            if isinstance(plan, ColabCampaignPlanV164) and \
+                    len(p_deltas) > 1:
+                n_comp = max(1, int(getattr(
+                    plan, "n_comparisons_preregistered", 1)))
+                pci = bootstrap_ci(p_deltas, plan.bootstrap_resamples,
+                                   plan.ci_alpha / n_comp)
+                stats["primary_comparison"]["bootstrap_ci"] = pci
+                if pci["lower"] <= plan.min_delta_ft_ci_lower:
+                    reasons.append(
+                        f"primary comparison bootstrap CI lower bound "
+                        f"{pci['lower']:.4f} <= "
+                        f"{plan.min_delta_ft_ci_lower}")
         if isinstance(plan, ColabCampaignPlanV164):
             n_pos = sum(1 for x in per_seed if x["delta_ft_neural"] > 0)
             if n_pos < plan.min_seeds_positive_ft:
@@ -603,30 +753,56 @@ def main() -> int:
                 # cluster, not the row — paired per-row L6-L5 deltas
                 # pooled across seeds are resampled by task FAMILY.
                 hidx = {str(r["id"]): r for r in by_split["hidden"]}
-                pairs, fams = [], []
+                pairs, fams, l6_scores = [], [], []
                 for seed in plan.seeds:
                     l5m = per_id_hidden.get((seed, "L5"), {})
                     l6m = per_id_hidden.get((seed, "L6"), {})
                     for rid in sorted(set(l5m) & set(l6m)):
                         pairs.append(l6m[rid] - l5m[rid])
+                        l6_scores.append(l6m[rid])
                         fams.append(str(hidx.get(rid, {})
                                         .get("family", "unknown")))
                 if pairs and plan.cluster_unit == "family":
+                    # V4-12 (multiple-comparison control): the declared
+                    # number of preregistered confirmatory comparisons
+                    # divides the family alpha — Bonferroni. n=1 keeps the
+                    # historical gate unchanged.
+                    n_comp = max(1, int(getattr(
+                        plan, "n_comparisons_preregistered", 1)))
+                    eff_alpha = plan.ci_alpha / n_comp
                     cci = cluster_bootstrap_ci(
                         pairs, fams, plan.bootstrap_resamples,
-                        plan.ci_alpha)
+                        eff_alpha)
+                    cci["unadjusted_alpha"] = plan.ci_alpha
+                    cci["bonferroni_alpha"] = eff_alpha
+                    cci["n_comparisons"] = n_comp
                     stats["cluster_bootstrap_ci_row_delta"] = cci
-                    if cci["lower"] <= plan.min_delta_ft_ci_lower:
+                if pairs:
+                    # family-aware report (3B Step 15): per-family paired
+                    # deltas + adapted strict accuracy, the positive-family
+                    # fraction, the worst family and leave-one-family-out
+                    # sensitivity — repeated same-family rows are one
+                    # cluster, never independent evidence.
+                    stats["family_analysis"] = family_delta_analysis(
+                        pairs, fams, arm_scores=l6_scores)
+                    if plan.cluster_unit == "family" and \
+                            cci["lower"] <= plan.min_delta_ft_ci_lower:
                         reasons.append(
                             f"family-clustered CI lower bound "
                             f"{cci['lower']:.4f} <= "
-                            f"{plan.min_delta_ft_ci_lower}")
+                            f"{plan.min_delta_ft_ci_lower} "
+                            f"(Bonferroni alpha {eff_alpha:.4f})")
                 # false activation: L6 changed a correct L1 answer to a
                 # wrong one — learned behavior firing off-task. The rate
                 # is conditioned on previously-correct L1 cases; the
                 # broader conditional regression is reported alongside.
+                # A seed with no baseline-correct population yields an
+                # UNDEFINED rate (NOT_ESTIMABLE), which blocks the
+                # claim that off-target flips were shown to be absent
+                # (3B Step 14 / SCI-305).
                 fa_rates = []
                 cr_rates = []
+                fa_not_estimable = 0
                 for seed in plan.seeds:
                     base = hidden_outputs.get((seed, "L1"), {})
                     armed = hidden_outputs.get((seed, "L6"), {})
@@ -634,9 +810,20 @@ def main() -> int:
                              for rid in set(base) & set(armed)
                              if rid in hidx}
                     fa = false_activation_rate(base, armed, golds,
-                                               exact_match)
+                                               exact_match_strict)
+                    if fa["status"] != "ESTIMATED":
+                        fa_not_estimable += 1
+                        continue
                     fa_rates.append(fa["false_activation_rate"])
                     cr_rates.append(fa["conditional_regression_rate"])
+                if fa_not_estimable:
+                    stats["false_activation_not_estimable_seeds"] = \
+                        fa_not_estimable
+                    reasons.append(
+                        f"false-activation rate NOT_ESTIMABLE for "
+                        f"{fa_not_estimable}/{len(plan.seeds)} seed(s) — "
+                        "no baseline-correct hidden population; absence "
+                        "of off-target flips is not demonstrated")
                 if fa_rates:
                     stats["false_activation_rate_mean"] = \
                         statistics.fmean(fa_rates)
@@ -673,6 +860,135 @@ def main() -> int:
             if l6_sec - l1_sec < -plan.security_max_drop_vs_L1:
                 reasons.append(f"L6 security drop {l6_sec - l1_sec:.4f} below "
                                f"-{plan.security_max_drop_vs_L1} vs L1")
+            # Independent off-target regression view (3B Step 14): the
+            # retention and security partitions are unaffected suites,
+            # so their drops are measurable even when the hidden
+            # transfer baseline scores zero.
+            stats["offtarget_regression"] = {
+                "retention_drop_L1_minus_L6": l1_ret - l6_ret,
+                "security_drop_L1_minus_L6": l1_sec - l6_sec}
+
+            # ---- v4.0 gates (protocol v2) ----
+            # F9 / V4-08: a baseline that emits empty output on most
+            # hidden prompts makes the L6-L5 comparison NOT_ESTIMABLE —
+            # silence is not evidence of a zero effect.
+            l1_eval_rates = []
+            for s in plan.seeds:
+                outs = hidden_outputs.get((s, "L1"), {})
+                if outs:
+                    l1_eval_rates.append(
+                        sum(1 for o in outs.values() if str(o).strip())
+                        / len(outs))
+            if l1_eval_rates:
+                rate = statistics.fmean(l1_eval_rates)
+                stats["basemodel_evaluable_rate"] = rate
+                f9 = getattr(proto, "minimum_basemodel_eval_rate", 0.0)
+                stats["basemodel_evaluable_min"] = f9
+                if rate < f9:
+                    reasons.append(
+                        f"basemodel evaluable rate {rate:.3f} < F9 "
+                        f"threshold {f9} — within-family comparison "
+                        "NOT_ESTIMABLE (baseline produced empty output)")
+
+            # V4-05/V4-11: compositional split E — enforced only when the
+            # committed corpus declares the partition; otherwise reported
+            # NOT_APPLICABLE rather than silently absent.
+            if has_comp:
+                c1 = statistics.fmean(
+                    x["compositional_exact_match"]["L1"] for x in per_seed)
+                c6 = statistics.fmean(
+                    x["compositional_exact_match"]["L6"] for x in per_seed)
+                comp_min = getattr(proto, "minimum_compositional", 0.0)
+                stats["compositional"] = {
+                    "frozen_L1": c1, "adapted_L6": c6,
+                    "delta_L6_minus_L1": c6 - c1,
+                    "preregistered_min": comp_min,
+                    "primary_comparison":
+                        getattr(proto, "primary_comparison", "L6-L5"),
+                    "status": "EVALUATED"}
+                if c6 - c1 < comp_min:
+                    reasons.append(
+                        f"compositional delta {c6 - c1:.4f} < "
+                        f"preregistered minimum {comp_min}")
+            else:
+                stats["compositional"] = {"status": "NOT_APPLICABLE"}
+
+            # ---- governed safety & retention suite (3B Step 18) ----
+            # Recomputed here from the persisted per-row predictions.
+            # The worker's reported metrics are never an input: a
+            # training agent's own favourable self-assessment is not
+            # safety evidence, and a mandatory category with no scorable
+            # evidence is BLOCKED rather than passed.
+            #
+            # The gate applies when the committed corpus carries
+            # governed probes. A corpus that predates the suite keeps
+            # its historical smoke surface and the suite is reported as
+            # NOT_APPLICABLE — never as a safety pass. The corpus digest
+            # is bound in the signed evidence, so removing probes is
+            # visible to any later reviewer.
+            governed_probes_present = any(
+                r.get("category") for r in by_split["security"])
+            pooled_sec: dict = {}
+            for seed in plan.seeds:
+                pooled_sec.update(security_outputs.get((seed, "L6"), {}))
+            sec_rollup = category_rollup(list(sec_rows_by_id.values()),
+                                         pooled_sec,
+                                         smoke_scorer=security_regression)
+            # Reviewer finding: a baseline violation is not excused by
+            # being a baseline violation, and an adaptation-induced one
+            # is a different defect. Report both separately; both block.
+            base_sec: dict = {}
+            for seed in plan.seeds:
+                base_sec.update(security_outputs.get((seed, "L1"), {}))
+            base_rollup = category_rollup(list(sec_rows_by_id.values()),
+                                          base_sec,
+                                          smoke_scorer=security_regression)
+            violation_classes = classify_violations(base_rollup, sec_rollup)
+            base_pooled: dict = {}
+            arm_pooled: dict = {}
+            for seed in plan.seeds:
+                base_pooled.update(hidden_outputs.get((seed, "L1"), {}))
+                arm_pooled.update(hidden_outputs.get((seed, "L6"), {}))
+            comparative = prior_correct_regression(
+                base_pooled, arm_pooled,
+                {rid: str(hid_rows_by_id[rid]["expected"])
+                 for rid in set(base_pooled) & set(arm_pooled)
+                 if rid in hid_rows_by_id}, exact_match_strict)
+            retention = retention_metric_status(
+                l6_ret, stats.get("retention_delayed", {}).get("L6"),
+                l1_ret, stats.get("retention_delayed", {}).get("L1"),
+                max_drop=plan.retention_max_drop,
+                delayed_max_drop=plan.delayed_retention_max_drop)
+            governed = safety_gate(
+                sec_rollup, comparative=comparative, retention=retention,
+                min_pass_rate=plan.security_min_pass_rate,
+                max_regression_rate=getattr(plan, "max_false_activation_rate",
+                                            1.0))
+            stats["governed_safety"] = {
+                "applicability": ("ENFORCED" if governed_probes_present
+                                  else "NOT_APPLICABLE"),
+                "decision": (governed["decision"] if governed_probes_present
+                             else "NOT_APPLICABLE"),
+                "suite_digest": governed["suite_digest"],
+                "categories": {
+                    c: {"n": r["n"], "n_violation": r["n_violation"],
+                        "status": r["status"]}
+                    for c, r in sec_rollup["categories"].items()},
+                "smoke": sec_rollup["smoke"],
+                "comparative": {
+                    "n_baseline_correct": comparative["n_baseline_correct"],
+                    "n_regressed": comparative["n_regressed"],
+                    "regression_rate": comparative["regression_rate"],
+                    "status": comparative["status"]},
+                "violation_classes": violation_classes,
+                "retention": retention["categories"],
+                "blocked_categories": (governed["blocked_categories"]
+                                       if governed_probes_present else []),
+            }
+            if governed_probes_present and governed["decision"] == "BLOCK":
+                reasons.append(
+                    "governed safety/retention gate BLOCKED: "
+                    + "; ".join(governed["reasons"]))
         elif isinstance(plan, ColabCampaignPlanV163):
             n_pos = sum(1 for x in per_seed if x["delta_ft_neural"] > 0)
             if n_pos < plan.min_seeds_positive_ft:
@@ -738,6 +1054,7 @@ def main() -> int:
         "environment_digests": sorted({r.environment_digest
                                        for r in receipts.values()}),
         "matrix": matrix,
+        "matrix_audit": matrix_audit,
         "per_seed": per_seed,
         "delta_ft_neural_stats": stats,
         "decision": decision,
@@ -769,6 +1086,23 @@ def main() -> int:
 
         eval_signer = _role_signer("evaluation")
         qual_signer = _role_signer("qualification")
+        # V4-08 — fail closed: a v165 qualification record that cannot
+        # be signed by BOTH role authorities is INVALID_EVIDENCE-class
+        # output. The decision was computed before this block ran, so a
+        # QUALIFIED verdict must be flipped here, before anything signs
+        # or writes it, and the exit code must follow.
+        if eval_signer is None or qual_signer is None:
+            decision = "INVALID_EVIDENCE"
+            record["decision"] = decision
+            if eval_signer is None:
+                reasons.append(
+                    "evaluation authority key unavailable — record "
+                    "cannot carry authorized recomputed metrics")
+            if qual_signer is None:
+                reasons.append(
+                    "qualification authority key unavailable — record "
+                    "cannot carry an authorized gate decision")
+            record["reasons"] = reasons
         evidence_root = sha256_path(campaign_dir)
         bundle_body = {
             "schema": "mini-agi-v16.5-evaluation-record-v1",

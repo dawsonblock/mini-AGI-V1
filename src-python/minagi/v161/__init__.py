@@ -5,11 +5,13 @@ execution interfaces.  It is intentionally additive: old APIs remain available
 for regression compatibility, while new experiments should use v161 APIs.
 """
 from .evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
-from .dataset_manifest import DatasetMember, DatasetMembershipManifest, DatasetPartitionSet
+from .dataset_manifest import (DatasetMember, DatasetMembershipManifest,
+                               DatasetPartitionSet, DatasetPartitionSetV3)
 from .runtime_closure3 import RuntimeClosureV161, RuntimeArtifactSpec
 
 __all__ = [
     "EvaluatorArtifact", "EvaluatorRegistry", "DatasetMember",
-    "DatasetMembershipManifest", "DatasetPartitionSet", "RuntimeClosureV161",
+    "DatasetMembershipManifest", "DatasetPartitionSet",
+    "DatasetPartitionSetV3", "RuntimeClosureV161",
     "RuntimeArtifactSpec",
 ]

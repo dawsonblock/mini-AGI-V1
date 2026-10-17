@@ -70,11 +70,25 @@ release-ed25519*.pem
 .idea/
 .vscode/
 .claude/settings.local.json
+.venv/
+venv/
 *.pem
 *.p12
 !RELEASE_PUBLIC_KEY.pem
+# The control-plane manifest is signed, so its PUBLIC key must ship
+# with it or the signature cannot be verified from the archive.
+!CONTROL_PLANE_PUBLIC_KEY.pem
 
 adaptive_mtp.md
+
+# Colab execution evidence: keep JSON artifacts; drop archives, keys, binaries.
+colab-evidence/*.tgz
+colab-evidence/.keys/
+colab-evidence/PACKED
+colab-evidence/*.log
+colab-evidence/authority-state.tgz
+colab-evidence/**/adapters/
+colab-evidence/**/.keys/
 
 # Vendored external benchmark harness (its own git repo, ~1.1 GB)
 third_party/openhands-benchmarks/
@@ -90,3 +104,17 @@ IMPORT_PROBE.json
 INTERRUPTION_RECOVERY.json
 QUALIFICATION_RECORD.json
 SCORER_CALIBRATION.json
+
+# v16.4.5: campaign evidence ships as a separately verified artifact
+# (mini-AGI-Campaign3A-Evidence.zip), not inside the governed source tree.
+colab-evidence/
+
+dist-v1645/
+dist-v1646/
+
+# derived hash listing — regenerable, not governed source
+release/
+dist-v16410/
+
+# build artifacts for external execution (regenerable)
+dist/

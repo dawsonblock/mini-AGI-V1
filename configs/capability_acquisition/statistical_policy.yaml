@@ -1,0 +1,80 @@
+# Statistical qualification policy — v4.0.3-r2 Phase 4.
+#
+# The frozen statistical contract for capability-acquisition
+# confirmation. The method AND the thresholds are preregistered here —
+# post-hoc retuning against observed results is a protocol change and
+# requires a new policy version.
+schema: mini-agi-v4.0.3-statistical-policy-v1
+version: 1
+
+primary_metric: exact_match_accuracy   # strict exact-match-v2
+
+acquisition:
+  # A defensible acquisition claim requires the LOWER confidence bound
+  # of the within-holdout delta to EXCEED the preregistered meaningful
+  # improvement — a point estimate cannot qualify an uncertain
+  # experiment.
+  min_meaningful_delta: 0.15           # delta_min
+  confidence_level: 0.95               # two-sided alpha = 0.05
+  ci_alpha: 0.05
+  estimator: family_cluster_bootstrap  # resample FAMILY clusters
+  bootstrap_resamples: 2000
+  paired_comparison: true              # paired per-id deltas
+
+retention:
+  # Non-inferiority: the UPPER confidence bound of the destruction
+  # rate must stay inside the declared maximum. Missing or unpaired
+  # retention evidence is NOT_EVALUABLE, never a zero-regression pass.
+  max_destruction_rate: 0.10
+  ci_alpha: 0.05
+  estimator: item_bootstrap            # per-probe resampling
+  bootstrap_resamples: 2000
+
+minimum_evidence_coverage:
+  # Statistical qualification requires enough INDEPENDENT units — a
+  # one-cluster or single-seed interval is degenerate and returns
+  # NOT_EVALUABLE rather than a narrow fabricated CI.
+  min_family_clusters: 2
+  min_independent_seeds: 2
+  min_retention_pairs: 1
+
+multiple_comparisons:
+  # Candidate arms share one family of comparisons. With one primary
+  # metric and per-arm CI gates, the declared control is: every arm's
+  # acquisition AND retention intervals must pass independently —
+  # a candidate cannot compensate a failed gate with another arm's
+  # surplus.
+  method: per_gate_simultaneous
+  familywise_note: >
+    Each arm is judged on its own preregistered gates; qualification
+    is per-candidate, not best-of-family. No winner's-curse selection
+    among arms is permitted at confirmation.
+
+missing_data:
+  # Missing evidence is never imputed as a favorable value:
+  #   - undefined CI               -> NOT_EVALUABLE
+  #   - missing retention pairs    -> NOT_EVALUABLE
+  #   - fewer clusters/seeds than  -> NOT_EVALUABLE
+  #     the minimums above
+  #   - missing cell               -> matrix INCOMPLETE
+  policy: fail_closed
+
+stopping_rules:
+  # Confirmation evidence is collected at the preregistered seed set —
+  # no peek-then-extend: observed failures may not be fixed by adding
+  # seeds after the fact without a new preregistration.
+  seeds_frozen_at_preregistration: true
+  optional_stopping: false
+
+# Gate values consumed by analyze_v410_matrix.py — these override the
+# analyzer's confirmation.yaml statistical keys so the statistical
+# contract lives in exactly one place.
+gates:
+  within_holdout_min_delta: 0.15
+  retention_max_destruction_rate: 0.10
+  statistical_min_family_clusters: 2
+  statistical_min_seeds: 2
+  bootstrap_resamples: 2000
+  ci_alpha: 0.05
+  paired_comparison: true
+  analysis_unit: family

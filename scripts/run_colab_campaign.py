@@ -20,10 +20,13 @@ from minagi.platforms.cuda.hf_runtime import HFLoadSpec, load_tokenizer, load_ca
 from minagi.platforms.cuda.peft_trainer import LoraTrainSpec, train_lora
 from minagi.v161.dataset_manifest import DatasetMember, DatasetMembershipManifest, DatasetPartitionSet
 from minagi.v161.evaluator_registry import EvaluatorArtifact, EvaluatorRegistry
-from minagi.v161.evaluators import exact_match, retention_score, security_regression
+from minagi.v161.evaluators import (exact_match_strict, retention_score,
+                                    score_row, security_regression)
 from minagi.v161.campaign_plan import ColabCampaignPlanV161
 from minagi.v161.executed_run import ExecutedRunReceiptV161
 from minagi.v161.runtime_closure3 import sha256_path
+from minagi.v161.prompt_contract import (build_prompt_contract,
+                                         encode_generation)
 
 ZERO="sha256:"+"0"*64
 
@@ -41,17 +44,20 @@ def generate(model,tokenizer,prompt,max_new_tokens):
     import torch
     with torch.inference_mode():
         device=next(model.parameters()).device
-        batch=tokenizer(prompt,return_tensors="pt")
-        batch={k:v.to(device) for k,v in batch.items()}
+        # SCI-301: inference renders through the shared prompt contract
+        # (historical default surface) exactly as training does.
+        contract=build_prompt_contract(tokenizer)
+        input_ids=encode_generation(tokenizer,prompt,contract)
+        batch={"input_ids":torch.tensor([input_ids],device=device)}
         out=model.generate(**batch,max_new_tokens=max_new_tokens,do_sample=False,pad_token_id=tokenizer.eos_token_id)
-        text=tokenizer.decode(out[0,batch["input_ids"].shape[1]:],skip_special_tokens=True).strip()
+        text=tokenizer.decode(out[0,len(input_ids):],skip_special_tokens=True).strip()
         return text
 
 def evaluate(model,tokenizer,rows,max_new_tokens,scorer):
     scores=[]; outputs=[]
     for row in rows:
         pred=generate(model,tokenizer,str(row["prompt"]),max_new_tokens)
-        score=float(scorer(pred,str(row["expected"])))
+        score=float(score_row(row,pred,scorer))
         scores.append(score); outputs.append({"id":row["id"],"prediction":pred,"expected":row["expected"],"score":score})
     return (sum(scores)/len(scores) if scores else 0.0),outputs
 
@@ -73,7 +79,7 @@ def main():
     rows=load_rows(dataset); train=[r for r in rows if r["split"]=="train"]; val=[r for r in rows if r["split"]=="validation"]; hidden=[r for r in rows if r["split"]=="hidden"]
     parts=DatasetPartitionSet(DatasetMembershipManifest("train",tuple(member(r) for r in train)),DatasetMembershipManifest("validation",tuple(member(r) for r in val)),DatasetMembershipManifest("hidden",tuple(member(r) for r in hidden)),require_family_disjoint_hidden=bool(cfg.get("require_family_disjoint_hidden",False)))
     registry=EvaluatorRegistry(storage.root/"evidence"/"evaluators")
-    arts=[EvaluatorArtifact.from_callable("exact-match-v1",exact_match),EvaluatorArtifact.from_callable("retention-v1",retention_score),EvaluatorArtifact.from_callable("security-v1",security_regression)]
+    arts=[EvaluatorArtifact.from_callable("exact-match-v2",exact_match_strict),EvaluatorArtifact.from_callable("retention-v1",retention_score),EvaluatorArtifact.from_callable("security-v1",security_regression)]
     for a in arts: registry.register(a)
     score_fn=registry.resolve(arts[0].digest); retention_fn=registry.resolve(arts[1].digest); security_fn=registry.resolve(arts[2].digest)
     model_cfg=cfg["model"]

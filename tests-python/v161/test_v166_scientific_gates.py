@@ -213,12 +213,15 @@ def test_conditional_regression_reported():
     assert fa["changed_ids"] == ["a"]
 
 
-def test_no_baseline_correct_rows_yield_zero_rate():
+def test_no_baseline_correct_rows_yield_not_estimable():
+    """SCI-305: with no baseline-correct population the conditional
+    rate is undefined — reported as NOT_ESTIMABLE, never as zero."""
     golds = {"a": "1"}
     fa = false_activation_rate({"a": "x"}, {"a": "y"}, golds, exact_match)
     assert fa["n_baseline_correct"] == 0
-    assert fa["false_activation_rate"] == 0.0
-    assert fa["conditional_regression_rate"] == 0.0
+    assert fa["false_activation_rate"] is None
+    assert fa["conditional_regression_rate"] is None
+    assert fa["status"] == "NOT_ESTIMABLE"
 
 
 # ---------- executor-verified scoring ---------------------------------

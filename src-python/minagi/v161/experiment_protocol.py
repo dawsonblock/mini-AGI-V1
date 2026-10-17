@@ -159,3 +159,101 @@ class ExperimentProtocolV1:
             retention_scorer=str(cfg.get("retention_scorer", "retention_score")),
             require_native_servable_adapter=bool(
                 cfg.get("require_native_servable_adapter", True)))
+
+
+@dataclass(frozen=True)
+class ExperimentProtocolV2(ExperimentProtocolV1):
+    """v4.0 experiment protocol — binds the rehearsal/KL data surface and
+    the extended qualification gates that v16.5 left unsigned.
+
+    A NEW schema: V1 protocol digests embedded in executed-campaign plans
+    stay byte-stable; a campaign opts into V2 via `protocol_version: v2`.
+
+    New binding surface:
+      rehearsal_corpus / kl_corpus — identity of the preservation data;
+        when `require_verified_rehearsal` is set the runner must refuse
+        to start without a committed corpus it can verify.
+      minimum_compositional — preregistered split-E gate (adapted minus
+        frozen compositional accuracy); 0.0 demands at least
+        non-regression.
+      minimum_basemodel_eval_rate — F9: fraction of hidden prompts on
+        which the frozen baseline produced a NON-EMPTY output; below it
+        the within-family comparison is NOT_ESTIMABLE, not zero.
+      primary_comparison — names the single primary endpoint
+        (default "L6-L5": adapted neural arm minus verified-replay
+        comparator on hidden).
+      n_comparisons — number of preregistered confirmatory comparisons;
+        the qualifier divides the family alpha by it (Bonferroni).
+      rehearsal_fraction / kl_weight / kl_every — the preservation
+        levers, bound into the signed surface so a preservation arm is
+        the same experiment on every lane (V4-16).
+    """
+    rehearsal_corpus: str = ""
+    kl_corpus: str = ""
+    require_verified_rehearsal: bool = False
+    minimum_compositional: float = 0.0
+    minimum_basemodel_eval_rate: float = 0.0
+    primary_comparison: str = "L6-L5"
+    n_comparisons: int = 1
+    rehearsal_fraction: float = 0.0
+    kl_weight: float = 0.0
+    kl_every: int = 1
+    schema: str = "mini-agi-v4.0-experiment-protocol-v2"
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not 0.0 <= float(self.minimum_basemodel_eval_rate) <= 1.0:
+            raise ValueError("minimum_basemodel_eval_rate must be in [0,1]")
+        if int(self.n_comparisons) < 1:
+            raise ValueError("n_comparisons must be >= 1")
+        if not self.primary_comparison:
+            raise ValueError("primary_comparison required")
+        if not 0.0 <= float(self.rehearsal_fraction) < 1.0:
+            raise ValueError("rehearsal_fraction must be in [0,1)")
+        if float(self.kl_weight) < 0.0:
+            raise ValueError("kl_weight must be >= 0")
+        if int(self.kl_every) < 1:
+            raise ValueError("kl_every must be >= 1")
+        if self.require_verified_rehearsal and \
+                not (self.rehearsal_corpus or self.kl_corpus):
+            raise ValueError(
+                "require_verified_rehearsal without a declared "
+                "rehearsal_corpus or kl_corpus is unenforceable")
+
+    def lora_train_spec_kwargs(self) -> dict:
+        kw = super().lora_train_spec_kwargs()
+        kw.update({"rehearsal_fraction": float(self.rehearsal_fraction),
+                   "kl_weight": float(self.kl_weight),
+                   "kl_every": int(self.kl_every)})
+        return kw
+
+    @classmethod
+    def from_config(cls, cfg: Mapping[str, Any]) -> "ExperimentProtocolV2":
+        v1 = ExperimentProtocolV1.from_config(cfg)
+        base = {f.name: getattr(v1, f.name)
+                for f in ExperimentProtocolV1.__dataclass_fields__.values()
+                if f.name != "schema"}
+        return cls(**base,
+                   rehearsal_corpus=str(cfg.get("rehearsal_corpus", "")),
+                   kl_corpus=str(cfg.get("kl_corpus", "")),
+                   require_verified_rehearsal=bool(
+                       cfg.get("require_verified_rehearsal", False)),
+                   minimum_compositional=float(
+                       cfg.get("minimum_compositional", 0.0)),
+                   minimum_basemodel_eval_rate=float(
+                       cfg.get("minimum_basemodel_eval_rate", 0.0)),
+                   primary_comparison=str(
+                       cfg.get("primary_comparison", "L6-L5")),
+                   n_comparisons=int(cfg.get("n_comparisons", 1)),
+                   rehearsal_fraction=float(
+                       cfg.get("rehearsal_fraction", 0.0)),
+                   kl_weight=float(cfg.get("kl_weight", 0.0)),
+                   kl_every=int(cfg.get("kl_every", 1)))
+
+
+def protocol_from_config(cfg: Mapping[str, Any]) -> ExperimentProtocolV1:
+    """Version-dispatched protocol construction: `protocol_version: v2`
+    opts into the extended v4.0 surface; everything else is V1."""
+    if str(cfg.get("protocol_version", "v1")) == "v2":
+        return ExperimentProtocolV2.from_config(cfg)
+    return ExperimentProtocolV1.from_config(cfg)

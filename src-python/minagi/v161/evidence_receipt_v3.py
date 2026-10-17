@@ -44,7 +44,7 @@ from typing import Iterable, Mapping, Any
 from egai.common.canonical import (digest, sha256_bytes, validate_digest)
 from egai.common.crypto import Ed25519Signer, SignedEnvelope
 
-from .executed_run import ARMS_V162
+from .executed_run import ARMS_V166
 
 RECEIPT_V3_SCHEMA = "mini-agi-v16.5-evidence-receipt-v3"
 BUNDLE_V3_SCHEMA = "mini-agi-v16.5-evaluation-bundle-v1"
@@ -166,8 +166,8 @@ class EvidenceReceiptV3:
                   self.evaluator_digest, self.input_manifest_digest,
                   self.predictions_digest, self.evaluation_bundle_digest):
             validate_digest(x)
-        if self.arm not in ARMS_V162:
-            raise ValueError(f"arm must be one of {sorted(ARMS_V162)}")
+        if self.arm not in ARMS_V166:
+            raise ValueError(f"arm must be one of {sorted(ARMS_V166)}")
         if int(self.seed) < 0:
             raise ValueError("seed must be non-negative")
         if not self.signer_key_id or not self.signature_b64:
